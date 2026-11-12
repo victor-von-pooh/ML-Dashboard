@@ -16,7 +16,7 @@ def get_data_dir() -> Path:
     Returns
     ----------
     data_dir: Path
-        登録したプロジェクトやジョブの記録を置くディレクトリ
+        登録したプロジェクトやジョブの記録を置く場所, 書き込むときに作成
     """
     # 環境変数があればそれを使い, 無ければホームディレクトリの下に設定
     value = os.environ.get(HOME_ENV)
@@ -24,8 +24,5 @@ def get_data_dir() -> Path:
         data_dir = Path(value).expanduser().resolve()
     else:
         data_dir = Path.home() / ".ml-dashboard"
-
-    # 無ければ作成
-    data_dir.mkdir(parents=True, exist_ok=True)
 
     return data_dir

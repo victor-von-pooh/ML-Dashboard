@@ -1,7 +1,10 @@
 import json
+import os
 import re
 import sys
+import tempfile
 import threading
+from collections import deque
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -16,10 +19,11 @@ DEFAULT_CONFIG = Path("configs") / "default" / "train.yaml"
 EXPERIMENT_DIR = Path("configs") / "experiment"
 
 # プロジェクトを探すときに入らないディレクトリ
-SKIP_DIRS = {
-    ".git", ".venv", "venv", "node_modules", "__pycache__", "outputs",
-    "data", "ML-Found"
-}
+SKIP_DIRS = {"node_modules", "__pycache__", "outputs", "data", "venv"}
+
+
+class ProjectError(Exception):
+    pass
 
 
 @dataclass
@@ -45,7 +49,11 @@ def is_project_dir(path: Path) -> bool:
     is_project: bool
         default の config を持つかどうか
     """
-    is_project = (path / DEFAULT_CONFIG).is_file()
+    # 読めないディレクトリはプロジェクトではないものとして扱い
+    try:
+        is_project = (path / DEFAULT_CONFIG).is_file()
+    except OSError:
+        return False
 
     return is_project
 
@@ -66,21 +74,25 @@ def find_projects(root: Path, max_depth: int = 3) -> list[Path]:
     found: list[Path]
         見つけたプロジェクトのディレクトリ
     """
-    # 幅優先で探し, プロジェクトの中には入らない
+    # 幅優先で探し, プロジェクトの中と読めないディレクトリは対象外
     found = []
-    queue = [(root, 0)]
+    queue = deque([(root, 0)])
     while queue:
-        path, depth = queue.pop(0)
+        path, depth = queue.popleft()
         if is_project_dir(path):
             found.append(path)
             continue
         if depth >= max_depth:
             continue
-        children = sorted(
-            child for child in path.iterdir()
-            if child.is_dir() and child.name not in SKIP_DIRS
-            and not child.name.startswith(".")
-        )
+        try:
+            children = sorted(
+                child for child in path.iterdir()
+                if child.is_dir() and not child.is_symlink()
+                and child.name not in SKIP_DIRS
+                and not child.name.startswith(".")
+            )
+        except OSError:
+            continue
         queue.extend((child, depth + 1) for child in children)
 
     return found
@@ -98,20 +110,45 @@ def find_python(project_dir: Path) -> str:
     Returns
     ----------
     python: str
-        プロジェクトか親のディレクトリの仮想環境の Python, 無ければ今の Python
+        プロジェクトから git のルートかホームまでの仮想環境の Python,
+        無ければダッシュボードの Python
     """
-    # プロジェクトから上に向かって仮想環境を探す
+    # プロジェクトから上に向かって仮想環境を探し, 関係の無い場所の手前で終了
+    home = Path.home()
     for directory in [project_dir, *project_dir.parents]:
+        if directory == home or directory == directory.parent:
+            break
         for venv in (".venv", "venv"):
             candidate = directory / venv / "bin" / "python"
             if candidate.is_file():
                 python = str(candidate)
                 return python
+        if (directory / ".git").exists():
+            break
 
-    # 見つからなければダッシュボードの Python
     python = sys.executable
 
     return python
+
+
+def check_python(python: str) -> None:
+    """
+    学習に使う Python が実行できるファイルかを確かめる関数
+
+    Parameters
+    ----------
+    python: str
+        Python のパス
+
+    Returns
+    ----------
+    None
+    """
+    path = Path(python)
+    if not path.is_file() or not os.access(path, os.X_OK):
+        raise ValueError(f"実行できる Python が見つかりません: {python}")
+    if not path.name.startswith("python"):
+        raise ValueError(f"Python の実行ファイルを指定してください: {python}")
 
 
 def make_project_id(name: str, used: set[str]) -> str:
@@ -135,7 +172,7 @@ def make_project_id(name: str, used: set[str]) -> str:
     if base == "":
         base = "project"
 
-    # 重複する場合は番号を付ける
+    # 重複する場合は番号を追加
     project_id = base
     count = 2
     while project_id in used:
@@ -148,10 +185,10 @@ def make_project_id(name: str, used: set[str]) -> str:
 class ProjectStore:
     def __init__(self, data_dir: Path):
         # 登録したプロジェクトを保存するファイルを保存
-        data_dir.mkdir(parents=True, exist_ok=True)
+        self.data_dir = data_dir
         self.path = data_dir / "projects.json"
 
-        # 複数のリクエストから同時に書き換えないためのロック
+        # 複数のリクエストから同時に書き換えないためのロックを用意
         self.lock = threading.Lock()
 
     def load(self) -> list[Project]:
@@ -170,8 +207,13 @@ class ProjectStore:
         if not self.path.is_file():
             return []
 
-        data = json.loads(self.path.read_text(encoding="utf-8"))
-        projects = [Project(**item) for item in data]
+        try:
+            data = json.loads(self.path.read_text(encoding="utf-8"))
+            projects = [Project(**item) for item in data]
+        except (ValueError, TypeError) as error:
+            raise ProjectError(
+                f"{self.path} が壊れています. 直すか消してください: {error}"
+            ) from error
 
         return projects
 
@@ -189,13 +231,17 @@ class ProjectStore:
         None
         """
         # 途中で止まっても壊れないように, 一時ファイルに書いてから置き換え
-        temp = self.path.with_suffix(".tmp")
+        self.data_dir.mkdir(parents=True, exist_ok=True)
         text = json.dumps(
             [asdict(project) for project in projects], ensure_ascii=False,
             indent=2
         )
-        temp.write_text(text, encoding="utf-8")
-        temp.replace(self.path)
+        with tempfile.NamedTemporaryFile(
+            "w", dir=self.data_dir, suffix=".tmp", delete=False,
+            encoding="utf-8"
+        ) as file:
+            file.write(text)
+        os.replace(file.name, self.path)
 
     def get(self, project_id: str) -> Optional[Project]:
         """
@@ -240,6 +286,8 @@ class ProjectStore:
         """
         # ML-Found のプロジェクトであることの確認
         project_dir = Path(path).expanduser().resolve()
+        if not project_dir.is_dir():
+            raise ValueError(f"ディレクトリが見つかりません: {project_dir}")
         if not is_project_dir(project_dir):
             raise ValueError(
                 f"{DEFAULT_CONFIG} が無いので ML-Found のプロジェクトでは"
@@ -249,8 +297,7 @@ class ProjectStore:
         # Python の確認
         if python is None:
             python = find_python(project_dir)
-        elif not Path(python).is_file():
-            raise ValueError(f"Python が見つかりません: {python}")
+        check_python(python)
 
         with self.lock:
             projects = self.load()
@@ -302,9 +349,33 @@ class ProjectStore:
         return removed
 
 
-def read_output_dir(project_dir: Path) -> Path:
+def read_output_dir(path: Path) -> Optional[str]:
     """
-    プロジェクトの実験の出力先を取得する関数
+    config のファイルから experiment.output_dir を読む関数
+
+    Parameters
+    ----------
+    path: Path
+        config のファイル
+
+    Returns
+    ----------
+    output_dir: Optional[str]
+        値, 無いか補間を解決できない場合は None
+    """
+    try:
+        cfg = OmegaConf.load(path)
+        value = OmegaConf.select(cfg, "experiment.output_dir")
+    except Exception:
+        return None
+    output_dir = str(value) if value else None
+
+    return output_dir
+
+
+def get_output_dirs(project_dir: Path) -> list[Path]:
+    """
+    プロジェクトの実験の出力先の候補を取得する関数
 
     Parameters
     ----------
@@ -313,18 +384,30 @@ def read_output_dir(project_dir: Path) -> Path:
 
     Returns
     ----------
-    output_dir: Path
-        default の config の experiment.output_dir
+    output_dirs: list[Path]
+        default と各 experiment の config の experiment.output_dir
     """
-    # 補間を解決せずに値だけ読み, 無ければ ML-Found の既定値
-    cfg = OmegaConf.load(project_dir / DEFAULT_CONFIG)
-    value = OmegaConf.select(
-        cfg, "experiment.output_dir", default="outputs",
-        throw_on_resolution_failure=False
-    )
-    output_dir = project_dir / str(value or "outputs")
+    if not is_project_dir(project_dir):
+        raise ProjectError(
+            f"プロジェクトのディレクトリが見つかりません: {project_dir}"
+        )
 
-    return output_dir
+    # experiment の config で出力先を変えた実験も探せるように全てを集める
+    values = [read_output_dir(project_dir / DEFAULT_CONFIG) or "outputs"]
+    values.extend(
+        value for value in (
+            read_output_dir(project_dir / config)
+            for config in list_experiment_configs(project_dir)
+        )
+        if value
+    )
+    output_dirs = []
+    for value in values:
+        output_dir = (project_dir / value).resolve()
+        if output_dir not in output_dirs:
+            output_dirs.append(output_dir)
+
+    return output_dirs
 
 
 def list_scripts(project_dir: Path) -> list[str]:
@@ -365,7 +448,7 @@ def list_experiment_configs(project_dir: Path) -> list[str]:
         return []
 
     configs = sorted(
-        str(path.relative_to(project_dir))
+        path.relative_to(project_dir).as_posix()
         for path in root.rglob("*.yaml")
     )
 

@@ -25,7 +25,7 @@ export interface paths {
          *     projects: list[ProjectInfo]
          *         プロジェクトの一覧
          */
-        get: operations["list_projects_api_projects_get"];
+        get: operations["list_projects"];
         put?: never;
         /**
          * Create Project
@@ -43,7 +43,7 @@ export interface paths {
          *     info: ProjectInfo
          *         登録したプロジェクト
          */
-        post: operations["create_project_api_projects_post"];
+        post: operations["create_project"];
         delete?: never;
         options?: never;
         head?: never;
@@ -75,7 +75,7 @@ export interface paths {
          *     candidates: list[ProjectCandidate]
          *         見つけたプロジェクトと, 登録済みかどうか
          */
-        post: operations["scan_projects_api_projects_scan_post"];
+        post: operations["scan_projects"];
         delete?: never;
         options?: never;
         head?: never;
@@ -105,7 +105,7 @@ export interface paths {
          *     detail: ProjectDetail
          *         出力先, 学習のスクリプト, experiment の config を加えた情報
          */
-        get: operations["read_project_api_projects__project_id__get"];
+        get: operations["read_project"];
         put?: never;
         post?: never;
         /**
@@ -123,7 +123,7 @@ export interface paths {
          *     ----------
          *     None
          */
-        delete: operations["delete_project_api_projects__project_id__delete"];
+        delete: operations["delete_project"];
         options?: never;
         head?: never;
         patch?: never;
@@ -152,7 +152,7 @@ export interface paths {
          *     runs: list[RunSummary]
          *         実験の概要, 新しい順
          */
-        get: operations["list_runs_api_projects__project_id__runs_get"];
+        get: operations["list_runs"];
         put?: never;
         post?: never;
         delete?: never;
@@ -161,111 +161,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/projects/{project_id}/runs/{run_id}/history": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get History
-         * @description 実験の指標の推移を返す関数
-         *
-         *     Parameters
-         *     ----------
-         *     request: Request
-         *         リクエスト
-         *     project_id: str
-         *         プロジェクトの ID
-         *     run_id: str
-         *         実験の ID
-         *
-         *     Returns
-         *     ----------
-         *     history: History
-         *         history.csv の中身
-         */
-        get: operations["get_history_api_projects__project_id__runs__run_id__history_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/projects/{project_id}/runs/{run_id}/log": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Log
-         * @description 実験のログを返す関数
-         *
-         *     Parameters
-         *     ----------
-         *     request: Request
-         *         リクエスト
-         *     project_id: str
-         *         プロジェクトの ID
-         *     run_id: str
-         *         実験の ID
-         *
-         *     Returns
-         *     ----------
-         *     entries: list[LogEntry]
-         *         train.log の記録
-         */
-        get: operations["get_log_api_projects__project_id__runs__run_id__log_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/projects/{project_id}/runs/{run_id}/files/{file_path}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get File
-         * @description 実験のディレクトリの中のファイルを返す関数
-         *
-         *     Parameters
-         *     ----------
-         *     request: Request
-         *         リクエスト
-         *     project_id: str
-         *         プロジェクトの ID
-         *     run_id: str
-         *         実験の ID
-         *     file_path: str
-         *         実験のディレクトリからの相対パス
-         *
-         *     Returns
-         *     ----------
-         *     response: FileResponse
-         *         ファイルの中身
-         */
-        get: operations["get_file_api_projects__project_id__runs__run_id__files__file_path__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/projects/{project_id}/runs/{run_id}": {
+    "/api/projects/{project_id}/runs/{name}/{date}/{time}": {
         parameters: {
             query?: never;
             header?: never;
@@ -282,15 +178,135 @@ export interface paths {
          *         リクエスト
          *     project_id: str
          *         プロジェクトの ID
-         *     run_id: str
-         *         実験の ID
+         *     name: str
+         *         実験の名前
+         *     date: str
+         *         日付のディレクトリ名
+         *     time: str
+         *         時刻のディレクトリ名
          *
          *     Returns
          *     ----------
          *     detail: RunDetail
          *         実験の詳細
          */
-        get: operations["get_run_api_projects__project_id__runs__run_id__get"];
+        get: operations["get_run"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/runs/{name}/{date}/{time}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get History
+         * @description 実験の指標の推移を返す関数
+         *
+         *     Parameters
+         *     ----------
+         *     request: Request
+         *         リクエスト
+         *     project_id: str
+         *         プロジェクトの ID
+         *     name: str
+         *         実験の名前
+         *     date: str
+         *         日付のディレクトリ名
+         *     time: str
+         *         時刻のディレクトリ名
+         *
+         *     Returns
+         *     ----------
+         *     history: History
+         *         history.csv の中身, 無い場合はログから作り直したもの
+         */
+        get: operations["get_history"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/runs/{name}/{date}/{time}/log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Log
+         * @description 実験のログを返す関数
+         *
+         *     Parameters
+         *     ----------
+         *     request: Request
+         *         リクエスト
+         *     project_id: str
+         *         プロジェクトの ID
+         *     name: str
+         *         実験の名前
+         *     date: str
+         *         日付のディレクトリ名
+         *     time: str
+         *         時刻のディレクトリ名
+         *
+         *     Returns
+         *     ----------
+         *     entries: list[LogEntry]
+         *         train.log の記録
+         */
+        get: operations["get_log"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/runs/{name}/{date}/{time}/files/{file_path}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get File
+         * @description 実験のディレクトリの中のファイルを返す関数
+         *
+         *     Parameters
+         *     ----------
+         *     request: Request
+         *         リクエスト
+         *     project_id: str
+         *         プロジェクトの ID
+         *     name: str
+         *         実験の名前
+         *     date: str
+         *         日付のディレクトリ名
+         *     time: str
+         *         時刻のディレクトリ名
+         *     file_path: str
+         *         実験のディレクトリからの相対パス
+         *
+         *     Returns
+         *     ----------
+         *     response: FileResponse
+         *         ファイルの中身
+         */
+        get: operations["get_file"];
         put?: never;
         post?: never;
         delete?: never;
@@ -307,8 +323,11 @@ export interface components {
         BestValue: {
             /** Monitor */
             monitor: string;
-            /** Mode */
-            mode: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "min" | "max";
             /** Epoch */
             epoch: number;
             /** Value */
@@ -346,6 +365,23 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** Progress */
+        Progress: {
+            /** Phase */
+            phase: string;
+            /** Epoch */
+            epoch: number;
+            /** Total Epochs */
+            total_epochs: number;
+            /** Batch */
+            batch: number;
+            /** Total Batches */
+            total_batches: number | null;
+            /** Elapsed Sec */
+            elapsed_sec: number;
+            /** Updated At */
+            updated_at: string;
+        };
         /** ProjectCandidate */
         ProjectCandidate: {
             /** Path */
@@ -380,8 +416,10 @@ export interface components {
             run_count: number;
             /** Latest Run */
             latest_run: string | null;
-            /** Output Dir */
-            output_dir: string;
+            /** Error */
+            error?: string | null;
+            /** Output Dirs */
+            output_dirs: string[];
             /** Scripts */
             scripts: string[];
             /** Experiment Configs */
@@ -403,6 +441,8 @@ export interface components {
             run_count: number;
             /** Latest Run */
             latest_run: string | null;
+            /** Error */
+            error?: string | null;
         };
         /** RunDetail */
         RunDetail: {
@@ -434,6 +474,9 @@ export interface components {
             final_metrics: {
                 [key: string]: number | null;
             };
+            progress: components["schemas"]["Progress"] | null;
+            /** Error */
+            error: string | null;
             /** Config */
             config: {
                 [key: string]: unknown;
@@ -503,6 +546,9 @@ export interface components {
             final_metrics: {
                 [key: string]: number | null;
             };
+            progress: components["schemas"]["Progress"] | null;
+            /** Error */
+            error: string | null;
         };
         /** ScanRequest */
         ScanRequest: {
@@ -531,7 +577,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    list_projects_api_projects_get: {
+    list_projects: {
         parameters: {
             query?: never;
             header?: never;
@@ -551,7 +597,7 @@ export interface operations {
             };
         };
     };
-    create_project_api_projects_post: {
+    create_project: {
         parameters: {
             query?: never;
             header?: never;
@@ -584,7 +630,7 @@ export interface operations {
             };
         };
     };
-    scan_projects_api_projects_scan_post: {
+    scan_projects: {
         parameters: {
             query?: never;
             header?: never;
@@ -617,7 +663,7 @@ export interface operations {
             };
         };
     };
-    read_project_api_projects__project_id__get: {
+    read_project: {
         parameters: {
             query?: never;
             header?: never;
@@ -637,6 +683,13 @@ export interface operations {
                     "application/json": components["schemas"]["ProjectDetail"];
                 };
             };
+            /** @description プロジェクトか実験が見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -648,7 +701,7 @@ export interface operations {
             };
         };
     };
-    delete_project_api_projects__project_id__delete: {
+    delete_project: {
         parameters: {
             query?: never;
             header?: never;
@@ -666,6 +719,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description プロジェクトか実験が見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -677,7 +737,7 @@ export interface operations {
             };
         };
     };
-    list_runs_api_projects__project_id__runs_get: {
+    list_runs: {
         parameters: {
             query?: never;
             header?: never;
@@ -697,6 +757,13 @@ export interface operations {
                     "application/json": components["schemas"]["RunSummary"][];
                 };
             };
+            /** @description プロジェクトか実験が見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -708,13 +775,56 @@ export interface operations {
             };
         };
     };
-    get_history_api_projects__project_id__runs__run_id__history_get: {
+    get_run: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 project_id: string;
-                run_id: string;
+                name: string;
+                date: string;
+                time: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunDetail"];
+                };
+            };
+            /** @description プロジェクトか実験が見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_history: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                name: string;
+                date: string;
+                time: string;
             };
             cookie?: never;
         };
@@ -729,6 +839,13 @@ export interface operations {
                     "application/json": components["schemas"]["History"];
                 };
             };
+            /** @description プロジェクトか実験が見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -740,13 +857,15 @@ export interface operations {
             };
         };
     };
-    get_log_api_projects__project_id__runs__run_id__log_get: {
+    get_log: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 project_id: string;
-                run_id: string;
+                name: string;
+                date: string;
+                time: string;
             };
             cookie?: never;
         };
@@ -761,6 +880,13 @@ export interface operations {
                     "application/json": components["schemas"]["LogEntry"][];
                 };
             };
+            /** @description プロジェクトか実験が見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -772,13 +898,15 @@ export interface operations {
             };
         };
     };
-    get_file_api_projects__project_id__runs__run_id__files__file_path__get: {
+    get_file: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 project_id: string;
-                run_id: string;
+                name: string;
+                date: string;
+                time: string;
                 file_path: string;
             };
             cookie?: never;
@@ -790,41 +918,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": unknown;
-                };
+                content?: never;
             };
-            /** @description Validation Error */
-            422: {
+            /** @description プロジェクトか実験が見つからない */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_run_api_projects__project_id__runs__run_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-                run_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RunDetail"];
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

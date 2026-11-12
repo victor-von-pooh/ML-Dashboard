@@ -1,23 +1,30 @@
 import csv
+import json
 import math
+import os
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from omegaconf import OmegaConf
 
 from ml_dashboard.core.logs import (
+    DEFAULT_FORMAT,
     find_message,
     parse_env,
+    parse_epoch_metrics,
     parse_log,
     parse_number,
     parse_packages,
 )
 from ml_dashboard.core.models import (
     BestValue,
+    FileKind,
     History,
     LogEntry,
+    Mode,
+    Progress,
     RunDetail,
     RunFile,
     RunStatus,
@@ -26,41 +33,119 @@ from ml_dashboard.core.models import (
 
 # 実験のディレクトリの日付と時刻の名前
 DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-TIME_PATTERN = re.compile(r"^(\d{2})-(\d{2})-(\d{2})(?:_\d+)?$")
+TIME_PATTERN = re.compile(r"^(\d{2})-(\d{2})-(\d{2})(?:_(\d+))?$")
 
 # ファイルの種類の判定に使う拡張子
-IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"}
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 CHECKPOINT_SUFFIXES = {".pt", ".pth", ".ckpt", ".safetensors"}
 TEXT_SUFFIXES = {".yaml", ".yml", ".csv", ".log", ".patch", ".json", ".txt"}
 
+class RunNotFoundError(Exception):
+    pass
 
-def find_run_dirs(output_dir: Path) -> list[Path]:
+
+def is_valid_date(name: str) -> bool:
+    """
+    日付のディレクトリ名が実在する日付かを判定する関数
+
+    Parameters
+    ----------
+    name: str
+        ディレクトリ名
+
+    Returns
+    ----------
+    valid: bool
+        YYYY-MM-DD の形で実在する日付かどうか
+    """
+    if not DATE_PATTERN.match(name):
+        return False
+    try:
+        datetime.strptime(name, "%Y-%m-%d")
+    except ValueError:
+        return False
+    valid = True
+
+    return valid
+
+
+def run_sort_key(run_dir: Path) -> tuple[str, str, int]:
+    """
+    実験のディレクトリを開始した順に並べるための値を作る関数
+
+    Parameters
+    ----------
+    run_dir: Path
+        実験のディレクトリ
+
+    Returns
+    ----------
+    key: tuple[str, str, int]
+        日付, 時刻, 同じ秒に始めた実験の連番
+    """
+    match = TIME_PATTERN.match(run_dir.name)
+    suffix = int(match.group(4)) if match and match.group(4) else 0
+    key = (run_dir.parent.name, run_dir.name[:8], suffix)
+
+    return key
+
+
+def is_run_dir(path: Path, output_dir: Path) -> bool:
+    """
+    ML-Found の実験のディレクトリかを判定する関数
+
+    Parameters
+    ----------
+    path: Path
+        判定するディレクトリ
+    output_dir: Path
+        プロジェクトの出力先
+
+    Returns
+    ----------
+    valid: bool
+        出力先の中にあり, 日付と時刻の名前で config.yaml を持つかどうか
+    """
+    # シンボリックリンクで出力先の外を指すものは対象外
+    try:
+        inside = path.resolve().is_relative_to(output_dir.resolve())
+    except OSError:
+        return False
+    valid = (
+        inside and path.is_dir() and is_valid_date(path.parent.name)
+        and TIME_PATTERN.match(path.name) is not None
+        and (path / "config.yaml").is_file()
+    )
+
+    return valid
+
+
+def find_run_dirs(output_dirs: list[Path]) -> list[tuple[Path, Path]]:
     """
     出力先から実験のディレクトリを探す関数
 
     Parameters
     ----------
-    output_dir: Path
-        プロジェクトの experiment.output_dir
+    output_dirs: list[Path]
+        プロジェクトの出力先 (experiment.output_dir) の候補
 
     Returns
     ----------
-    run_dirs: list[Path]
-        <output_dir>/<name>/<日付>/<時刻>/ のディレクトリ, 新しい順
+    runs: list[tuple[Path, Path]]
+        出力先と実験のディレクトリの組, 新しい順
     """
-    if not output_dir.is_dir():
-        return []
-
     # 名前, 日付, 時刻の 3 階層で, ML-Found が書く config があるもの
-    run_dirs = [
-        path for path in output_dir.glob("*/*/*")
-        if path.is_dir() and DATE_PATTERN.match(path.parent.name)
-        and TIME_PATTERN.match(path.name)
-        and (path / "config.yaml").is_file()
-    ]
-    run_dirs.sort(key=lambda path: (path.parent.name, path.name), reverse=True)
+    runs: list[tuple[Path, Path]] = []
+    for output_dir in output_dirs:
+        if not output_dir.is_dir():
+            continue
+        runs.extend(
+            (output_dir, path) for path in output_dir.glob("*/*/*")
+            if is_run_dir(path, output_dir)
+        )
+    runs.sort(key=lambda item: run_sort_key(item[1]), reverse=True)
 
-    return run_dirs
+    return runs
 
 
 def make_run_id(output_dir: Path, run_dir: Path) -> str:
@@ -70,7 +155,7 @@ def make_run_id(output_dir: Path, run_dir: Path) -> str:
     Parameters
     ----------
     output_dir: Path
-        プロジェクトの experiment.output_dir
+        プロジェクトの出力先
     run_dir: Path
         実験のディレクトリ
 
@@ -84,47 +169,35 @@ def make_run_id(output_dir: Path, run_dir: Path) -> str:
     return run_id
 
 
-def resolve_run_dir(output_dir: Path, run_id: str) -> Path:
+def resolve_run_dir(output_dirs: list[Path], run_id: str) -> Path:
     """
     実験の ID からディレクトリを取得する関数
 
     Parameters
     ----------
-    output_dir: Path
-        プロジェクトの experiment.output_dir
+    output_dirs: list[Path]
+        プロジェクトの出力先の候補
     run_id: str
-        実験の ID
+        <name>/<日付>/<時刻> の形の ID
 
     Returns
     ----------
     run_dir: Path
         実験のディレクトリ
     """
-    # 出力先の外を指す ID と, 実験ではないディレクトリを拒否
-    run_dir = (output_dir / run_id).resolve()
-    if run_dir not in find_run_dirs_set(output_dir):
-        raise FileNotFoundError(f"実験が見つかりません: {run_id}")
+    # 3 階層の名前の形を先に確かめ, 出力先の外への移動を拒否
+    parts = run_id.split("/")
+    valid = (
+        len(parts) == 3 and parts[0] not in ("", ".", "..")
+        and is_valid_date(parts[1]) and TIME_PATTERN.match(parts[2])
+    )
+    if valid:
+        for output_dir in output_dirs:
+            run_dir = output_dir / run_id
+            if is_run_dir(run_dir, output_dir):
+                return run_dir
 
-    return run_dir
-
-
-def find_run_dirs_set(output_dir: Path) -> set[Path]:
-    """
-    実験のディレクトリを絶対パスの集合で取得する関数
-
-    Parameters
-    ----------
-    output_dir: Path
-        プロジェクトの experiment.output_dir
-
-    Returns
-    ----------
-    run_dirs: set[Path]
-        実験のディレクトリの絶対パス
-    """
-    run_dirs = {path.resolve() for path in find_run_dirs(output_dir)}
-
-    return run_dirs
+    raise RunNotFoundError(f"実験が見つかりません: {run_id}")
 
 
 def parse_started_at(run_dir: Path) -> str:
@@ -141,99 +214,172 @@ def parse_started_at(run_dir: Path) -> str:
     started_at: str
         ISO 8601 の日時
     """
-    match = TIME_PATTERN.match(run_dir.name)
-    assert match is not None
-    hour, minute, second = match.groups()
-    started_at = datetime.fromisoformat(
-        f"{run_dir.parent.name}T{hour}:{minute}:{second}"
+    started_at = datetime.strptime(
+        f"{run_dir.parent.name} {run_dir.name[:8]}", "%Y-%m-%d %H-%M-%S"
     ).isoformat()
 
     return started_at
 
 
-def to_float(value: str) -> Optional[float]:
+def to_float(value: Any) -> Optional[float]:
     """
-    CSV の値を数値に変換する関数
+    CSV や JSON の値を数値に変換する関数
 
     Parameters
     ----------
-    value: str
-        CSV のセルの文字列
+    value: Any
+        変換する値
 
     Returns
     ----------
     number: Optional[float]
-        数値, 空か nan や inf の場合は None
+        数値, 変換できないか nan や inf の場合は None
     """
     try:
         number = float(value)
-    except ValueError:
+    except (TypeError, ValueError):
         return None
 
-    # JSON で表せない値は欠損として扱う
+    # JSON で表せない値は欠損として扱い
     if not math.isfinite(number):
         return None
 
     return number
 
 
-def read_history(run_dir: Path) -> History:
+def read_history_csv(path: Path) -> History:
     """
     history.csv を読み込む関数
 
     Parameters
     ----------
-    run_dir: Path
-        実験のディレクトリ
+    path: Path
+        history.csv のパス
 
     Returns
     ----------
     history: History
         列の名前とエポックごとの値
     """
-    path = run_dir / "history.csv"
-    if not path.is_file():
-        return History(columns=[], rows=[])
+    text = path.read_text(encoding="utf-8", errors="replace")
+    reader = csv.DictReader(text.splitlines())
+    columns = [str(name) for name in reader.fieldnames or []]
 
-    with path.open(encoding="utf-8", newline="") as file:
-        reader = csv.DictReader(file)
-        columns = list(reader.fieldnames or [])
-        rows = [
-            {key: to_float(value or "") for key, value in row.items()}
-            for row in reader
-        ]
+    # 見出しより多い列 (キーが None) は捨て, 見出しの列だけを数値に変換
+    rows = [
+        {key: to_float(row.get(key)) for key in columns} for row in reader
+    ]
     history = History(columns=columns, rows=rows)
 
     return history
 
 
-def load_config(run_dir: Path, name: str) -> dict[str, Any]:
+def read_history(run_dir: Path, entries: list[LogEntry]) -> History:
     """
-    実験のディレクトリの config を辞書で読み込む関数
+    実験の指標の推移を読み込む関数
 
     Parameters
     ----------
     run_dir: Path
         実験のディレクトリ
-    name: str
-        ファイル名
+    entries: list[LogEntry]
+        ログの記録
+
+    Returns
+    ----------
+    history: History
+        列の名前とエポックごとの値
+    """
+    # 学習を終えると history.csv が書かれるので, あればそれを使用
+    path = run_dir / "history.csv"
+    if path.is_file():
+        history = read_history_csv(path)
+        return history
+
+    # 学習中や失敗した実験は, ログのエポックごとの指標から作り直し
+    rows = parse_epoch_metrics(entries)
+    columns: list[str] = []
+    for row in rows:
+        columns.extend(key for key in row if key not in columns)
+    history = History(columns=columns, rows=rows)
+
+    return history
+
+
+def load_yaml(path: Path) -> dict[str, Any]:
+    """
+    YAML のファイルを辞書で読み込む関数
+
+    Parameters
+    ----------
+    path: Path
+        ファイルのパス
 
     Returns
     ----------
     config: dict[str, Any]
-        config の中身, 無い場合は空の辞書
+        ファイルの中身, 無いか辞書でない場合は空の辞書
     """
-    path = run_dir / name
     if not path.is_file():
         return {}
 
     loaded = OmegaConf.to_container(OmegaConf.load(path), resolve=False)
-    config = loaded if isinstance(loaded, dict) else {}
+    config = (
+        {str(key): value for key, value in loaded.items()}
+        if isinstance(loaded, dict) else {}
+    )
 
-    return {str(key): value for key, value in config.items()}
+    return config
 
 
-def get_monitor(config: dict[str, Any], columns: list[str]) -> tuple[str, str]:
+def read_json(path: Path) -> dict[str, Any]:
+    """
+    JSON のファイルを辞書で読み込む関数
+
+    Parameters
+    ----------
+    path: Path
+        ファイルのパス
+
+    Returns
+    ----------
+    data: dict[str, Any]
+        ファイルの中身, 無いか壊れている場合は空の辞書
+    """
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    data = loaded if isinstance(loaded, dict) else {}
+
+    return data
+
+
+def section(config: dict[str, Any], name: str) -> dict[str, Any]:
+    """
+    config の節を辞書で取得する関数
+
+    Parameters
+    ----------
+    config: dict[str, Any]
+        config
+    name: str
+        節の名前
+
+    Returns
+    ----------
+    part: dict[str, Any]
+        節の中身, 無いか辞書でない場合は空の辞書
+    """
+    value = config.get(name)
+    part = value if isinstance(value, dict) else {}
+
+    return part
+
+
+def get_monitor(
+    config: dict[str, Any], columns: list[str]
+) -> tuple[str, Mode]:
     """
     ベストモデルの判定に使った指標と向きを取得する関数
 
@@ -242,27 +388,27 @@ def get_monitor(config: dict[str, Any], columns: list[str]) -> tuple[str, str]:
     config: dict[str, Any]
         実験の config
     columns: list[str]
-        history.csv の列の名前
+        指標の推移の列の名前
 
     Returns
     ----------
     monitor: str
         監視する指標
-    mode: str
+    mode: Mode
         min か max
     """
-    # config で指定が無い場合は, ML-Found と同じく検証の損失か学習の損失
-    trainer = config.get("trainer") or {}
-    monitor = trainer.get("monitor")
+    # 指定が無い場合は, ML-Found と同じく検証の損失か学習の損失
+    trainer = section(config, "trainer")
+    monitor = str(trainer.get("monitor") or "")
     if not monitor:
         monitor = "valid/loss" if "valid/loss" in columns else "train/loss"
-    mode = str(trainer.get("mode") or "min")
+    mode: Mode = "max" if trainer.get("mode") == "max" else "min"
 
-    return str(monitor), mode
+    return monitor, mode
 
 
 def compute_best(
-    history: History, monitor: str, mode: str
+    history: History, monitor: str, mode: Mode
 ) -> Optional[BestValue]:
     """
     指標の推移からベストのエポックを求める関数
@@ -273,7 +419,7 @@ def compute_best(
         指標の推移
     monitor: str
         監視する指標
-    mode: str
+    mode: Mode
         min か max
 
     Returns
@@ -281,7 +427,7 @@ def compute_best(
     best: Optional[BestValue]
         ベストのエポックと値, 指標が無い場合は None
     """
-    # 最初に最良値に達したエポックを選ぶ
+    # 最初に最良値に達したエポックの選択
     best = None
     for row in history.rows:
         value = row.get(monitor)
@@ -298,9 +444,38 @@ def compute_best(
     return best
 
 
+def value_at(history: History, monitor: str, epoch: float) -> Optional[float]:
+    """
+    指定したエポックの指標の値を取得する関数
+
+    Parameters
+    ----------
+    history: History
+        指標の推移
+    monitor: str
+        指標の名前
+    epoch: float
+        エポック
+
+    Returns
+    ----------
+    value: Optional[float]
+        値, 無い場合は None
+    """
+    value = next(
+        (
+            row.get(monitor) for row in history.rows
+            if row.get("epoch") == epoch
+        ),
+        None
+    )
+
+    return value
+
+
 def judge_status(entries: list[LogEntry]) -> RunStatus:
     """
-    ログから実験の状態を判定する関数
+    ログから実験の状態を判定する関数 (run.json が無い古い実験で使う)
 
     Parameters
     ----------
@@ -312,7 +487,8 @@ def judge_status(entries: list[LogEntry]) -> RunStatus:
     status: RunStatus
         完了, 失敗, 不明のどれか
     """
-    if any(entry.message.startswith("学習完了") for entry in entries):
+    messages = {entry.message for entry in entries}
+    if "学習完了" in messages:
         status: RunStatus = "completed"
     elif any(entry.level in ("ERROR", "CRITICAL") for entry in entries):
         status = "failed"
@@ -322,14 +498,244 @@ def judge_status(entries: list[LogEntry]) -> RunStatus:
     return status
 
 
+def pid_alive(pid: Any) -> bool:
+    """
+    プロセスが動いているかを確かめる関数
+
+    Parameters
+    ----------
+    pid: Any
+        run.json に書かれたプロセスの ID
+
+    Returns
+    ----------
+    alive: bool
+        動いているかどうか
+    """
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    alive = True
+
+    return alive
+
+
+def read_progress(run_dir: Path) -> Optional[Progress]:
+    """
+    progress.json から学習の進み具合を読み込む関数
+
+    Parameters
+    ----------
+    run_dir: Path
+        実験のディレクトリ
+
+    Returns
+    ----------
+    progress: Optional[Progress]
+        進み具合, 無い場合は None
+    """
+    data = read_json(run_dir / "progress.json")
+    if not data:
+        return None
+
+    try:
+        progress = Progress.model_validate(data)
+    except ValueError:
+        return None
+
+    return progress
+
+
+class RunData:
+    def __init__(self, output_dir: Path, run_dir: Path):
+        # 実験のディレクトリと出力先を保存
+        self.output_dir = output_dir
+        self.run_dir = run_dir
+
+        # config, ML-Found の状態, ログ, 指標の推移の読み込み
+        self.config = load_yaml(run_dir / "config.yaml")
+        self.status = read_json(run_dir / "run.json")
+        log_format = section(self.config, "experiment").get("log_format")
+        self.entries = parse_log(
+            run_dir / "train.log",
+            log_format if isinstance(log_format, str) else DEFAULT_FORMAT
+        )
+        self.history = read_history(run_dir, self.entries)
+
+    def run_status(self) -> RunStatus:
+        """
+        実験の状態を判定する関数
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        ----------
+        status: RunStatus
+            run.json があればその状態, 無ければログから判定した状態
+        """
+        value = self.status.get("status")
+        if value not in ("running", "completed", "stopped", "failed"):
+            status = judge_status(self.entries)
+            return status
+
+        # 実行中のまま残っていても, プロセスが無ければ強制終了として扱い
+        if value == "running" and not pid_alive(self.status.get("pid")):
+            status = "unknown"
+            return status
+
+        status = cast(RunStatus, value)
+
+        return status
+
+    def best(self) -> Optional[BestValue]:
+        """
+        ベストのエポックと値を求める関数
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        ----------
+        best: Optional[BestValue]
+            run.json かログの値, 無ければ指標の推移から計算した値
+        """
+        monitor, mode = get_monitor(self.config, self.history.columns)
+        if isinstance(self.status.get("monitor"), str):
+            monitor = self.status["monitor"]
+
+        # ML-Found が記録したベストのエポック (同じ値の比べ方も反映済み)
+        epoch = to_float(self.status.get("best_epoch"))
+        if epoch is None:
+            epoch = parse_number(
+                find_message(self.entries, "ベストモデルのエポック:")
+            )
+        if epoch:
+            value = value_at(self.history, monitor, epoch)
+            if value is None:
+                value = to_float(self.status.get("best_value"))
+            if value is not None:
+                logged = BestValue(
+                    monitor=monitor, mode=mode, epoch=int(epoch), value=value
+                )
+                return logged
+
+        best = compute_best(self.history, monitor, mode)
+
+        return best
+
+    def summary(self) -> RunSummary:
+        """
+        一覧に表示する実験の概要をまとめる関数
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        ----------
+        summary: RunSummary
+            実験の概要
+        """
+        # 最後のエポックの指標
+        final_metrics = (
+            dict(self.history.rows[-1]) if self.history.rows else {}
+        )
+        final_metrics.pop("epoch", None)
+
+        # 学習時間と Early Stopping で止めたエポックは run.json を優先
+        duration = to_float(self.status.get("duration_sec"))
+        if duration is None:
+            duration = parse_number(find_message(self.entries, "学習時間:"))
+        early = to_float(self.status.get("early_stopped_epoch"))
+        if early is None:
+            early = parse_number(
+                find_message(self.entries, "Early Stopping (エポック")
+            )
+
+        trainer = section(self.config, "trainer")
+        experiment = section(self.config, "experiment")
+        status = self.run_status()
+        planned = to_float(
+            self.status.get("planned_epochs", trainer.get("epochs"))
+        )
+        summary = RunSummary(
+            id=make_run_id(self.output_dir, self.run_dir),
+            name=str(
+                experiment.get("name") or self.run_dir.parent.parent.name
+            ),
+            started_at=parse_started_at(self.run_dir),
+            status=status,
+            epochs=len(self.history.rows),
+            planned_epochs=int(planned) if planned is not None else None,
+            best=self.best(),
+            duration_sec=duration,
+            early_stopped_epoch=int(early) if early is not None else None,
+            diff=load_yaml(self.run_dir / "diff.yaml"),
+            final_metrics=final_metrics,
+            progress=(
+                read_progress(self.run_dir) if status == "running" else None
+            ),
+            error=self.status.get("error") if status == "failed" else None
+        )
+
+        return summary
+
+    def detail(self) -> RunDetail:
+        """
+        詳細の画面に表示する実験の情報をまとめる関数
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        ----------
+        detail: RunDetail
+            実験の詳細
+        """
+        # 乱数シードとデバイスは config と run.json を優先, 無ければログを使用
+        experiment = section(self.config, "experiment")
+        seed = to_float(experiment.get("seed"))
+        if seed is None:
+            seed = parse_number(find_message(self.entries, "乱数シード:"))
+        device = self.status.get("device") or find_message(
+            self.entries, "デバイス:"
+        )
+        params = parse_number(find_message(self.entries, "パラメータ数:"))
+        detail = RunDetail(
+            **self.summary().model_dump(),
+            config=self.config,
+            seed=int(seed) if seed is not None else None,
+            device=str(device) if device else None,
+            parameter_count=int(params) if params is not None else None,
+            model_structure=find_message(self.entries, "モデルの構造:"),
+            optimizer=find_message(self.entries, "Optimizer:"),
+            scheduler=find_message(self.entries, "Scheduler:"),
+            env=parse_env(self.entries),
+            packages=parse_packages(self.entries),
+            files=list_files(self.run_dir),
+            has_git_diff=(self.run_dir / "git_diff.patch").is_file()
+        )
+
+        return detail
+
+
 def summarize_run(output_dir: Path, run_dir: Path) -> RunSummary:
     """
-    実験の概要をまとめる関数
+    実験の概要をまとめ, 読めない実験は最低限の情報で返す関数
 
     Parameters
     ----------
     output_dir: Path
-        プロジェクトの experiment.output_dir
+        プロジェクトの出力先
     run_dir: Path
         実験のディレクトリ
 
@@ -338,57 +744,24 @@ def summarize_run(output_dir: Path, run_dir: Path) -> RunSummary:
     summary: RunSummary
         一覧に表示する実験の情報
     """
-    # 指標の推移, config, ログの読み込み
-    history = read_history(run_dir)
-    config = load_config(run_dir, "config.yaml")
-    entries = parse_log(run_dir / "train.log")
-
-    # ベストモデルは, ログにあればその値, 無ければ指標の推移から計算
-    monitor, mode = get_monitor(config, history.columns)
-    best = compute_best(history, monitor, mode)
-    best_epoch = parse_number(find_message(entries, "ベストモデルのエポック:"))
-    if best is not None and best_epoch is not None:
-        logged = next(
-            (
-                row.get(monitor) for row in history.rows
-                if row.get("epoch") == best_epoch
-            ),
-            None
+    # 壊れた実験 1 つで一覧全体が読めなくならないように, 理由を残して返却
+    try:
+        summary = RunData(output_dir, run_dir).summary()
+    except Exception as error:
+        summary = RunSummary(
+            id=make_run_id(output_dir, run_dir),
+            name=run_dir.parent.parent.name,
+            started_at=parse_started_at(run_dir), status="unknown",
+            epochs=0, planned_epochs=None, best=None, duration_sec=None,
+            early_stopped_epoch=None, diff={}, final_metrics={},
+            progress=None,
+            error=f"読み込めませんでした: {type(error).__name__}: {error}"
         )
-        if logged is not None:
-            best = BestValue(
-                monitor=monitor, mode=mode, epoch=int(best_epoch),
-                value=logged
-            )
-
-    # 最後のエポックの指標
-    final_metrics = dict(history.rows[-1]) if history.rows else {}
-    final_metrics.pop("epoch", None)
-
-    # Early Stopping で止めたエポック
-    early = find_message(entries, "Early Stopping (エポック")
-    early_epoch = parse_number(early)
-
-    trainer = config.get("trainer") or {}
-    experiment = config.get("experiment") or {}
-    summary = RunSummary(
-        id=make_run_id(output_dir, run_dir),
-        name=str(experiment.get("name") or run_dir.parent.parent.name),
-        started_at=parse_started_at(run_dir),
-        status=judge_status(entries),
-        epochs=len(history.rows),
-        planned_epochs=trainer.get("epochs"),
-        best=best,
-        duration_sec=parse_number(find_message(entries, "学習時間:")),
-        early_stopped_epoch=int(early_epoch) if early_epoch else None,
-        diff=load_config(run_dir, "diff.yaml"),
-        final_metrics=final_metrics
-    )
 
     return summary
 
 
-def classify_file(path: Path) -> str:
+def classify_file(path: Path) -> FileKind:
     """
     ファイルの種類を判定する関数
 
@@ -399,10 +772,11 @@ def classify_file(path: Path) -> str:
 
     Returns
     ----------
-    kind: str
+    kind: FileKind
         image, checkpoint, text, other のどれか
     """
     suffix = path.suffix.lower()
+    kind: FileKind
     if suffix in IMAGE_SUFFIXES:
         kind = "image"
     elif suffix in CHECKPOINT_SUFFIXES:
@@ -427,57 +801,23 @@ def list_files(run_dir: Path) -> list[RunFile]:
     Returns
     ----------
     files: list[RunFile]
-        相対パス, 大きさ, 種類
+        相対パス, 大きさ, 種類, シンボリックリンクは対象外
     """
-    files = [
-        RunFile(
-            path=path.relative_to(run_dir).as_posix(),
-            size=path.stat().st_size,
-            kind=classify_file(path)  # type: ignore[arg-type]
-        )
-        for path in sorted(run_dir.rglob("*"))
-        if path.is_file() and not path.is_symlink()
-    ]
+    files = []
+    for root, dirs, names in os.walk(run_dir, followlinks=False):
+        dirs.sort()
+        for name in sorted(names):
+            path = Path(root) / name
+            if path.is_symlink() or not path.is_file():
+                continue
+            files.append(
+                RunFile(
+                    path=path.relative_to(run_dir).as_posix(),
+                    size=path.stat().st_size, kind=classify_file(path)
+                )
+            )
 
     return files
-
-
-def detail_run(output_dir: Path, run_dir: Path) -> RunDetail:
-    """
-    実験の詳細をまとめる関数
-
-    Parameters
-    ----------
-    output_dir: Path
-        プロジェクトの experiment.output_dir
-    run_dir: Path
-        実験のディレクトリ
-
-    Returns
-    ----------
-    detail: RunDetail
-        詳細の画面に表示する実験の情報
-    """
-    summary = summarize_run(output_dir, run_dir)
-    entries = parse_log(run_dir / "train.log")
-    seed = parse_number(find_message(entries, "乱数シード:"))
-    params = parse_number(find_message(entries, "パラメータ数:"))
-    detail = RunDetail(
-        **summary.model_dump(),
-        config=load_config(run_dir, "config.yaml"),
-        seed=int(seed) if seed is not None else None,
-        device=find_message(entries, "デバイス:"),
-        parameter_count=int(params) if params is not None else None,
-        model_structure=find_message(entries, "モデルの構造:"),
-        optimizer=find_message(entries, "Optimizer:"),
-        scheduler=find_message(entries, "Scheduler:"),
-        env=parse_env(entries),
-        packages=parse_packages(entries),
-        files=list_files(run_dir),
-        has_git_diff=(run_dir / "git_diff.patch").is_file()
-    )
-
-    return detail
 
 
 def resolve_run_file(run_dir: Path, relative: str) -> Path:
@@ -494,11 +834,18 @@ def resolve_run_file(run_dir: Path, relative: str) -> Path:
     Returns
     ----------
     path: Path
-        ファイルの絶対パス
+        ファイルのパス
     """
-    # 実験のディレクトリの外とシンボリックリンクを拒否
-    path = (run_dir / relative).resolve()
-    if not path.is_relative_to(run_dir) or not path.is_file():
-        raise FileNotFoundError(f"ファイルが見つかりません: {relative}")
+    # 一覧と同じく, 途中も含めてシンボリックリンクと外への移動を拒否
+    parts = Path(relative).parts
+    path = run_dir
+    for part in parts:
+        if part in ("", ".", "..") or Path(part).is_absolute():
+            raise RunNotFoundError(f"ファイルが見つかりません: {relative}")
+        path = path / part
+        if path.is_symlink():
+            raise RunNotFoundError(f"ファイルが見つかりません: {relative}")
+    if not parts or not path.is_file():
+        raise RunNotFoundError(f"ファイルが見つかりません: {relative}")
 
     return path

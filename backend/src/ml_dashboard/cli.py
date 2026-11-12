@@ -53,6 +53,13 @@ def main() -> None:
         args.openapi.write_text(text + "\n", encoding="utf-8")
         return
 
+    # 外から接続できるホストでは, 他の端末から学習を起動できてしまうので警告
+    if args.host not in ("127.0.0.1", "localhost"):
+        print(
+            f"警告: {args.host} で待ち受けます. ML-Dashboard は 1 人で "
+            "ローカルから使う前提で, 認証がありません"
+        )
+
     uvicorn.run(app, host=args.host, port=args.port)
 
 

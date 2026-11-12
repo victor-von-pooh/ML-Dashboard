@@ -46,13 +46,13 @@ def test_register_and_list(client: TestClient, project_dir: Path) -> None:
 
     projects = client.get("/api/projects").json()
     assert projects[0]["run_count"] == 2
-    assert projects[0]["latest_run"] == "2026-11-08 11-00-00"
+    assert projects[0]["latest_run"] == "demo/2026-11-08/11-00-00"
 
-    # 同じディレクトリは 2 回登録できない
+    # 同じディレクトリの 2 回目の登録の拒否
     again = client.post("/api/projects", json={"path": str(project_dir)})
     assert again.status_code == 400
 
-    # 登録を外しても実験のファイルは残る
+    # 登録を外しても実験のファイルは維持
     assert client.delete(f"/api/projects/{project_id}").status_code == 204
     assert client.get("/api/projects").json() == []
     assert (project_dir / "outputs").is_dir()
@@ -146,12 +146,12 @@ def test_runs(client: TestClient, project_dir: Path) -> None:
     project_id = register(client, project_dir)
     runs = client.get(f"/api/projects/{project_id}/runs").json()
 
-    # 新しい順に並ぶ
+    # 新しい順の並び
     assert [run["id"] for run in runs] == [
         "demo/2026-11-08/11-00-00", "demo/2026-11-08/10-00-00"
     ]
 
-    # ログの無い実験は状態が分からない
+    # ログの無い実験は状態が不明
     assert runs[0]["status"] == "unknown"
     assert runs[0]["best"] is None
 

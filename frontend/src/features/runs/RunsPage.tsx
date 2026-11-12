@@ -214,7 +214,7 @@ export function RunsPage() {
       {runs.error && <ErrorBox error={runs.error} />}
       {runs.data?.length === 0 && (
         <EmptyState icon={FlaskConical} title="実験がありません">
-          ML-Found で学習すると, 出力先 ({project.data?.output_dir}) の実験がここに表示されます.
+          ML-Found で学習すると, 出力先 ({project.data?.output_dirs.join(", ")}) の実験がここに表示されます.
         </EmptyState>
       )}
 

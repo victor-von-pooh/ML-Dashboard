@@ -9,7 +9,7 @@
       "get": {
         "summary": "List Projects",
         "description": "登録したプロジェクトの一覧を返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\n\nReturns\n----------\nprojects: list[ProjectInfo]\n    プロジェクトの一覧",
-        "operationId": "list_projects_api_projects_get",
+        "operationId": "list_projects",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -20,7 +20,7 @@
                     "$ref": "#/components/schemas/ProjectInfo"
                   },
                   "type": "array",
-                  "title": "Response List Projects Api Projects Get"
+                  "title": "Response List Projects"
                 }
               }
             }
@@ -30,7 +30,7 @@
       "post": {
         "summary": "Create Project",
         "description": "プロジェクトを登録する関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nbody: ProjectCreate\n    プロジェクトのディレクトリ, 名前, Python\n\nReturns\n----------\ninfo: ProjectInfo\n    登録したプロジェクト",
-        "operationId": "create_project_api_projects_post",
+        "operationId": "create_project",
         "requestBody": {
           "content": {
             "application/json": {
@@ -69,7 +69,7 @@
       "post": {
         "summary": "Scan Projects",
         "description": "ディレクトリの下の ML-Found のプロジェクトを探す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nbody: ScanRequest\n    探し始めるディレクトリ\n\nReturns\n----------\ncandidates: list[ProjectCandidate]\n    見つけたプロジェクトと, 登録済みかどうか",
-        "operationId": "scan_projects_api_projects_scan_post",
+        "operationId": "scan_projects",
         "requestBody": {
           "content": {
             "application/json": {
@@ -90,7 +90,7 @@
                     "$ref": "#/components/schemas/ProjectCandidate"
                   },
                   "type": "array",
-                  "title": "Response Scan Projects Api Projects Scan Post"
+                  "title": "Response Scan Projects"
                 }
               }
             }
@@ -112,7 +112,7 @@
       "get": {
         "summary": "Read Project",
         "description": "プロジェクトの詳細を返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\n\nReturns\n----------\ndetail: ProjectDetail\n    出力先, 学習のスクリプト, experiment の config を加えた情報",
-        "operationId": "read_project_api_projects__project_id__get",
+        "operationId": "read_project",
         "parameters": [
           {
             "name": "project_id",
@@ -135,6 +135,9 @@
               }
             }
           },
+          "404": {
+            "description": "プロジェクトか実験が見つからない"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -150,7 +153,7 @@
       "delete": {
         "summary": "Delete Project",
         "description": "プロジェクトの登録を外す関数, 実験のファイルは消さない\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\n\nReturns\n----------\nNone",
-        "operationId": "delete_project_api_projects__project_id__delete",
+        "operationId": "delete_project",
         "parameters": [
           {
             "name": "project_id",
@@ -165,6 +168,9 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "404": {
+            "description": "プロジェクトか実験が見つからない"
           },
           "422": {
             "description": "Validation Error",
@@ -183,7 +189,7 @@
       "get": {
         "summary": "List Runs",
         "description": "プロジェクトの実験の一覧を返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\n\nReturns\n----------\nruns: list[RunSummary]\n    実験の概要, 新しい順",
-        "operationId": "list_runs_api_projects__project_id__runs_get",
+        "operationId": "list_runs",
         "parameters": [
           {
             "name": "project_id",
@@ -205,10 +211,13 @@
                   "items": {
                     "$ref": "#/components/schemas/RunSummary"
                   },
-                  "title": "Response List Runs Api Projects  Project Id  Runs Get"
+                  "title": "Response List Runs"
                 }
               }
             }
+          },
+          "404": {
+            "description": "プロジェクトか実験が見つからない"
           },
           "422": {
             "description": "Validation Error",
@@ -223,11 +232,11 @@
         }
       }
     },
-    "/api/projects/{project_id}/runs/{run_id}/history": {
+    "/api/projects/{project_id}/runs/{name}/{date}/{time}": {
       "get": {
-        "summary": "Get History",
-        "description": "実験の指標の推移を返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\nrun_id: str\n    実験の ID\n\nReturns\n----------\nhistory: History\n    history.csv の中身",
-        "operationId": "get_history_api_projects__project_id__runs__run_id__history_get",
+        "summary": "Get Run",
+        "description": "実験の詳細を返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\nname: str\n    実験の名前\ndate: str\n    日付のディレクトリ名\ntime: str\n    時刻のディレクトリ名\n\nReturns\n----------\ndetail: RunDetail\n    実験の詳細",
+        "operationId": "get_run",
         "parameters": [
           {
             "name": "project_id",
@@ -239,12 +248,100 @@
             }
           },
           {
-            "name": "run_id",
+            "name": "name",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Run Id"
+              "title": "Name"
+            }
+          },
+          {
+            "name": "date",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Date"
+            }
+          },
+          {
+            "name": "time",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "プロジェクトか実験が見つからない"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{project_id}/runs/{name}/{date}/{time}/history": {
+      "get": {
+        "summary": "Get History",
+        "description": "実験の指標の推移を返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\nname: str\n    実験の名前\ndate: str\n    日付のディレクトリ名\ntime: str\n    時刻のディレクトリ名\n\nReturns\n----------\nhistory: History\n    history.csv の中身, 無い場合はログから作り直したもの",
+        "operationId": "get_history",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "date",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Date"
+            }
+          },
+          {
+            "name": "time",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Time"
             }
           }
         ],
@@ -259,6 +356,9 @@
               }
             }
           },
+          "404": {
+            "description": "プロジェクトか実験が見つからない"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -272,11 +372,11 @@
         }
       }
     },
-    "/api/projects/{project_id}/runs/{run_id}/log": {
+    "/api/projects/{project_id}/runs/{name}/{date}/{time}/log": {
       "get": {
         "summary": "Get Log",
-        "description": "実験のログを返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\nrun_id: str\n    実験の ID\n\nReturns\n----------\nentries: list[LogEntry]\n    train.log の記録",
-        "operationId": "get_log_api_projects__project_id__runs__run_id__log_get",
+        "description": "実験のログを返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\nname: str\n    実験の名前\ndate: str\n    日付のディレクトリ名\ntime: str\n    時刻のディレクトリ名\n\nReturns\n----------\nentries: list[LogEntry]\n    train.log の記録",
+        "operationId": "get_log",
         "parameters": [
           {
             "name": "project_id",
@@ -288,12 +388,30 @@
             }
           },
           {
-            "name": "run_id",
+            "name": "name",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Run Id"
+              "title": "Name"
+            }
+          },
+          {
+            "name": "date",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Date"
+            }
+          },
+          {
+            "name": "time",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Time"
             }
           }
         ],
@@ -307,10 +425,13 @@
                   "items": {
                     "$ref": "#/components/schemas/LogEntry"
                   },
-                  "title": "Response Get Log Api Projects  Project Id  Runs  Run Id  Log Get"
+                  "title": "Response Get Log"
                 }
               }
             }
+          },
+          "404": {
+            "description": "プロジェクトか実験が見つからない"
           },
           "422": {
             "description": "Validation Error",
@@ -325,11 +446,11 @@
         }
       }
     },
-    "/api/projects/{project_id}/runs/{run_id}/files/{file_path}": {
+    "/api/projects/{project_id}/runs/{name}/{date}/{time}/files/{file_path}": {
       "get": {
         "summary": "Get File",
-        "description": "実験のディレクトリの中のファイルを返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\nrun_id: str\n    実験の ID\nfile_path: str\n    実験のディレクトリからの相対パス\n\nReturns\n----------\nresponse: FileResponse\n    ファイルの中身",
-        "operationId": "get_file_api_projects__project_id__runs__run_id__files__file_path__get",
+        "description": "実験のディレクトリの中のファイルを返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\nname: str\n    実験の名前\ndate: str\n    日付のディレクトリ名\ntime: str\n    時刻のディレクトリ名\nfile_path: str\n    実験のディレクトリからの相対パス\n\nReturns\n----------\nresponse: FileResponse\n    ファイルの中身",
+        "operationId": "get_file",
         "parameters": [
           {
             "name": "project_id",
@@ -341,12 +462,30 @@
             }
           },
           {
-            "name": "run_id",
+            "name": "name",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Run Id"
+              "title": "Name"
+            }
+          },
+          {
+            "name": "date",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Date"
+            }
+          },
+          {
+            "name": "time",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Time"
             }
           },
           {
@@ -361,61 +500,10 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
+            "description": "Successful Response"
           },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/projects/{project_id}/runs/{run_id}": {
-      "get": {
-        "summary": "Get Run",
-        "description": "実験の詳細を返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\nrun_id: str\n    実験の ID\n\nReturns\n----------\ndetail: RunDetail\n    実験の詳細",
-        "operationId": "get_run_api_projects__project_id__runs__run_id__get",
-        "parameters": [
-          {
-            "name": "project_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Project Id"
-            }
-          },
-          {
-            "name": "run_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Run Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RunDetail"
-                }
-              }
-            }
+          "404": {
+            "description": "プロジェクトか実験が見つからない"
           },
           "422": {
             "description": "Validation Error",
@@ -441,6 +529,10 @@
           },
           "mode": {
             "type": "string",
+            "enum": [
+              "min",
+              "max"
+            ],
             "title": "Mode"
           },
           "epoch": {
@@ -566,6 +658,56 @@
         ],
         "title": "LogEntry"
       },
+      "Progress": {
+        "properties": {
+          "phase": {
+            "type": "string",
+            "title": "Phase"
+          },
+          "epoch": {
+            "type": "integer",
+            "title": "Epoch"
+          },
+          "total_epochs": {
+            "type": "integer",
+            "title": "Total Epochs"
+          },
+          "batch": {
+            "type": "integer",
+            "title": "Batch"
+          },
+          "total_batches": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Batches"
+          },
+          "elapsed_sec": {
+            "type": "number",
+            "title": "Elapsed Sec"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "phase",
+          "epoch",
+          "total_epochs",
+          "batch",
+          "total_batches",
+          "elapsed_sec",
+          "updated_at"
+        ],
+        "title": "Progress"
+      },
       "ProjectCandidate": {
         "properties": {
           "path": {
@@ -661,9 +803,23 @@
             ],
             "title": "Latest Run"
           },
-          "output_dir": {
-            "type": "string",
-            "title": "Output Dir"
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "output_dirs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Output Dirs"
           },
           "scripts": {
             "items": {
@@ -689,7 +845,7 @@
           "created_at",
           "run_count",
           "latest_run",
-          "output_dir",
+          "output_dirs",
           "scripts",
           "experiment_configs"
         ],
@@ -731,6 +887,17 @@
               }
             ],
             "title": "Latest Run"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
           }
         },
         "type": "object",
@@ -835,6 +1002,27 @@
             },
             "type": "object",
             "title": "Final Metrics"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Progress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
           },
           "config": {
             "additionalProperties": true,
@@ -946,6 +1134,8 @@
           "early_stopped_epoch",
           "diff",
           "final_metrics",
+          "progress",
+          "error",
           "config",
           "seed",
           "device",
@@ -1079,6 +1269,27 @@
             },
             "type": "object",
             "title": "Final Metrics"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Progress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
           }
         },
         "type": "object",
@@ -1093,7 +1304,9 @@
           "duration_sec",
           "early_stopped_epoch",
           "diff",
-          "final_metrics"
+          "final_metrics",
+          "progress",
+          "error"
         ],
         "title": "RunSummary"
       },

@@ -5,6 +5,12 @@ from pydantic import BaseModel
 # 実験の状態, unknown は中断したか実行中か分からないもの
 RunStatus = Literal["running", "completed", "stopped", "failed", "unknown"]
 
+# 監視する指標の向き
+Mode = Literal["min", "max"]
+
+# ファイルの種類
+FileKind = Literal["image", "checkpoint", "text", "other"]
+
 
 class ProjectInfo(BaseModel):
     id: str
@@ -14,10 +20,11 @@ class ProjectInfo(BaseModel):
     created_at: str
     run_count: int
     latest_run: Optional[str]
+    error: Optional[str] = None
 
 
 class ProjectDetail(ProjectInfo):
-    output_dir: str
+    output_dirs: list[str]
     scripts: list[str]
     experiment_configs: list[str]
 
@@ -30,9 +37,19 @@ class ProjectCandidate(BaseModel):
 
 class BestValue(BaseModel):
     monitor: str
-    mode: str
+    mode: Mode
     epoch: int
     value: float
+
+
+class Progress(BaseModel):
+    phase: str
+    epoch: int
+    total_epochs: int
+    batch: int
+    total_batches: Optional[int]
+    elapsed_sec: float
+    updated_at: str
 
 
 class RunSummary(BaseModel):
@@ -47,6 +64,8 @@ class RunSummary(BaseModel):
     early_stopped_epoch: Optional[int]
     diff: dict[str, Any]
     final_metrics: dict[str, Optional[float]]
+    progress: Optional[Progress]
+    error: Optional[str]
 
 
 class LogEntry(BaseModel):
@@ -63,7 +82,7 @@ class EnvSection(BaseModel):
 class RunFile(BaseModel):
     path: str
     size: int
-    kind: Literal["image", "checkpoint", "text", "other"]
+    kind: FileKind
 
 
 class RunDetail(RunSummary):
