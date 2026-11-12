@@ -37,7 +37,8 @@ export function parseInput(kind: string, raw: string): unknown {
   const text = raw.trim()
   if (kind === 'bool') return text === 'true'
   if (text === '') return undefined
-  // 既定値が 0 のような整数でも小数を書けるように, int と float は同じ数として扱う
+  // int と float は同じ規則で数として読み, 整数かどうかは checkParamValue で確認
+  // (種類は ML-Found の登録簿が型の注釈から決めるので, weight_decay = 0 なども float)
   if (kind === 'int' || kind === 'float') {
     return /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(text) ? Number(text) : undefined
   }

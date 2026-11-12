@@ -51,12 +51,13 @@ function ParamField({
   const initial = value === null || value === undefined ? '' : formatInput(value)
   const [text, setText] = useState(initial)
   // 入力の誤り (読めない値や範囲の外). 誤りがある間は YAML に書き込まない
-  const [error, setError] = useState<string | null>(null)
+  // YAML の欄で直接書いた範囲の外の値も, 作り直した時点で示す
+  const [error, setError] = useState<string | null>(() => checkParamValue(spec, value))
   const invalid = error !== null
 
   const commit = () => {
     if (text === initial) {
-      setError(null)
+      setError(checkParamValue(spec, value))
       return
     }
     const parsed = parseInput(spec.kind, text)
@@ -79,7 +80,8 @@ function ParamField({
   ]
     .filter(Boolean)
     .join(', ')
-  const help = [spec.description, range, error ?? ''].filter(Boolean).join(' · ')
+  // 誤りの間は, 同じ内容になりやすい範囲の説明を省略
+  const help = [spec.description, error ? '' : range, error ?? ''].filter(Boolean).join(' · ')
 
   return (
     <div className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] items-start gap-2">
