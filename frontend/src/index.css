@@ -12,9 +12,16 @@
   --border: #e3e2de;
   --text: #0b0b0b;
   --text-2: #52514e;
-  --text-3: #7d7c77;
+  --text-3: #6b6a65;
   --accent: #2a78d6;
   --accent-soft: #e6f0fb;
+  /* ボタンの背景 (accent-strong) と文字 (accent-text) の色. 小さな文字でも 4.5:1 以上 */
+  --accent-strong: #1f63b8;
+  --accent-text: #1f63b8;
+  --good-text: #0a7a0a;
+  --serious-text: #a84a24;
+  --critical-text: #b52e2e;
+  --warning-text: #8a5d00;
 
   /* グラフの系列の色 (固定の順で使う) */
   --series-1: #2a78d6;
@@ -41,9 +48,15 @@
   --border: #33332f;
   --text: #f0efec;
   --text-2: #c3c2b7;
-  --text-3: #8f8e86;
+  --text-3: #9a998f;
   --accent: #3987e5;
   --accent-soft: #1b2a3d;
+  --accent-strong: #2a6fc7;
+  --accent-text: #6aa6ee;
+  --good-text: #4cc44c;
+  --serious-text: #f09a76;
+  --critical-text: #f07b7b;
+  --warning-text: #fbc04d;
 
   --series-1: #3987e5;
   --series-2: #d95926;
@@ -65,6 +78,12 @@
   --color-ink-3: var(--text-3);
   --color-accent: var(--accent);
   --color-accent-soft: var(--accent-soft);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-text: var(--accent-text);
+  --color-good-text: var(--good-text);
+  --color-serious-text: var(--serious-text);
+  --color-critical-text: var(--critical-text);
+  --color-warning-text: var(--warning-text);
   --color-good: var(--good);
   --color-warning: var(--warning);
   --color-serious: var(--serious);

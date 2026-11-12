@@ -1,45 +1,72 @@
-import { useState } from 'react'
-import { Link, useParams } from 'react-router'
+import { Link, useParams, useSearchParams } from 'react-router'
 
 import { useHistory, useLog, useProject, useRun } from '../../api/hooks'
 import { ErrorBox, PageHeader, Spinner, StatTile, StatusBadge, Tabs } from '../../components/ui'
+import { tabPanelProps, useStableId } from '../../lib/a11y'
 import { formatDateTime, formatDuration, formatMetric } from '../../lib/format'
 import { MetricCharts } from './MetricCharts'
 import { ConfigTab, EnvTab, FilesTab, LogTab, ModelTab } from './RunTabs'
 
-type TabId = 'charts' | 'config' | 'model' | 'env' | 'log' | 'files'
+const TAB_IDS = ['charts', 'config', 'model', 'env', 'log', 'files'] as const
+type TabId = (typeof TAB_IDS)[number]
+
+/** URL の値を画面のタブに直す */
+function toTab(value: string | null): TabId {
+  return TAB_IDS.find((id) => id === value) ?? 'charts'
+}
 
 export function RunDetailPage() {
   const { projectId = '', '*': runId = '' } = useParams()
   const project = useProject(projectId)
   const run = useRun(projectId, runId)
   const history = useHistory(projectId, runId)
-  const [tab, setTab] = useState<TabId>('charts')
+  const [params, setParams] = useSearchParams()
+  const tab = toTab(params.get('tab'))
   const log = useLog(projectId, runId, tab === 'log')
+  const idBase = useStableId('run')
+
+  // 再読み込みやリンクで同じタブを開けるように, タブは URL に保存
+  const setTab = (id: TabId) => setParams(id === 'charts' ? {} : { tab: id }, { replace: true })
+
+  const breadcrumb = (
+    <>
+      <Link to="/" className="hover:text-ink">
+        プロジェクト
+      </Link>
+      {' / '}
+      <Link to={`/projects/${projectId}`} className="hover:text-ink">
+        {project.data?.name ?? projectId}
+      </Link>
+    </>
+  )
 
   if (run.isPending) return <Spinner />
-  if (run.error) return <ErrorBox error={run.error} />
+  if (run.error) {
+    return (
+      <>
+        <PageHeader breadcrumb={breadcrumb} title={runId} />
+        <ErrorBox error={run.error}>
+          <Link
+            to={`/projects/${projectId}`}
+            className="mt-1 inline-block text-accent-text hover:underline"
+          >
+            実験の一覧に戻る
+          </Link>
+        </ErrorBox>
+      </>
+    )
+  }
   const data = run.data
 
   const monitor = data.best?.monitor
-  const finalMetrics = Object.entries(data.final_metrics).filter(([key]) =>
-    key.startsWith('valid/'),
+  const others = Object.entries(data.final_metrics).filter(
+    ([key]) => key.startsWith('valid/') && key !== monitor,
   )
 
   return (
     <>
       <PageHeader
-        breadcrumb={
-          <>
-            <Link to="/" className="hover:text-ink">
-              プロジェクト
-            </Link>
-            {' / '}
-            <Link to={`/projects/${projectId}`} className="hover:text-ink">
-              {project.data?.name ?? projectId}
-            </Link>
-          </>
-        }
+        breadcrumb={breadcrumb}
         title={
           <span className="flex items-center gap-3">
             {data.name}
@@ -52,6 +79,7 @@ export function RunDetailPage() {
           </span>
         }
       />
+      {data.error && <ErrorBox error={data.error} live={false} />}
 
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <StatTile
@@ -84,16 +112,15 @@ export function RunDetailPage() {
           hint={data.seed != null ? `seed ${data.seed}` : undefined}
         />
         <StatTile
-          label={monitor ? `最後のエポックの ${monitor}` : '最後のエポック'}
+          label={monitor ? `最終 ${monitor}` : '最終エポック'}
           value={formatMetric(monitor ? data.final_metrics[monitor] : undefined)}
-          hint={finalMetrics
-            .filter(([key]) => key !== monitor)
-            .map(([key, value]) => `${key} ${formatMetric(value)}`)
-            .join(' · ')}
+          hint={others.map(([key, value]) => `${key} ${formatMetric(value)}`).join(' · ')}
         />
       </div>
 
       <Tabs<TabId>
+        idBase={idBase}
+        label="実験の詳細"
         value={tab}
         onChange={setTab}
         items={[
@@ -105,7 +132,7 @@ export function RunDetailPage() {
           { id: 'files', label: 'ファイル', count: data.files.length },
         ]}
       />
-      <div className="mt-4">
+      <div className="mt-4" {...tabPanelProps(idBase, tab)}>
         {tab === 'charts' &&
           (history.data ? (
             <MetricCharts

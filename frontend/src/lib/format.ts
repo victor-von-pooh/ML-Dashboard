@@ -20,6 +20,13 @@ export function formatMetric(value: number | null | undefined): string {
   return value.toPrecision(4).replace(/\.?0+$/, '')
 }
 
+/** グラフの軸の目盛りを, 同じ軸の中で書式がそろうように表す */
+export function formatAxis(value: number): string {
+  const abs = Math.abs(value)
+  if (abs !== 0 && (abs >= 1e6 || abs < 1e-4)) return value.toExponential(1)
+  return String(Number(value.toPrecision(6)))
+}
+
 /** ISO 8601 の日時を「2026-11-08 22:00:01」の形にする */
 export function formatDateTime(iso: string): string {
   return iso.replace('T', ' ').slice(0, 19)

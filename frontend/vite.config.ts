@@ -7,7 +7,8 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {
-      '/api': 'http://127.0.0.1:8765',
+      // バックエンドのポートは make dev-frontend PORT=... で揃える
+      '/api': `http://127.0.0.1:${process.env.API_PORT ?? '8765'}`,
     },
   },
   build: {

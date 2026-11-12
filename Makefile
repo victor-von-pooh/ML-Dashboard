@@ -1,5 +1,8 @@
 # よく使うコマンドをまとめる. 詳しくは README を参照
 
+# 待ち受けるポート (make serve PORT=8800 のように変更)
+PORT ?= 8765
+
 .PHONY: setup dev-backend dev-frontend build serve api check
 
 # 依存のインストール
@@ -10,10 +13,10 @@ setup:
 
 # 開発用のサーバー (2 つの端末で起動)
 dev-backend:
-	cd backend && uv run uvicorn ml_dashboard.app:create_app --factory --reload --port 8765
+	cd backend && uv run uvicorn ml_dashboard.app:create_app --factory --reload --port $(PORT)
 
 dev-frontend:
-	cd frontend && pnpm dev
+	cd frontend && API_PORT=$(PORT) pnpm dev
 
 # 画面をビルドしてバックエンドのパッケージに入れる
 build:
@@ -21,7 +24,7 @@ build:
 
 # ビルドした画面ごと起動
 serve: build
-	cd backend && uv run ml-dashboard
+	cd backend && uv run ml-dashboard --port $(PORT)
 
 # API の型を作り直す
 api:

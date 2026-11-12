@@ -1,6 +1,6 @@
 import clsx from 'clsx'
-import { Download, ExternalLink, Search } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { Download, ExternalLink, Search, X } from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
 
 import { runFileUrl, type LogEntry, type RunDetail } from '../../api/client'
 import { Card } from '../../components/ui'
@@ -45,6 +45,7 @@ function SearchInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
+        aria-label={placeholder}
         className="h-7 w-56 rounded-md border border-line bg-bg pr-2 pl-7 text-xs outline-none focus:border-accent"
       />
     </div>
@@ -153,7 +154,7 @@ export function EnvTab({ run, projectId }: { run: RunDetail; projectId: string }
             href={runFileUrl(projectId, run.id, 'git_diff.patch')}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1.5 text-sm text-accent hover:underline"
+            className="inline-flex items-center gap-1.5 text-sm text-accent-text hover:underline"
           >
             <ExternalLink className="size-4" aria-hidden />
             学習時の未コミットの変更 (git_diff.patch)
@@ -173,26 +174,35 @@ export function EnvTab({ run, projectId }: { run: RunDetail; projectId: string }
   )
 }
 
+// 絞り込みに使うレベル. 書式が違う行と DEBUG は INFO と同じ扱い
 const LEVELS = ['INFO', 'WARNING', 'ERROR'] as const
+type Level = (typeof LEVELS)[number]
+
+/** ログのレベルを絞り込みの区分にまとめる */
+function levelGroup(level: string | null | undefined): Level {
+  if (level === 'WARNING') return 'WARNING'
+  if (level === 'ERROR' || level === 'CRITICAL') return 'ERROR'
+  return 'INFO'
+}
 
 export function LogTab({ entries }: { entries: LogEntry[] }) {
   const [query, setQuery] = useState('')
-  const [levels, setLevels] = useState<Set<string>>(new Set(LEVELS))
+  const [levels, setLevels] = useState<Set<Level>>(new Set(LEVELS))
   const counts = useMemo(() => {
     const result: Record<string, number> = {}
     for (const entry of entries) {
-      const level = entry.level === 'CRITICAL' ? 'ERROR' : (entry.level ?? 'INFO')
-      result[level] = (result[level] ?? 0) + 1
+      const group = levelGroup(entry.level)
+      result[group] = (result[group] ?? 0) + 1
     }
     return result
   }, [entries])
 
-  const visible = entries.filter((entry) => {
-    const level = entry.level === 'CRITICAL' ? 'ERROR' : (entry.level ?? 'INFO')
-    return levels.has(level) && entry.message.toLowerCase().includes(query.toLowerCase())
-  })
+  const word = query.toLowerCase()
+  const visible = entries.filter(
+    (entry) => levels.has(levelGroup(entry.level)) && entry.message.toLowerCase().includes(word),
+  )
 
-  const toggle = (level: string) =>
+  const toggle = (level: Level) =>
     setLevels((previous) => {
       const next = new Set(previous)
       if (next.has(level)) next.delete(level)
@@ -215,7 +225,7 @@ export function LogTab({ entries }: { entries: LogEntry[] }) {
               className={clsx(
                 'rounded-full border px-2 py-0.5 text-[11px] font-medium',
                 levels.has(level)
-                  ? 'border-accent/40 bg-accent-soft text-accent'
+                  ? 'border-accent/40 bg-accent-soft text-accent-text'
                   : 'border-line text-ink-3',
               )}
             >
@@ -227,21 +237,35 @@ export function LogTab({ entries }: { entries: LogEntry[] }) {
       }
     >
       <div className="max-h-[640px] overflow-auto py-1 font-mono text-xs">
-        {visible.map((entry, index) => (
-          <div
-            key={index}
-            className={clsx(
-              'flex gap-3 border-l-2 px-4 py-0.5',
-              entry.level === 'WARNING' && 'border-warning bg-warning/10',
-              (entry.level === 'ERROR' || entry.level === 'CRITICAL') &&
-                'border-critical bg-critical/10',
-              (entry.level === 'INFO' || !entry.level) && 'border-transparent',
-            )}
-          >
-            <span className="tabular shrink-0 text-ink-3">{entry.time?.slice(11, 19) ?? ''}</span>
-            <span className="whitespace-pre-wrap break-all text-ink-2">{entry.message}</span>
-          </div>
-        ))}
+        {visible.map((entry, index) => {
+          const group = levelGroup(entry.level)
+          return (
+            <div
+              key={index}
+              className={clsx(
+                'flex gap-3 border-l-2 px-4 py-0.5',
+                group === 'WARNING' && 'border-warning bg-warning/10',
+                group === 'ERROR' && 'border-critical bg-critical/10',
+                group === 'INFO' && 'border-transparent',
+              )}
+            >
+              <span className="tabular shrink-0 text-ink-3" title={entry.time ?? undefined}>
+                {entry.time?.slice(11, 19) ?? ''}
+              </span>
+              {group !== 'INFO' && (
+                <span
+                  className={clsx(
+                    'shrink-0 font-semibold',
+                    group === 'WARNING' ? 'text-warning-text' : 'text-critical-text',
+                  )}
+                >
+                  {entry.level}
+                </span>
+              )}
+              <span className="break-all whitespace-pre-wrap text-ink-2">{entry.message}</span>
+            </div>
+          )
+        })}
         {visible.length === 0 && <p className="px-4 py-6 text-ink-3">該当する行はありません.</p>}
       </div>
     </Card>
@@ -251,6 +275,19 @@ export function LogTab({ entries }: { entries: LogEntry[] }) {
 export function FilesTab({ run, projectId }: { run: RunDetail; projectId: string }) {
   const images = run.files.filter((file) => file.kind === 'image')
   const [preview, setPreview] = useState<string | null>(null)
+  const dialogRef = useRef<HTMLDialogElement>(null)
+  const openerRef = useRef<HTMLButtonElement | null>(null)
+
+  // ネイティブのダイアログで開き, Escape と背景の操作の禁止はブラウザに任せる
+  const open = (path: string, opener: HTMLButtonElement) => {
+    openerRef.current = opener
+    setPreview(path)
+    dialogRef.current?.showModal()
+  }
+  const onClose = () => {
+    setPreview(null)
+    openerRef.current?.focus()
+  }
 
   return (
     <div className="space-y-4">
@@ -261,12 +298,13 @@ export function FilesTab({ run, projectId }: { run: RunDetail; projectId: string
               <button
                 key={file.path}
                 type="button"
-                onClick={() => setPreview(file.path)}
+                onClick={(event) => open(file.path, event.currentTarget)}
                 className="group overflow-hidden rounded-lg border border-line bg-white text-left"
+                aria-label={`${file.path} を大きく表示`}
               >
                 <img
                   src={runFileUrl(projectId, run.id, file.path)}
-                  alt={file.path}
+                  alt=""
                   loading="lazy"
                   className="aspect-[4/3] w-full object-contain transition group-hover:scale-[1.02]"
                 />
@@ -286,7 +324,7 @@ export function FilesTab({ run, projectId }: { run: RunDetail; projectId: string
                 key={file.path}
                 className="border-b border-line last:border-b-0 hover:bg-surface-2/60"
               >
-                <td className="px-4 py-1.5 font-mono text-xs">{file.path}</td>
+                <td className="px-4 py-1.5 font-mono text-xs break-all">{file.path}</td>
                 <td className="px-4 py-1.5 text-xs text-ink-3">{file.kind}</td>
                 <td className="tabular px-4 py-1.5 text-right text-xs text-ink-2">
                   {formatBytes(file.size)}
@@ -307,27 +345,37 @@ export function FilesTab({ run, projectId }: { run: RunDetail; projectId: string
         </table>
       </Card>
 
-      {preview && (
-        <div
-          role="dialog"
-          aria-label={preview}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6 backdrop-blur-sm"
-          onClick={() => setPreview(null)}
-          onKeyDown={(event) => event.key === 'Escape' && setPreview(null)}
-          tabIndex={-1}
-        >
-          <figure className="max-h-full max-w-5xl overflow-hidden rounded-xl bg-white shadow-2xl">
+      <dialog
+        ref={dialogRef}
+        onClose={onClose}
+        aria-label={preview ?? '画像'}
+        onClick={(event) => {
+          if (event.target === event.currentTarget) dialogRef.current?.close()
+        }}
+        className="m-auto max-h-[90vh] max-w-[min(1100px,calc(100vw-2rem))] overflow-hidden rounded-xl bg-surface p-0 text-ink shadow-2xl backdrop:bg-black/70 backdrop:backdrop-blur-sm"
+      >
+        {preview && (
+          <figure>
+            <div className="flex items-center justify-between gap-3 border-b border-line px-3 py-2">
+              <figcaption className="truncate font-mono text-xs text-ink-2">{preview}</figcaption>
+              <button
+                type="button"
+                onClick={() => dialogRef.current?.close()}
+                className="rounded p-1 text-ink-3 hover:bg-surface-2 hover:text-ink"
+                aria-label="閉じる"
+                autoFocus
+              >
+                <X className="size-4" aria-hidden />
+              </button>
+            </div>
             <img
               src={runFileUrl(projectId, run.id, preview)}
               alt={preview}
-              className="max-h-[80vh] w-auto object-contain"
+              className="max-h-[80vh] w-auto bg-white object-contain"
             />
-            <figcaption className="bg-surface px-3 py-2 font-mono text-xs text-ink-2">
-              {preview}
-            </figcaption>
           </figure>
-        </div>
-      )}
+        )}
+      </dialog>
     </div>
   )
 }
