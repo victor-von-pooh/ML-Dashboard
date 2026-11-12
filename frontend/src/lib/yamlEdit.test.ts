@@ -32,7 +32,9 @@ describe('parseInput', () => {
   it('引数の種類に合わせて値を読む', () => {
     expect(parseInput('float', '1e-3')).toBe(0.001)
     expect(parseInput('int', '3')).toBe(3)
-    expect(parseInput('int', '3.5')).toBeUndefined()
+    expect(parseInput('int', '1e-4')).toBe(0.0001)
+    expect(parseInput('int', '0x10')).toBeUndefined()
+    expect(parseInput('list', '30,60')).toBeUndefined()
     expect(parseInput('bool', 'true')).toBe(true)
     expect(parseInput('list', '[0.9, 0.99]')).toEqual([0.9, 0.99])
     expect(parseInput('required', '[30, 60]')).toEqual([30, 60])

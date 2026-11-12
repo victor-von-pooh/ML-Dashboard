@@ -31,10 +31,21 @@ export function parseInput(kind: string, raw: string): unknown {
   const text = raw.trim()
   if (kind === 'bool') return text === 'true'
   if (text === '') return undefined
-  if (kind === 'int') return /^-?\d+$/.test(text) ? Number(text) : undefined
-  if (kind === 'float') return Number.isFinite(Number(text)) ? Number(text) : undefined
+  // 既定値が 0 のような整数でも小数を書けるように, int と float は同じ数として扱う
+  if (kind === 'int' || kind === 'float') {
+    return /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(text) ? Number(text) : undefined
+  }
   if (kind === 'str') return text
   if (text === 'null') return null
+  // 配列は JSON の配列だけを受け付け
+  if (kind === 'list') {
+    try {
+      const parsed: unknown = JSON.parse(text)
+      return Array.isArray(parsed) ? parsed : undefined
+    } catch {
+      return undefined
+    }
+  }
   // 配列や必須の引数などは JSON か数値として読み, 読めなければ文字列
   try {
     return JSON.parse(text)

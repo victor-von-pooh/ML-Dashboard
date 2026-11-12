@@ -1072,6 +1072,42 @@
         ],
         "title": "BestValue"
       },
+      "ClassSpec": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "params": {
+            "items": {
+              "$ref": "#/components/schemas/ParamSpec"
+            },
+            "type": "array",
+            "title": "Params"
+          },
+          "supported": {
+            "type": "boolean",
+            "title": "Supported"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "description",
+          "params",
+          "supported",
+          "note"
+        ],
+        "title": "ClassSpec"
+      },
       "ConfigText": {
         "properties": {
           "path": {
@@ -1382,6 +1418,67 @@
         ],
         "title": "LogEntry"
       },
+      "ParamSpec": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "default": {
+            "title": "Default"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required"
+          },
+          "advanced": {
+            "type": "boolean",
+            "title": "Advanced"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "minimum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum"
+          },
+          "maximum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximum"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "kind",
+          "default",
+          "required",
+          "advanced",
+          "description",
+          "minimum",
+          "maximum"
+        ],
+        "title": "ParamSpec"
+      },
       "Progress": {
         "properties": {
           "phase": {
@@ -1645,16 +1742,14 @@
         "properties": {
           "optimizers": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/ClassSpec"
             },
             "type": "array",
             "title": "Optimizers"
           },
           "schedulers": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/ClassSpec"
             },
             "type": "array",
             "title": "Schedulers"
@@ -2239,6 +2334,14 @@
             "type": "object",
             "title": "Config",
             "default": {}
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "default": []
           }
         },
         "type": "object",

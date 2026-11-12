@@ -696,6 +696,19 @@ export interface components {
             /** Value */
             value: number;
         };
+        /** ClassSpec */
+        ClassSpec: {
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Params */
+            params: components["schemas"]["ParamSpec"][];
+            /** Supported */
+            supported: boolean;
+            /** Note */
+            note: string;
+        };
         /** ConfigText */
         ConfigText: {
             /** Path */
@@ -785,6 +798,25 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** ParamSpec */
+        ParamSpec: {
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /** Default */
+            default: unknown;
+            /** Required */
+            required: boolean;
+            /** Advanced */
+            advanced: boolean;
+            /** Description */
+            description: string;
+            /** Minimum */
+            minimum: number | null;
+            /** Maximum */
+            maximum: number | null;
+        };
         /** Progress */
         Progress: {
             /** Phase */
@@ -872,13 +904,9 @@ export interface components {
         /** Registry */
         Registry: {
             /** Optimizers */
-            optimizers: {
-                [key: string]: unknown;
-            }[];
+            optimizers: components["schemas"]["ClassSpec"][];
             /** Schedulers */
-            schedulers: {
-                [key: string]: unknown;
-            }[];
+            schedulers: components["schemas"]["ClassSpec"][];
         };
         /** RunDetail */
         RunDetail: {
@@ -1061,6 +1089,11 @@ export interface components {
             config: {
                 [key: string]: unknown;
             };
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
         };
         /** ValidationError */
         ValidationError: {
