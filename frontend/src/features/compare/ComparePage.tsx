@@ -9,7 +9,9 @@ import { LineChart, type ChartSeries } from '../../components/LineChart'
 import { Card, EmptyState, ErrorBox, PageHeader, Spinner, StatusBadge } from '../../components/ui'
 import { seriesVar } from '../../lib/colors'
 import { formatDateTime, formatDuration, formatMetric, formatValue } from '../../lib/format'
+import { groupImageSeries, sharedImageSeries } from '../../lib/images'
 import { MAX_COMPARE, diffConfigs, flattenConfig, groupMetrics, toPoints } from '../../lib/metrics'
+import { ImageCompare } from './ImageCompare'
 
 /** 実験の短い名前. 名前が全て同じなら月日と時刻だけ, 違うなら名前と時刻 */
 function makeLabel(runIds: string[]): (runId: string) => string {
@@ -84,6 +86,9 @@ export function ComparePage() {
       }))
       return { column, series, missing: missing.map((slot) => shortLabel(slot.id)) }
     })
+
+  // 2 つ以上の実験にある番号付きの画像の並び (同じエポックの生成画像などを並べて比べる)
+  const sharedImages = sharedImageSeries(ready.map((slot) => groupImageSeries(slot.run.files)))
 
   const configKeys = diffConfigs(ready.map((slot) => slot.run.config))
   const flatConfigs = ready.map((slot) => flattenConfig(slot.run.config))
@@ -263,6 +268,18 @@ export function ComparePage() {
               ))}
             </div>
           </div>
+        )}
+
+        {!loading && sharedImages.length > 0 && (
+          <ImageCompare
+            series={sharedImages}
+            runs={ready.map((slot) => ({
+              id: slot.id,
+              label: shortLabel(slot.id),
+              color: slot.color,
+            }))}
+            projectId={projectId}
+          />
         )}
 
         {/* config の違う項目 */}

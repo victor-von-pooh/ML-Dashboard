@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { RunFile } from '../api/client'
-import { groupImageSeries } from './images'
+import { groupImageSeries, sharedImageSeries } from './images'
 
 function image(path: string): RunFile {
   return { path, size: 1, kind: 'image' }
@@ -57,5 +57,26 @@ describe('groupImageSeries', () => {
       image('1.png'),
     ])
     expect(series.map((item) => item.name)).toEqual(['(画像)', 'samples'])
+  })
+})
+
+describe('sharedImageSeries', () => {
+  it('2 つ以上の実験にある並びだけを, 番号をそろえて返す', () => {
+    const first = groupImageSeries([
+      image('samples/epoch_001.png'),
+      image('samples/epoch_005.png'),
+      image('recon/epoch_001.png'),
+      image('recon/epoch_002.png'),
+    ])
+    const second = groupImageSeries([
+      image('samples/epoch_001.png'),
+      image('samples/epoch_010.png'),
+    ])
+    const shared = sharedImageSeries([first, second, []])
+    expect(shared.map((item) => item.name)).toEqual(['samples/epoch'])
+    expect(shared[0]?.steps).toEqual([1, 5, 10])
+    expect(shared[0]?.frames[0]?.get(5)).toBe('samples/epoch_005.png')
+    expect(shared[0]?.frames[1]?.get(5)).toBeUndefined()
+    expect(shared[0]?.frames[2]).toBeNull()
   })
 })
