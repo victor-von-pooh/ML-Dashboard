@@ -66,3 +66,19 @@ export function formatInput(value: unknown): string {
   if (typeof value === 'string') return value
   return JSON.stringify(value)
 }
+
+/** 引数の値の範囲と整数かどうか. 外れている場合は理由, 問題が無ければ null */
+export function checkParamValue(
+  spec: { kind: string; minimum?: number | null; maximum?: number | null },
+  value: unknown,
+): string | null {
+  // 数と, 数の配列 (min_lr などはグループごとに指定可能) の各要素を確かめる
+  const numbers = Array.isArray(value) ? value : [value]
+  for (const item of numbers) {
+    if (typeof item !== 'number') continue
+    if (spec.kind === 'int' && !Number.isInteger(item)) return '整数にしてください'
+    if (spec.minimum != null && item < spec.minimum) return `${spec.minimum} 以上にしてください`
+    if (spec.maximum != null && item > spec.maximum) return `${spec.maximum} 以下にしてください`
+  }
+  return null
+}

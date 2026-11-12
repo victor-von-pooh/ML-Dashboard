@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { deleteYamlValue, formatInput, parseInput, setYamlValue } from './yamlEdit'
+import { checkParamValue, deleteYamlValue, formatInput, parseInput, setYamlValue } from './yamlEdit'
 
 describe('setYamlValue', () => {
   it('コメントを残して入れ子の項目を書き込む', () => {
@@ -49,5 +49,19 @@ describe('parseInput', () => {
     expect(parseInput('str', ' min ')).toBe('min')
     expect(parseInput('float', '')).toBeUndefined()
     expect(formatInput([1, 2])).toBe('[1,2]')
+  })
+})
+
+describe('checkParamValue', () => {
+  it('範囲と整数を確かめ, 数でない値は通す', () => {
+    const momentum = { kind: 'float', minimum: 0, maximum: 1 }
+    expect(checkParamValue(momentum, 0.9)).toBeNull()
+    expect(checkParamValue(momentum, 1)).toBeNull()
+    expect(checkParamValue(momentum, -0.1)).toBe('0 以上にしてください')
+    expect(checkParamValue(momentum, 1.5)).toBe('1 以下にしてください')
+    expect(checkParamValue({ kind: 'int', minimum: 1 }, 2.5)).toBe('整数にしてください')
+    expect(checkParamValue({ kind: 'float', minimum: 0 }, [0.1, -1])).toBe('0 以上にしてください')
+    expect(checkParamValue({ kind: 'str', minimum: 0 }, 'min')).toBeNull()
+    expect(checkParamValue({ kind: 'none' }, null)).toBeNull()
   })
 })
