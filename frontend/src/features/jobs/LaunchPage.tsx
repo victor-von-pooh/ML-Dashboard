@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { CheckCircle2, Play, RotateCcw, ShieldCheck } from 'lucide-react'
-import { useId, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
 import { useConfig, useCreateJob, useProject, useValidateConfig } from '../../api/hooks'
@@ -42,6 +42,18 @@ export function LaunchPage() {
   const edited = draft !== null && draft.path === configPath && draft.text !== original
   const text = draft !== null && draft.path === configPath ? draft.text : original
   const loadingConfig = configPath !== null && config.isPending
+
+  // 書き換えたまま再読み込みやタブを閉じる場合はブラウザで確認
+  useEffect(() => {
+    if (!edited) return
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      // 古いブラウザでは returnValue の設定も必要
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [edited])
 
   const selectConfig = (path: string) => {
     if (edited && !window.confirm('書き換えた内容を捨てて, 別の config に切り替えますか?')) return
@@ -85,7 +97,7 @@ export function LaunchPage() {
         subtitle="プロジェクトの Python で学習のスクリプトを別のプロセスとして動かします"
       />
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         <div className="space-y-4">
           <Card title="設定">
             <div className="space-y-4 text-sm">
