@@ -2,7 +2,7 @@ import clsx from 'clsx'
 import { FolderKanban, LayoutGrid, ListChecks, Moon, Sun } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router'
 
-import { useJobs, useProjects } from '../api/hooks'
+import { useProjects, useRunningJobCount } from '../api/hooks'
 import { useTheme } from '../lib/themeContext'
 
 function ThemeToggle() {
@@ -32,8 +32,7 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
 /** 左のサイドバーと本文の枠 */
 export function Layout() {
   const projects = useProjects()
-  const jobs = useJobs()
-  const runningJobs = jobs.data?.filter((job) => job.status === 'running').length ?? 0
+  const runningJobs = useRunningJobCount()
 
   return (
     <div className="flex h-full">

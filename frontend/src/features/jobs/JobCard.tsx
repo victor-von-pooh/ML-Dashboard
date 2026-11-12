@@ -33,6 +33,7 @@ export function ProgressBar({
         aria-valuemin={0}
         aria-valuemax={max ?? undefined}
         aria-valuenow={max ? value : undefined}
+        aria-valuetext={detail}
         className="h-2 overflow-hidden rounded-full bg-surface-2"
       >
         <div
@@ -49,7 +50,7 @@ export function ProgressBar({
 
 /** エポックとバッチの進捗バー */
 export function ProgressBars({ progress }: { progress: Progress }) {
-  const remaining = estimateRemaining(progress)
+  const remaining = estimateRemaining(progress, progress.start_epoch)
   const phase = progress.phase === 'valid' ? '検証' : '学習'
   return (
     <div className="space-y-3">
@@ -72,13 +73,7 @@ export function ProgressBars({ progress }: { progress: Progress }) {
 }
 
 /** ジョブの概要と操作 */
-export function JobCard({
-  job,
-  showDetailLink = true,
-}: {
-  job: JobInfo
-  showDetailLink?: boolean
-}) {
+export function JobCard({ job, detail = false }: { job: JobInfo; detail?: boolean }) {
   const stop = useStopJob()
   const running = job.status === 'running'
   const run = job.run
@@ -89,18 +84,19 @@ export function JobCard({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={jobStatus(job)} />
-            <h3 className="truncate font-semibold">
-              {showDetailLink ? (
+            {/* 詳細の画面では見出しと重ならないように名前を出さない */}
+            {!detail && (
+              <h3 className="truncate font-semibold">
                 <Link to={`/jobs/${job.id}`} className="hover:text-accent-text">
                   {job.project_name ?? job.project_id} / {job.script}
                 </Link>
-              ) : (
-                `${job.project_name ?? job.project_id} / ${job.script}`
-              )}
-            </h3>
+              </h3>
+            )}
           </div>
           <p className="mt-1 truncate font-mono text-xs text-ink-3" title={job.config}>
-            {job.config.split('/').slice(-3).join('/')}
+            {job.config.includes('/jobs/')
+              ? '画面で書き換えた config'
+              : job.config.split('/').slice(-3).join('/')}
           </p>
           <p className="tabular text-xs text-ink-3">
             開始 {formatDateTime(job.created_at)}
@@ -124,7 +120,6 @@ export function JobCard({
                 icon={Square}
                 disabled={stop.isPending || job.stop_requested}
                 onClick={() => stop.mutate({ jobId: job.id, force: false })}
-                title="今のエポックを終えたところで止めます"
               >
                 {job.stop_requested ? '止めています' : 'エポックの区切りで止める'}
               </Button>
@@ -133,7 +128,11 @@ export function JobCard({
                 icon={OctagonX}
                 disabled={stop.isPending}
                 onClick={() => {
-                  if (window.confirm('エポックの途中で学習を止めますか? (Ctrl-C と同じ)')) {
+                  if (
+                    window.confirm(
+                      'エポックの途中で学習を止めますか? (Ctrl-C と同じ)\n今のエポックの結果は記録されません.',
+                    )
+                  ) {
                     stop.mutate({ jobId: job.id, force: true })
                   }
                 }}
@@ -150,6 +149,12 @@ export function JobCard({
           <ErrorBox error={stop.error} />
         </div>
       )}
+      {running && (
+        <p className="mt-2 text-xs text-ink-3">
+          「エポックの区切りで止める」は今のエポックを終えて結果を保存してから止めます.
+          「すぐに止める」は今のエポックの結果を残しません.
+        </p>
+      )}
       {running && job.progress && (
         <div className="mt-4">
           <ProgressBars progress={job.progress} />
@@ -162,6 +167,14 @@ export function JobCard({
         </p>
       )}
       {!running && run?.error && <p className="mt-3 text-xs text-critical-text">{run.error}</p>}
+      {job.config_text != null && (
+        <details className="mt-3 text-xs">
+          <summary className="cursor-pointer text-ink-2">書き換えた config の中身</summary>
+          <pre className="mt-2 overflow-auto rounded-lg bg-surface-2/60 p-3 font-mono text-ink-2">
+            {job.config_text || '(空: default のまま)'}
+          </pre>
+        </details>
+      )}
     </section>
   )
 }

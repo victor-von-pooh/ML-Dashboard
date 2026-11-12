@@ -4,6 +4,8 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from ml_dashboard.app import create_app
+
 from conftest import write_run
 from test_api import register
 
@@ -300,9 +302,16 @@ def test_host_and_origin_checks(client: TestClient, project_dir: Path) -> None:
     )
     assert cross.status_code == 403
 
+    # ホストが同じでもポートが違えば別のサイト
+    other_port = client.post(
+        "/api/projects", json={"path": str(project_dir)},
+        headers={"Origin": "http://testserver:3000"}
+    )
+    assert other_port.status_code == 403
+
     same = client.post(
         "/api/projects", json={"path": str(project_dir)},
-        headers={"Origin": "http://localhost:5173"}
+        headers={"Origin": "http://testserver"}
     )
     assert same.status_code == 201
 
@@ -383,3 +392,36 @@ def test_experiment_output_dir(client: TestClient, project_dir: Path) -> None:
     assert ids[0] == "demo/2026-11-09/09-00-00"
     detail = client.get(f"/api/projects/{project_id}/runs/{ids[0]}")
     assert detail.status_code == 200
+
+
+def test_token_required(tmp_path: Path) -> None:
+    """
+    起動ごとのトークンが無い API の呼び出しを拒否することを確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    app = create_app(tmp_path / "home", token="secret")
+    client = TestClient(app)
+
+    # トークンが無いか違う場合は 401
+    assert client.get("/api/projects").status_code == 401
+    wrong = client.get("/api/projects", headers={"x-dashboard-token": "x"})
+    assert wrong.status_code == 401
+    assert client.get("/api/auth?token=x").status_code == 401
+
+    # ヘッダーのトークンか, URL で受け取って保存した Cookie で利用可能
+    header = client.get(
+        "/api/projects", headers={"x-dashboard-token": "secret"}
+    )
+    assert header.status_code == 200
+    auth = client.get("/api/auth?token=secret", follow_redirects=False)
+    assert auth.status_code == 303
+    assert "httponly" in auth.headers["set-cookie"].lower()
+    assert client.get("/api/projects").status_code == 200

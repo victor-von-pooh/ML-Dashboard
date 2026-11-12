@@ -1,3 +1,5 @@
+import os
+import secrets
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Optional
@@ -5,7 +7,7 @@ from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
 
@@ -23,6 +25,13 @@ ALLOWED_HOSTS = ["127.0.0.1", "localhost", "testserver"]
 
 # 状態を変えるメソッド
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+# 起動ごとのトークンを指定する環境変数と, 保存する Cookie の名前
+TOKEN_ENV = "ML_DASHBOARD_TOKEN"
+TOKEN_COOKIE = "ml_dashboard_token"
+
+# トークンを受け取って Cookie に保存するパス
+AUTH_PATH = "/api/auth"
 
 
 def route_id(route: APIRoute) -> str:
@@ -62,11 +71,10 @@ async def check_origin(
     response: Response
         応答, 別の Origin からの書き込みは 403
     """
-    # ブラウザが付ける Origin のホストが, 待ち受けているホストと同じかの確認
+    # ブラウザが付ける Origin が, 接続先 (Host) と同じホストとポートかの確認
     origin = request.headers.get("origin")
     if request.method in UNSAFE_METHODS and origin is not None:
-        host = urlsplit(origin).hostname
-        if host not in ALLOWED_HOSTS:
+        if urlsplit(origin).netloc != request.headers.get("host"):
             response: Response = JSONResponse(
                 {"detail": "別のサイトからの操作は受け付けません"},
                 status_code=403
@@ -76,6 +84,84 @@ async def check_origin(
     response = await call_next(request)
 
     return response
+
+
+def make_auth_check(
+    token: str
+) -> Callable[[Request, Callable[[Request], Awaitable[Response]]],
+              Awaitable[Response]]:
+    """
+    API の呼び出しに起動ごとのトークンを求める処理を作る関数
+
+    Parameters
+    ----------
+    token: str
+        起動ごとのトークン
+
+    Returns
+    ----------
+    check: Callable
+        トークンが無い API の呼び出しを 401 にする処理
+    """
+
+    async def check(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        """
+        Cookie かヘッダーのトークンを確かめる関数
+
+        Parameters
+        ----------
+        request: Request
+            リクエスト
+        call_next: Callable[[Request], Awaitable[Response]]
+            次の処理
+
+        Returns
+        ----------
+        response: Response
+            応答, トークンが合わない API の呼び出しは 401
+        """
+        # 学習を起動できるので, 同じ端末の他の利用者からも使えないように確認
+        path = request.url.path
+        if path.startswith("/api") and path != AUTH_PATH:
+            given = request.cookies.get(TOKEN_COOKIE) or request.headers.get(
+                "x-dashboard-token", ""
+            )
+            if not secrets.compare_digest(given, token):
+                response: Response = JSONResponse(
+                    {
+                        "detail": "起動したときに表示された URL "
+                        f"({AUTH_PATH}?token=...) を開いてください"
+                    },
+                    status_code=401
+                )
+                return response
+
+        response = await call_next(request)
+
+        return response
+
+    return check
+
+
+def get_token(token: Optional[str]) -> str:
+    """
+    起動ごとのトークンを決める関数
+
+    Parameters
+    ----------
+    token: Optional[str]
+        指定されたトークン, None の場合は環境変数かランダムに作成
+
+    Returns
+    ----------
+    value: str
+        トークン
+    """
+    value = token or os.environ.get(TOKEN_ENV) or secrets.token_urlsafe(24)
+
+    return value
 
 
 async def project_error(request: Request, error: Exception) -> Response:
@@ -152,7 +238,9 @@ def mount_frontend(app: FastAPI, static_dir: Path) -> None:
         return response
 
 
-def create_app(data_dir: Optional[Path] = None) -> FastAPI:
+def create_app(
+    data_dir: Optional[Path] = None, token: Optional[str] = None
+) -> FastAPI:
     """
     アプリを組み立てる関数
 
@@ -160,6 +248,8 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     ----------
     data_dir: Optional[Path] = None
         ダッシュボードのデータの置き場, None の場合は既定の場所
+    token: Optional[str] = None
+        API の呼び出しに求めるトークン, None の場合は環境変数かランダムに作成
 
     Returns
     ----------
@@ -176,9 +266,46 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     app.state.store = ProjectStore(home)
     app.state.jobs = JobManager(home)
 
-    # 他のホスト名での接続 (DNS rebinding) と, 他のサイトからの書き込みの拒否
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
+    # トークンの無い呼び出し, 他のサイトからの書き込み,
+    # 他のホスト名での接続 (DNS rebinding) の拒否
+    app.state.token = get_token(token)
+    if token is None and not os.environ.get(TOKEN_ENV):
+        # 開発用のサーバーなど, トークンを渡さずに作った場合は開き方を表示
+        print(
+            f"ML-Dashboard のトークン: {AUTH_PATH}?token={app.state.token}",
+            flush=True
+        )
+    app.middleware("http")(make_auth_check(app.state.token))
     app.middleware("http")(check_origin)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
+
+    @app.get(AUTH_PATH, include_in_schema=False)
+    def authenticate(token: str = "") -> Response:
+        """
+        起動時の URL のトークンを Cookie に保存して画面に移る関数
+
+        Parameters
+        ----------
+        token: str = ""
+            URL で渡されたトークン
+
+        Returns
+        ----------
+        response: Response
+            画面への移動, トークンが違う場合は 401
+        """
+        if not secrets.compare_digest(token, app.state.token):
+            response: Response = JSONResponse(
+                {"detail": "トークンが違います"}, status_code=401
+            )
+            return response
+
+        response = RedirectResponse("/", status_code=303)
+        response.set_cookie(
+            TOKEN_COOKIE, token, httponly=True, samesite="strict"
+        )
+
+        return response
     app.add_exception_handler(ProjectError, project_error)
 
     # API と画面の登録

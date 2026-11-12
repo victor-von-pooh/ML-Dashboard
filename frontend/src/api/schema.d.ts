@@ -623,6 +623,10 @@ export interface components {
              * @enum {string}
              */
             status: "running" | "finished";
+            /** Force Count */
+            force_count: number;
+            /** Hostname */
+            hostname: string;
             /** Return Code */
             return_code: number | null;
             /** Stop Requested */
@@ -631,6 +635,8 @@ export interface components {
             run_id: string | null;
             run: components["schemas"]["RunSummary"] | null;
             progress: components["schemas"]["Progress"] | null;
+            /** Config Text */
+            config_text: string | null;
         };
         /** JobOutput */
         JobOutput: {
@@ -662,6 +668,11 @@ export interface components {
             elapsed_sec: number;
             /** Updated At */
             updated_at: string;
+            /**
+             * Start Epoch
+             * @default 1
+             */
+            start_epoch: number;
         };
         /** ProjectCandidate */
         ProjectCandidate: {
@@ -1308,6 +1319,13 @@ export interface operations {
                     "application/json": components["schemas"]["ValidateResult"];
                 };
             };
+            /** @description 受け付けられないリクエスト */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description プロジェクトか実験が見つからない */
             404: {
                 headers: {
@@ -1349,6 +1367,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["JobInfo"];
                 };
+            };
+            /** @description 受け付けられないリクエスト */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description プロジェクトか実験が見つからない */
             404: {

@@ -8,10 +8,13 @@ export function progressRatio(progress: Progress): number {
 }
 
 /** これまでの速さから, 予定のエポックを終えるまでの残りの秒数を見積もる */
-export function estimateRemaining(progress: Progress): number | null {
-  const done = progress.epoch - 1 + progressRatio(progress)
+export function estimateRemaining(progress: Progress, startEpoch = 1): number | null {
+  // 経過時間はこのプロセスの分だけなので, 再開した場合は再開してからのエポックで割る
+  const done = progress.epoch - startEpoch + progressRatio(progress)
   if (done <= 0 || progress.elapsed_sec <= 0) return null
-  const remaining = (progress.elapsed_sec / done) * (progress.total_epochs - done)
+  const remaining =
+    (progress.elapsed_sec / done) *
+    (progress.total_epochs - (progress.epoch - 1) - progressRatio(progress))
   return Math.max(0, remaining)
 }
 
@@ -19,5 +22,6 @@ export function estimateRemaining(progress: Progress): number | null {
 export function jobStatus(job: JobInfo): RunStatus {
   if (job.run) return job.run.status
   if (job.status === 'running') return 'running'
+  if (job.stop_requested) return 'stopped'
   return job.return_code === 0 ? 'completed' : 'failed'
 }

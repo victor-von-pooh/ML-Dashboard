@@ -610,6 +610,9 @@
           "404": {
             "description": "プロジェクトか実験が見つからない"
           },
+          "400": {
+            "description": "受け付けられないリクエスト"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -662,6 +665,9 @@
           },
           "404": {
             "description": "プロジェクトか実験が見つからない"
+          },
+          "400": {
+            "description": "受け付けられないリクエスト"
           },
           "422": {
             "description": "Validation Error",
@@ -1046,6 +1052,14 @@
             ],
             "title": "Status"
           },
+          "force_count": {
+            "type": "integer",
+            "title": "Force Count"
+          },
+          "hostname": {
+            "type": "string",
+            "title": "Hostname"
+          },
           "return_code": {
             "anyOf": [
               {
@@ -1091,6 +1105,17 @@
                 "type": "null"
               }
             ]
+          },
+          "config_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config Text"
           }
         },
         "type": "object",
@@ -1103,11 +1128,14 @@
           "created_at",
           "finished_at",
           "status",
+          "force_count",
+          "hostname",
           "return_code",
           "stop_requested",
           "run_id",
           "run",
-          "progress"
+          "progress",
+          "config_text"
         ],
         "title": "JobInfo"
       },
@@ -1197,6 +1225,11 @@
           "updated_at": {
             "type": "string",
             "title": "Updated At"
+          },
+          "start_epoch": {
+            "type": "integer",
+            "title": "Start Epoch",
+            "default": 1
           }
         },
         "type": "object",

@@ -27,18 +27,24 @@ export function LaunchPage() {
   const scripts = project.data?.scripts ?? []
   const configs = project.data?.experiment_configs ?? []
   const selectedScript = script ?? (scripts.includes('train.py') ? 'train.py' : scripts[0]) ?? ''
+  // train.yaml が無い場合は, examples/ の外の最初の config を選択
   const configPath =
     chosenPath ??
     configs.find((path) => path === 'configs/experiment/train.yaml') ??
+    configs.find((path) => !path.includes('/examples/')) ??
     configs[0] ??
     null
   const config = useConfig(projectId, configPath)
 
   // 選んだ config を書き換えていればその中身, いなければ読み込んだ中身
-  const edited = draft !== null && draft.path === configPath
-  const text = edited ? draft.text : (config.data?.text ?? '')
+  // 元と同じ中身に戻した場合は書き換えていないものとして扱い
+  const original = config.data?.text ?? ''
+  const edited = draft !== null && draft.path === configPath && draft.text !== original
+  const text = draft !== null && draft.path === configPath ? draft.text : original
+  const loadingConfig = configPath !== null && config.isPending
 
   const selectConfig = (path: string) => {
+    if (edited && !window.confirm('書き換えた内容を捨てて, 別の config に切り替えますか?')) return
     setChosenPath(path)
     setDraft(null)
     validate.reset()
@@ -87,6 +93,11 @@ export function LaunchPage() {
                 <label htmlFor={scriptId} className="mb-1 block text-xs font-medium text-ink-2">
                   学習のスクリプト
                 </label>
+                {scripts.length === 0 && (
+                  <p className="mb-1 text-xs text-critical-text">
+                    train で始まる Python のファイル (train.py など) が見つかりません.
+                  </p>
+                )}
                 <select
                   id={scriptId}
                   value={selectedScript}
@@ -104,6 +115,12 @@ export function LaunchPage() {
                 <label htmlFor={configId} className="mb-1 block text-xs font-medium text-ink-2">
                   experiment の config
                 </label>
+                {configs.length === 0 && (
+                  <p className="mb-1 text-xs text-ink-3">
+                    configs/experiment に yaml がありません. 右の欄に書くか, 空のまま default
+                    で起動します.
+                  </p>
+                )}
                 <select
                   id={configId}
                   value={configPath ?? ''}
@@ -134,7 +151,7 @@ export function LaunchPage() {
               <Button
                 icon={ShieldCheck}
                 onClick={() => validate.mutate(text)}
-                disabled={validate.isPending}
+                disabled={validate.isPending || loadingConfig}
               >
                 ML-Found で config を確かめる
               </Button>
@@ -163,7 +180,7 @@ export function LaunchPage() {
             variant="primary"
             icon={Play}
             className="h-10 w-full"
-            disabled={!selectedScript || create.isPending || config.isPending}
+            disabled={!selectedScript || create.isPending || loadingConfig}
             onClick={launch}
           >
             学習を開始

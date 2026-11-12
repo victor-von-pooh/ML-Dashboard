@@ -56,11 +56,20 @@ export function JobDetailPage() {
   const running = job.data?.status === 'running'
   const output = useJobOutput(jobId, running)
   const consoleRef = useRef<HTMLPreElement>(null)
+  const following = useRef(true)
 
-  // 新しい出力が来たら末尾まで送る
+  // 学習が終わったら, 最後の出力を読むためにもう一度読み直す
+  const wasRunning = useRef(false)
+  const refetchOutput = output.refetch
+  useEffect(() => {
+    if (wasRunning.current && !running) void refetchOutput()
+    wasRunning.current = running
+  }, [running, refetchOutput])
+
+  // 末尾を見ている場合だけ, 新しい出力に合わせて末尾まで送る
   useEffect(() => {
     const element = consoleRef.current
-    if (element) element.scrollTop = element.scrollHeight
+    if (element && following.current) element.scrollTop = element.scrollHeight
   }, [output.data?.text])
 
   return (
@@ -79,7 +88,7 @@ export function JobDetailPage() {
       {job.error && <ErrorBox error={job.error} />}
       {job.data && (
         <div className="space-y-4">
-          <JobCard job={job.data} showDetailLink={false} />
+          <JobCard job={job.data} detail />
           <Card
             title={
               <span className="flex items-center gap-2">
@@ -89,13 +98,19 @@ export function JobDetailPage() {
             }
             padded={false}
           >
+            {output.error && <ErrorBox error={output.error} live={false} />}
             <pre
               ref={consoleRef}
+              onScroll={(event) => {
+                const element = event.currentTarget
+                following.current =
+                  element.scrollHeight - element.scrollTop - element.clientHeight < 40
+              }}
               tabIndex={0}
               aria-label="学習の標準出力"
               className="max-h-[480px] overflow-auto bg-surface-2/40 p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap text-ink-2"
             >
-              {output.data?.text || '(まだ出力はありません)'}
+              {output.isPending ? '読み込み中' : output.data?.text || '(まだ出力はありません)'}
             </pre>
           </Card>
         </div>

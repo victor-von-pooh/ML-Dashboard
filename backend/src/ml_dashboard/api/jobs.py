@@ -4,7 +4,8 @@ from pathlib import Path
 from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from omegaconf import DictConfig, OmegaConf
+from pydantic import BaseModel, model_validator
 
 from ml_dashboard.api.routes import NOT_FOUND, get_project
 from ml_dashboard.core.jobs import Job, JobManager
@@ -30,6 +31,11 @@ router = APIRouter(prefix="/api")
 # config の大きさの上限 (誤って大きなファイルを送った場合の保護)
 MAX_CONFIG_BYTES = 200_000
 
+# 受け付けられない場合の応答の説明
+BAD_REQUEST: dict[int | str, dict[str, str]] = {
+    400: {"description": "受け付けられないリクエスト"}
+}
+
 
 class ConfigText(BaseModel):
     path: str
@@ -51,6 +57,26 @@ class JobCreate(BaseModel):
     config_path: Optional[str] = None
     config_text: Optional[str] = None
 
+    @model_validator(mode="after")
+    def check_one_config(self) -> "JobCreate":
+        """
+        config のパスと中身の片方だけが指定されていることを確かめる関数
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        ----------
+        body: JobCreate
+            確かめたリクエスト
+        """
+        if self.config_path is not None and self.config_text is not None:
+            raise ValueError("config_path と config_text はどちらか片方だけ")
+        body = self
+
+        return body
+
 
 class StopRequest(BaseModel):
     force: bool = False
@@ -65,11 +91,14 @@ class JobInfo(BaseModel):
     created_at: str
     finished_at: Optional[str]
     status: Literal["running", "finished"]
+    force_count: int
+    hostname: str
     return_code: Optional[int]
     stop_requested: bool
     run_id: Optional[str]
     run: Optional[RunSummary]
     progress: Optional[Progress]
+    config_text: Optional[str]
 
 
 class JobOutput(BaseModel):
@@ -121,7 +150,9 @@ def resolve_config(project: Project, relative: str) -> Path:
     return path
 
 
-def check_config(project: Project, path: Path) -> dict[str, dict[str, object]]:
+def check_config(
+    project: Project, path: Path
+) -> dict[str, dict[str, object]]:
     """
     ML-Found で config を読み込み, 学習を始める前の確認をする関数
 
@@ -138,15 +169,23 @@ def check_config(project: Project, path: Path) -> dict[str, dict[str, object]]:
         default との差分
     """
     # ML-Found の読み込みは PyTorch も読むので, 使うときだけ読み込み
+    # ダッシュボードの submodule の ML-Found で確かめるので, プロジェクトの
+    # ML-Found の版が違う場合は, 学習を始めてからエラーになることもある
     from ml_found.config import load_config
-    from ml_found.experiment.setup import check_trainer_config
+    from ml_found.experiment.setup import (
+        check_name,
+        check_resume_path,
+        check_trainer_config,
+    )
     from ml_found.training.optim import check_optim_config
 
-    cfg, diff = load_config(
-        str(Path(project.path) / DEFAULT_CONFIG), str(path)
-    )
+    # start_experiment が出力先を作る前に行う確認と同じものを実行
+    project_dir = Path(project.path)
+    cfg, diff = load_config(str(project_dir / DEFAULT_CONFIG), str(path))
+    check_name(cfg.experiment.name)
     check_optim_config(cfg)
     check_trainer_config(cfg)
+    check_resume_path(cfg, project_dir)
     result = {
         str(key): {
             "default": value.get("default"),
@@ -156,6 +195,71 @@ def check_config(project: Project, path: Path) -> dict[str, dict[str, object]]:
     }
 
     return result
+
+
+def describe(error: Exception) -> str:
+    """
+    確認のエラーを表示する文にする関数
+
+    Parameters
+    ----------
+    error: Exception
+        起きたエラー
+
+    Returns
+    ----------
+    message: str
+        元のエラーの種類と内容, 文に変えたエラーは内容だけ
+    """
+    cause = error.__cause__ if isinstance(error.__cause__, Exception) else None
+    if type(error) is ValueError and cause is not None:
+        message = f"{type(cause).__name__}: {error}"
+    elif type(error) is ValueError:
+        message = str(error)
+    else:
+        message = f"{type(error).__name__}: {error}"
+
+    return message
+
+
+def validate_text(project: Project, text: str) -> dict[str, dict[str, object]]:
+    """
+    書き換えた config の中身を一時ファイルに書いて確かめる関数
+
+    Parameters
+    ----------
+    project: Project
+        プロジェクト
+    text: str
+        experiment の config の中身
+
+    Returns
+    ----------
+    diff: dict[str, dict[str, object]]
+        default との差分
+    """
+    if len(text.encode()) > MAX_CONFIG_BYTES:
+        raise ValueError("config が大きすぎます")
+
+    # 「項目: 値」の形でない場合は, ML-Found の長いエラーの前に分かりやすく通知
+    loaded: object = OmegaConf.create(text) if text.strip() else {}
+    if not isinstance(loaded, (dict, DictConfig)):
+        raise ValueError(
+            "experiment の config は「項目: 値」の形 (YAML の辞書) で"
+            "書いてください"
+        )
+
+    # 一時ファイルの場所はエラーの文から除去
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "experiment.yaml"
+        path.write_text(text, encoding="utf-8")
+        try:
+            diff = check_config(project, path)
+        except Exception as error:
+            message = str(error).replace(str(path), "experiment.yaml")
+            raise ValueError(message) from error
+
+    return diff
 
 
 def to_job_info(job: Job, project: Optional[Project]) -> JobInfo:
@@ -185,10 +289,15 @@ def to_job_info(job: Job, project: Optional[Project]) -> JobInfo:
                 progress = read_progress(run_dir)
         except (ProjectError, RunNotFoundError):
             pass
+    # 画面で書き換えた config は, 何で学習したかが分かるように中身も返却
+    config_text = None
+    config_path = Path(job.config)
+    if config_path.parent.name == job.id and config_path.is_file():
+        config_text = config_path.read_text(encoding="utf-8")
     data = asdict(job)
     info = JobInfo(
         **data, project_name=project.name if project else None, run=run,
-        progress=progress
+        progress=progress, config_text=config_text
     )
 
     return info
@@ -225,7 +334,9 @@ def read_config(
     return config
 
 
-@router.post("/projects/{project_id}/validate", responses=NOT_FOUND)
+@router.post(
+    "/projects/{project_id}/validate", responses=NOT_FOUND | BAD_REQUEST
+)
 def validate_config(
     request: Request, project_id: str, body: ValidateRequest
 ) -> ValidateResult:
@@ -247,20 +358,13 @@ def validate_config(
         読み込めたかどうか, エラー, default との差分
     """
     project = get_project(request, project_id)
-    if len(body.text.encode()) > MAX_CONFIG_BYTES:
-        raise HTTPException(400, "config が大きすぎます")
 
-    # 一時ファイルに書いて, 学習と同じ方法で読み込み
-    with tempfile.TemporaryDirectory() as directory:
-        path = Path(directory) / "experiment.yaml"
-        path.write_text(body.text, encoding="utf-8")
-        try:
-            diff = check_config(project, path)
-        except Exception as error:
-            result = ValidateResult(
-                ok=False, error=f"{type(error).__name__}: {error}", diff={}
-            )
-            return result
+    # 学習と同じ方法で読み込み, 失敗した場合は理由を返却
+    try:
+        diff = validate_text(project, body.text)
+    except Exception as error:
+        result = ValidateResult(ok=False, error=describe(error), diff={})
+        return result
 
     result = ValidateResult(ok=True, error=None, diff=diff)
 
@@ -268,7 +372,8 @@ def validate_config(
 
 
 @router.post(
-    "/projects/{project_id}/jobs", status_code=201, responses=NOT_FOUND
+    "/projects/{project_id}/jobs", status_code=201,
+    responses=NOT_FOUND | BAD_REQUEST
 )
 def create_job(
     request: Request, project_id: str, body: JobCreate
@@ -290,39 +395,69 @@ def create_job(
     info: JobInfo
         起動したジョブ
     """
+    # 一覧にあるスクリプトだけを受け付け
     project = get_project(request, project_id)
     if body.script not in list_scripts(Path(project.path)):
         raise HTTPException(
             400, f"学習のスクリプトが見つかりません: {body.script}"
         )
 
-    jobs = get_jobs(request)
-    job_id = jobs.create()
-
-    # 中身はジョブのディレクトリに保存し, パスの場合はそのまま使用
-    if body.config_text is not None:
-        if len(body.config_text.encode()) > MAX_CONFIG_BYTES:
-            raise HTTPException(400, "config が大きすぎます")
-        config_path = jobs.job_dir(job_id) / "experiment.yaml"
-        config_path.write_text(body.config_text, encoding="utf-8")
-    else:
-        config_path = resolve_config(
-            project,
-            body.config_path or (EXPERIMENT_DIR / "train.yaml").as_posix()
-        )
-
     # 起動する前に ML-Found で config の誤りを確認
+    # ジョブのディレクトリは確認が通ってから作り, 失敗した起動を残さない
+    config_path = None
     try:
-        check_config(project, config_path)
+        if body.config_text is not None:
+            validate_text(project, body.config_text)
+        else:
+            config_path = resolve_config(
+                project, body.config_path
+                or (EXPERIMENT_DIR / "train.yaml").as_posix()
+            )
+            check_config(project, config_path)
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
-            400, f"config に誤りがあります: {type(error).__name__}: {error}"
+            400, f"config に誤りがあります: {describe(error)}"
         ) from error
 
-    job = jobs.start(job_id, project, body.script, config_path)
+    # 中身を渡された場合はジョブのディレクトリに保存して起動
+    jobs = get_jobs(request)
+    job_id = jobs.create()
+    try:
+        if config_path is None:
+            config_path = jobs.job_dir(job_id) / "experiment.yaml"
+            config_path.write_text(body.config_text or "", encoding="utf-8")
+        job = jobs.start(job_id, project, body.script, config_path)
+    except OSError as error:
+        jobs.discard(job_id)
+        raise HTTPException(
+            400, f"学習を起動できませんでした: {error}"
+        ) from error
     info = to_job_info(job, project)
 
     return info
+
+
+def project_map(request: Request) -> dict[str, Project]:
+    """
+    登録したプロジェクトを ID で引ける辞書にする関数
+
+    Parameters
+    ----------
+    request: Request
+        リクエスト
+
+    Returns
+    ----------
+    projects: dict[str, Project]
+        ID ごとのプロジェクト
+    """
+    projects = {
+        project.id: project for project in request.app.state.store.load()
+    }
+
+    return projects
 
 
 @router.get("/jobs")
@@ -340,12 +475,10 @@ def list_jobs(request: Request) -> list[JobInfo]:
     jobs: list[JobInfo]
         ジョブの一覧
     """
-    projects = {
-        project.id: project for project in request.app.state.store.load()
-    }
+    projects = project_map(request)
     jobs = [
         to_job_info(job, projects.get(job.project_id))
-        for job in get_jobs(request).list(projects)
+        for job in get_jobs(request).list_jobs(projects)
     ]
 
     return jobs
@@ -353,7 +486,7 @@ def list_jobs(request: Request) -> list[JobInfo]:
 
 def load_job(request: Request, job_id: str) -> tuple[Job, Optional[Project]]:
     """
-    ジョブを読み込み, 状態を更新する関数
+    ジョブを読み込み, 無ければ 404 にする関数
 
     Parameters
     ----------
@@ -365,16 +498,15 @@ def load_job(request: Request, job_id: str) -> tuple[Job, Optional[Project]]:
     Returns
     ----------
     job: Job
-        ジョブ
+        状態を更新したジョブ
     project: Optional[Project]
         ジョブのプロジェクト
     """
-    jobs = get_jobs(request)
-    job = jobs.load(job_id)
+    projects = project_map(request)
+    job = get_jobs(request).get(job_id, projects)
     if job is None:
         raise HTTPException(404, f"ジョブが見つかりません: {job_id}")
-    project = request.app.state.store.get(job.project_id)
-    job = jobs.refresh(job, project)
+    project = projects.get(job.project_id)
 
     return job, project
 
@@ -421,9 +553,11 @@ def stop_job(request: Request, job_id: str, body: StopRequest) -> JobInfo:
     info: JobInfo
         更新したジョブ
     """
-    job, project = load_job(request, job_id)
-    job = get_jobs(request).stop(job, project, body.force)
-    info = to_job_info(job, project)
+    projects = project_map(request)
+    job = get_jobs(request).stop(job_id, projects, body.force)
+    if job is None:
+        raise HTTPException(404, f"ジョブが見つかりません: {job_id}")
+    info = to_job_info(job, projects.get(job.project_id))
 
     return info
 

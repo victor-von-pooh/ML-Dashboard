@@ -1,6 +1,6 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { api } from './client'
+import { api, type JobInfo } from './client'
 
 export const keys = {
   projects: ['projects'] as const,
@@ -125,9 +125,16 @@ export function useJobs() {
   return useQuery({
     queryKey: keys.jobs,
     queryFn: api.listJobs,
+    // 実行中が無い間は, サイドバーの数が大まかに合っていればよいので間隔を空ける
     refetchInterval: (query) =>
-      query.state.data?.some((job) => job.status === 'running') ? LIVE_INTERVAL : 10_000,
+      query.state.data?.some((job) => job.status === 'running') ? LIVE_INTERVAL : 30_000,
   })
+}
+
+/** サイドバー用に, 実行中のジョブの数だけを取り出す */
+export function useRunningJobCount() {
+  const query = useJobs()
+  return query.data?.filter((job) => job.status === 'running').length ?? 0
 }
 
 export function useJob(jobId: string) {
@@ -151,7 +158,11 @@ export function useStopJob() {
   return useMutation({
     mutationFn: ({ jobId, force }: { jobId: string; force: boolean }) => api.stopJob(jobId, force),
     onSuccess: (job) => {
+      // 一覧の表示もすぐに更新し, 止めるボタンを続けて押せないようにする
       client.setQueryData(keys.job(job.id), job)
+      client.setQueryData<JobInfo[]>(keys.jobs, (list) =>
+        list?.map((item) => (item.id === job.id ? job : item)),
+      )
       void client.invalidateQueries({ queryKey: keys.jobs, exact: true })
     },
   })

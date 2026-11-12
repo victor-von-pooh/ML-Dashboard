@@ -202,9 +202,13 @@ function RunsPage({ projectId }: { projectId: string }) {
         subtitle={<span className="font-mono text-xs">{project.data?.path}</span>}
         actions={
           <>
-            <Button icon={Play} onClick={() => navigate(`/projects/${projectId}/launch`)}>
+            <Link
+              to={`/projects/${projectId}/launch`}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-sm font-medium hover:bg-surface-2"
+            >
+              <Play className="size-4" aria-hidden />
               学習を起動
-            </Button>
+            </Link>
             {selected.length > 0 && (
               <Button variant="ghost" onClick={() => setSelected([])}>
                 選択を解除

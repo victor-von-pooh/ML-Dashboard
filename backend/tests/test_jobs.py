@@ -199,3 +199,79 @@ def test_force_stop(client: TestClient, project_dir: Path) -> None:
     assert missing.status_code == 404
     traversal = client.get("/api/jobs/..%2F..")
     assert traversal.status_code == 404
+
+
+def test_rejected_launch_leaves_nothing(
+    client: TestClient, project_dir: Path, tmp_path: Path
+) -> None:
+    """
+    受け付けなかった起動がジョブのディレクトリを残さないことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    project_id = register(client, project_dir)
+    url = f"/api/projects/{project_id}/jobs"
+
+    # 誤った config, 辞書でない config, パスと中身の両方の指定
+    typo = client.post(
+        url, json={"script": "train.py", "config_text": "trainer:\n  e: 1\n"}
+    )
+    assert typo.status_code == 400
+    listed = client.post(
+        url, json={"script": "train.py", "config_text": "- 1\n"}
+    )
+    assert listed.status_code == 400
+    assert "項目: 値" in listed.json()["detail"]
+    assert "/tmp" not in listed.json()["detail"]
+    both = client.post(url, json={
+        "script": "train.py", "config_text": "{}\n",
+        "config_path": "configs/experiment/train.yaml"
+    })
+    assert both.status_code == 422
+
+    jobs_dir = tmp_path / "home" / "jobs"
+    assert not jobs_dir.exists() or list(jobs_dir.iterdir()) == []
+
+
+def test_edited_config_text(client: TestClient, project_dir: Path) -> None:
+    """
+    画面で書き換えた config の中身をジョブの情報で返すことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    (project_dir / "train.py").write_text("print('done')\n")
+    project_id = register(client, project_dir)
+    created = client.post(
+        f"/api/projects/{project_id}/jobs",
+        json={"script": "train.py", "config_text": "trainer:\n  epochs: 4\n"}
+    ).json()
+    assert created["config_text"] == "trainer:\n  epochs: 4\n"
+    job = wait_for(client, created["id"], "status", "finished")
+    assert job["return_code"] == 0
+
+    # プロジェクトの config で起動した場合は中身を返さない
+    plain = client.post(
+        f"/api/projects/{project_id}/jobs", json={"script": "train.py"}
+    ).json()
+    assert plain["config_text"] is None
+    wait_for(client, plain["id"], "status", "finished")
