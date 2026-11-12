@@ -339,7 +339,12 @@ function RunsPage({ projectId }: { projectId: string }) {
                   projectId={projectId}
                   checked={selected.includes(run.id)}
                   disabled={!selected.includes(run.id) && full}
-                  isBest={run.id === bestRun?.id}
+                  isBest={
+                    bestRun?.best != null &&
+                    run.name === bestRun.name &&
+                    run.best?.monitor === bestRun.best.monitor &&
+                    run.best.value === bestRun.best.value
+                  }
                   onToggle={() => toggle(run.id)}
                 />
               ))}

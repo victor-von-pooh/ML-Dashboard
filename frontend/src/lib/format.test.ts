@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatBytes, formatDuration, formatMetric, formatRelative } from './format'
+import { formatBytes, formatDuration, formatLogTime, formatMetric, formatRelative } from './format'
 
 describe('formatDuration', () => {
   it('秒, 分, 時間で表す', () => {
@@ -37,5 +37,13 @@ describe('formatRelative', () => {
     expect(formatRelative('2026-11-12T11:59:30', now)).toBe('たった今')
     expect(formatRelative('2026-11-12T11:30:00', now)).toBe('30 分前')
     expect(formatRelative('2026-11-10T12:00:00', now)).toBe('2 日前')
+  })
+})
+
+describe('formatLogTime', () => {
+  it('最初の記録と同じ日付なら時刻だけ, 違えば月日も付ける', () => {
+    expect(formatLogTime('2026-11-12 23:59:58,123', '2026-11-12')).toBe('23:59:58')
+    expect(formatLogTime('2026-11-13 00:00:01,000', '2026-11-12')).toBe('11-13 00:00:01')
+    expect(formatLogTime(null, '2026-11-12')).toBe('')
   })
 })

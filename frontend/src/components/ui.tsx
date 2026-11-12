@@ -8,7 +8,13 @@ import {
   XCircle,
   type LucideIcon,
 } from 'lucide-react'
-import { useRef, type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode } from 'react'
+import {
+  useEffect,
+  useRef,
+  type ButtonHTMLAttributes,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react'
 
 import type { RunStatus } from '../api/client'
 
@@ -208,6 +214,11 @@ export function Tabs<T extends string>({
 }) {
   const refs = useRef<Record<string, HTMLButtonElement | null>>({})
 
+  // 狭い画面でも選んだタブが見えるように, 選び直したら横に送る
+  useEffect(() => {
+    refs.current[value]?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [value])
+
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const index = items.findIndex((item) => item.id === value)
     const targets: Record<string, number> = {
@@ -226,41 +237,48 @@ export function Tabs<T extends string>({
     }
   }
 
+  // 狭い画面で右に続きがあることが分かるように, 右端を薄くぼかす
   return (
-    <div
-      role="tablist"
-      aria-label={label}
-      onKeyDown={onKeyDown}
-      className="flex gap-1 overflow-x-auto border-b border-line"
-    >
-      {items.map((item) => (
-        <button
-          key={item.id}
-          ref={(element) => {
-            refs.current[item.id] = element
-          }}
-          id={`${idBase}-tab-${item.id}`}
-          type="button"
-          role="tab"
-          aria-selected={item.id === value}
-          aria-controls={`${idBase}-panel`}
-          tabIndex={item.id === value ? 0 : -1}
-          onClick={() => onChange(item.id)}
-          className={clsx(
-            '-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors',
-            item.id === value
-              ? 'border-accent text-ink'
-              : 'border-transparent text-ink-3 hover:text-ink-2',
-          )}
-        >
-          {item.label}
-          {item.count !== undefined && (
-            <span className="tabular rounded-full bg-surface-2 px-1.5 text-xs text-ink-2">
-              {item.count}
-            </span>
-          )}
-        </button>
-      ))}
+    <div className="relative">
+      <div
+        role="tablist"
+        aria-label={label}
+        onKeyDown={onKeyDown}
+        className="flex gap-1 overflow-x-auto border-b border-line pr-6 md:pr-0"
+      >
+        {items.map((item) => (
+          <button
+            key={item.id}
+            ref={(element) => {
+              refs.current[item.id] = element
+            }}
+            id={`${idBase}-tab-${item.id}`}
+            type="button"
+            role="tab"
+            aria-selected={item.id === value}
+            aria-controls={`${idBase}-panel`}
+            tabIndex={item.id === value ? 0 : -1}
+            onClick={() => onChange(item.id)}
+            className={clsx(
+              '-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors',
+              item.id === value
+                ? 'border-accent text-ink'
+                : 'border-transparent text-ink-3 hover:text-ink-2',
+            )}
+          >
+            {item.label}
+            {item.count !== undefined && (
+              <span className="tabular rounded-full bg-surface-2 px-1.5 text-xs text-ink-2">
+                {item.count}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+      <div
+        aria-hidden
+        className="pointer-events-none absolute top-0 right-0 bottom-px w-8 bg-gradient-to-l from-bg md:hidden"
+      />
     </div>
   )
 }
