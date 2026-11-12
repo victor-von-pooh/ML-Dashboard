@@ -9,6 +9,7 @@ import { groupImageSeries } from '../../lib/images'
 import type { RunFile } from '../../api/client'
 import { ImageTimeline } from './ImageTimeline'
 import { MetricCharts } from './MetricCharts'
+import { NotePanel } from './NotePanel'
 import { ConfigTab, EnvTab, FilesTab, LogTab, ModelTab } from './RunTabs'
 
 // 同じファイルの一覧からは同じ並びを返し, 描画のたびに作り直さないようにする
@@ -144,6 +145,10 @@ export function RunDetailPage() {
           value={formatMetric(monitor ? data.final_metrics[monitor] : undefined)}
           hint={others.map(([key, value]) => `${key} ${formatMetric(value)}`).join(' · ')}
         />
+      </div>
+
+      <div className="mb-6">
+        <NotePanel key={data.id} projectId={projectId} runId={data.id} />
       </div>
 
       <Tabs<TabId>

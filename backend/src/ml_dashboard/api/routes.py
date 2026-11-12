@@ -318,6 +318,9 @@ def delete_project(request: Request, project_id: str) -> None:
     if not get_store(request).remove(project_id):
         raise HTTPException(404, f"プロジェクトが見つかりません: {project_id}")
 
+    # 同じ ID を後から別のプロジェクトが使っても引き継がないようにメモも削除
+    request.app.state.notes.remove(project_id)
+
 
 @router.get("/projects/{project_id}/runs", responses=NOT_FOUND)
 def list_runs(request: Request, project_id: str) -> list[RunSummary]:

@@ -299,3 +299,77 @@ def test_flatten_params_edge_cases() -> None:
     assert flatten_params({"x": float("nan"), "y": b"raw"}) == {
         "x": None, "y": "\"b'raw'\""
     }
+
+
+def test_notes(client: TestClient, project_dir: Path) -> None:
+    """
+    実験のメモ, タグ, 星の保存と削除を確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    project_id = register(client, project_dir)
+    url = f"/api/projects/{project_id}/runs/demo/2026-11-08/10-00-00/note"
+
+    # タグの空白と重複は整えて保存し, 実験のディレクトリには書かない
+    saved = client.put(url, json={
+        "note": "lr を下げた", "tags": [" base ", "base", "", "a  b"],
+        "starred": True
+    })
+    assert saved.status_code == 200
+    assert saved.json()["tags"] == ["base", "a b"]
+    notes = client.get(f"/api/projects/{project_id}/notes").json()
+    assert notes["demo/2026-11-08/10-00-00"]["note"] == "lr を下げた"
+    run_dir = project_dir / "outputs" / "demo" / "2026-11-08" / "10-00-00"
+    assert not any("note" in path.name for path in run_dir.iterdir())
+
+    # 空にすると削除, 存在しない実験と長すぎるタグは拒否
+    client.put(url, json={"note": "", "tags": [], "starred": False})
+    assert client.get(f"/api/projects/{project_id}/notes").json() == {}
+    missing = client.put(
+        f"/api/projects/{project_id}/runs/demo/2026-11-08/09-00-00/note",
+        json={"note": "x"}
+    )
+    assert missing.status_code == 404
+    long_tag = client.put(url, json={"tags": ["x" * 41]})
+    assert long_tag.status_code == 422
+
+
+def test_notes_corrupt_file_and_remove(
+    client: TestClient, project_dir: Path, tmp_path: Path
+) -> None:
+    """
+    壊れたメモのファイルを退避し, 登録を外すとメモも消えることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    project_id = register(client, project_dir)
+    notes_dir = tmp_path / "home" / "notes"
+    notes_dir.mkdir(parents=True)
+    (notes_dir / f"{project_id}.json").write_text("{broken")
+
+    url = f"/api/projects/{project_id}/runs/demo/2026-11-08/10-00-00/note"
+    assert client.put(url, json={"note": "x"}).status_code == 200
+    assert (notes_dir / f"{project_id}.corrupt").read_text() == "{broken"
+
+    client.delete(f"/api/projects/{project_id}")
+    assert not (notes_dir / f"{project_id}.json").exists()

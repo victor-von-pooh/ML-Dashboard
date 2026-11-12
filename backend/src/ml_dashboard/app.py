@@ -12,8 +12,10 @@ from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
 
 from ml_dashboard.api.jobs import router as jobs_router
+from ml_dashboard.api.notes import router as notes_router
 from ml_dashboard.api.routes import router
 from ml_dashboard.core.jobs import JobManager
+from ml_dashboard.core.notes import NoteStore
 from ml_dashboard.core.projects import ProjectError, ProjectStore
 from ml_dashboard.core.settings import get_data_dir
 
@@ -287,6 +289,7 @@ def create_app(
     home = data_dir or get_data_dir()
     app.state.store = ProjectStore(home)
     app.state.jobs = JobManager(home)
+    app.state.notes = NoteStore(home)
 
     # トークンの無い呼び出し, 他のサイトからの書き込み,
     # 他のホスト名での接続 (DNS rebinding) の拒否
@@ -333,6 +336,7 @@ def create_app(
     # API と画面の登録
     app.include_router(router)
     app.include_router(jobs_router)
+    app.include_router(notes_router)
     mount_frontend(app, STATIC_DIR)
 
     return app

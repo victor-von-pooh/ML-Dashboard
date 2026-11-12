@@ -12,8 +12,8 @@ import {
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 
-import { encodeRunId, type RunStatus, type RunSummary } from '../../api/client'
-import { useProject, useRuns } from '../../api/hooks'
+import { encodeRunId, type RunNote, type RunStatus, type RunSummary } from '../../api/client'
+import { useNotes, useProject, useRuns, useSaveNote } from '../../api/hooks'
 import {
   Button,
   EmptyState,
@@ -25,6 +25,7 @@ import {
 } from '../../components/ui'
 import { formatDateTime, formatDuration, formatMetric, formatRelative } from '../../lib/format'
 import { MAX_COMPARE, summarizeDiff } from '../../lib/metrics'
+import { StarButton } from '../run/NotePanel'
 
 type SortKey = 'started' | 'best' | 'duration' | 'epochs'
 
@@ -114,6 +115,10 @@ export function ProjectRunsPage() {
 function RunsPage({ projectId }: { projectId: string }) {
   const project = useProject(projectId)
   const runs = useRuns(projectId)
+  const notes = useNotes(projectId)
+  const saveNote = useSaveNote(projectId)
+  const [starredOnly, setStarredOnly] = useState(false)
+  const [tag, setTag] = useState<string | null>(null)
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const [query, setQuery] = useState('')
@@ -147,13 +152,46 @@ function RunsPage({ projectId }: { projectId: string }) {
     const words = query.toLowerCase().split(/\s+/).filter(Boolean)
     const filtered = all.filter((run) => {
       if (status !== 'all' && run.status !== status) return false
-      const text = [run.id, ...summarizeDiff(run.diff)].join(' ').toLowerCase()
+      const note = notes.data?.[run.id]
+      if (starredOnly && !note?.starred) return false
+      if (tag && !note?.tags.includes(tag)) return false
+      // メモとタグの文字でも絞り込めるように対象に追加
+      const text = [run.id, ...summarizeDiff(run.diff), note?.note ?? '', ...(note?.tags ?? [])]
+        .join(' ')
+        .toLowerCase()
       return words.every((word) => text.includes(word))
     })
     return [...filtered].sort((a, b) =>
       compareValues(sortValue(a, sort.key), sortValue(b, sort.key), sort.desc),
     )
-  }, [all, query, status, sort])
+  }, [all, query, status, sort, notes.data, starredOnly, tag])
+
+  // 今ある実験に書かれたタグの一覧と星の数 (消えた実験のメモは数えない)
+  const { allTags, starredCount } = useMemo(() => {
+    const present = all.flatMap((run) => {
+      const note = notes.data?.[run.id]
+      return note ? [note] : []
+    })
+    // タグは使った実験の数が多い順 (同じなら数字を数として並べる)
+    const tagCounts = new Map<string, number>()
+    for (const note of present) {
+      for (const item of note.tags) tagCounts.set(item, (tagCounts.get(item) ?? 0) + 1)
+    }
+    return {
+      allTags: [...tagCounts.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ja', { numeric: true }))
+        .map(([item, count]) => ({ tag: item, count })),
+      starredCount: present.filter((note) => note.starred).length,
+    }
+  }, [all, notes.data])
+  // 絞り込み中のタグは, そのタグが無くなっても外せるように一覧に残す
+  const [showAllTags, setShowAllTags] = useState(false)
+  const TAG_LIMIT = 12
+  const tagChips =
+    tag && !allTags.some((item) => item.tag === tag) ? [...allTags, { tag, count: 0 }] : allTags
+  const shownTags = showAllTags
+    ? tagChips
+    : tagChips.filter((item, index) => index < TAG_LIMIT || item.tag === tag)
 
   const counts = useMemo(() => {
     const result: Record<string, number> = { all: all.length }
@@ -173,6 +211,9 @@ function RunsPage({ projectId }: { projectId: string }) {
       </>
     )
   }
+
+  const visibleIds = new Set(visible.map((run) => run.id))
+  const hiddenSelected = selected.filter((id) => !visibleIds.has(id)).length
 
   const totalTime = all.reduce((sum, run) => sum + (run.duration_sec ?? 0), 0)
   const full = selected.length >= MAX_COMPARE
@@ -282,6 +323,63 @@ function RunsPage({ projectId }: { projectId: string }) {
           ))}
         </div>
       </div>
+      {(tagChips.length > 0 || starredCount > 0 || starredOnly) && (
+        <div
+          className="mb-3 flex flex-wrap items-center gap-1"
+          role="group"
+          aria-label="星とタグで絞り込む"
+        >
+          {(starredCount > 0 || starredOnly) && (
+            <button
+              type="button"
+              onClick={() => setStarredOnly((value) => !value)}
+              aria-pressed={starredOnly}
+              className={clsx(
+                'rounded-full border px-3 py-1 text-xs font-medium',
+                starredOnly
+                  ? 'border-accent bg-accent-soft text-accent-text'
+                  : 'border-line text-ink-2 hover:bg-surface-2',
+              )}
+            >
+              <span aria-hidden>★ </span>星付き <span className="tabular">{starredCount}</span>
+            </button>
+          )}
+          {shownTags.map(({ tag: item, count }) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setTag((current) => (current === item ? null : item))}
+              aria-pressed={tag === item}
+              className={clsx(
+                'rounded-full border px-3 py-1 text-xs',
+                tag === item
+                  ? 'border-accent bg-accent-soft text-accent-text'
+                  : 'border-line text-ink-2 hover:bg-surface-2',
+              )}
+            >
+              <span aria-hidden># </span>
+              <span className="inline-block max-w-40 truncate align-bottom" title={item}>
+                {item}
+              </span>{' '}
+              <span className="tabular text-ink-3">{count}</span>
+            </button>
+          ))}
+          {tagChips.length > TAG_LIMIT && (
+            <button
+              type="button"
+              onClick={() => setShowAllTags((value) => !value)}
+              className="px-2 py-1 text-xs text-accent-text hover:underline"
+            >
+              {showAllTags ? 'たたむ' : `他 ${tagChips.length - shownTags.length} 個`}
+            </button>
+          )}
+        </div>
+      )}
+      {hiddenSelected > 0 && (
+        <p className="mb-2 text-xs text-ink-3">
+          比較に選んだ実験のうち {hiddenSelected} 件は絞り込みで隠れています.
+        </p>
+      )}
       {full && (
         <p className="mb-2 text-xs text-ink-3">
           比較できるのは {MAX_COMPARE} つまでです. 他を選ぶには選択を外してください.
@@ -304,6 +402,9 @@ function RunsPage({ projectId }: { projectId: string }) {
               <tr>
                 <th className="w-10 px-3 py-2">
                   <span className="sr-only">比較に選ぶ</span>
+                </th>
+                <th className="w-8 py-2">
+                  <span className="sr-only">星</span>
                 </th>
                 <th className="px-3 py-2 font-medium">状態</th>
                 <SortHeader label="実験" id="started" sort={sort} onSort={onSort} />
@@ -336,6 +437,8 @@ function RunsPage({ projectId }: { projectId: string }) {
                 <RunRow
                   key={run.id}
                   run={run}
+                  note={notes.data?.[run.id]}
+                  onSaveNote={(note) => saveNote.mutate({ runId: run.id, note })}
                   projectId={projectId}
                   checked={selected.includes(run.id)}
                   disabled={!selected.includes(run.id) && full}
@@ -361,6 +464,8 @@ function RunsPage({ projectId }: { projectId: string }) {
 
 function RunRow({
   run,
+  note,
+  onSaveNote,
   projectId,
   checked,
   disabled,
@@ -368,6 +473,8 @@ function RunRow({
   onToggle,
 }: {
   run: RunSummary
+  note: RunNote | undefined
+  onSaveNote: (note: RunNote) => void
   projectId: string
   checked: boolean
   disabled: boolean
@@ -393,6 +500,19 @@ function RunRow({
           className="size-4 accent-[var(--accent)]"
         />
       </td>
+      <td className="py-2.5">
+        <StarButton
+          starred={note?.starred ?? false}
+          onToggle={() =>
+            onSaveNote({
+              note: note?.note ?? '',
+              tags: note?.tags ?? [],
+              starred: !(note?.starred ?? false),
+            })
+          }
+          label={`${run.id} に星を付ける`}
+        />
+      </td>
       <td className="px-3 py-2.5">
         <StatusBadge status={run.status} />
       </td>
@@ -404,6 +524,29 @@ function RunRow({
           {run.name}
         </Link>
         <div className="tabular text-xs text-ink-3">{formatDateTime(run.started_at)}</div>
+        {note && (note.tags.length > 0 || note.note) && (
+          <div className="mt-0.5 flex max-w-72 flex-wrap items-center gap-1">
+            {note.tags.slice(0, 3).map((item) => (
+              <span
+                key={item}
+                className="rounded-full bg-accent-soft px-1.5 text-[11px] text-accent-text"
+              >
+                <span aria-hidden># </span>
+                {item}
+              </span>
+            ))}
+            {note.tags.length > 3 && (
+              <span className="text-[11px] text-ink-3" title={note.tags.slice(3).join(', ')}>
+                +{note.tags.length - 3}
+              </span>
+            )}
+            {note.note && (
+              <span className="truncate text-[11px] text-ink-3" title={note.note}>
+                {note.note}
+              </span>
+            )}
+          </div>
+        )}
         {run.error && (
           <div className="max-w-72 truncate text-xs text-critical-text" title={run.error}>
             {run.error}

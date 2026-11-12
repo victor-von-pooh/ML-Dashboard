@@ -577,6 +577,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Notes
+         * @description プロジェクトの実験のメモ, タグ, 星を返す関数
+         *
+         *     Parameters
+         *     ----------
+         *     request: Request
+         *         リクエスト
+         *     project_id: str
+         *         プロジェクトの ID
+         *
+         *     Returns
+         *     ----------
+         *     notes: dict[str, RunNote]
+         *         実験の ID ごとのメモ (書いた実験だけ)
+         */
+        get: operations["list_notes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/runs/{name}/{date}/{time}/note": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Note
+         * @description 実験のメモ, タグ, 星を保存する関数
+         *
+         *     Parameters
+         *     ----------
+         *     request: Request
+         *         リクエスト
+         *     project_id: str
+         *         プロジェクトの ID
+         *     name: str
+         *         実験の名前
+         *     date: str
+         *         日付のディレクトリ名
+         *     time: str
+         *         時刻のディレクトリ名
+         *     body: RunNote
+         *         保存するメモ, 空にすると削除
+         *
+         *     Returns
+         *     ----------
+         *     note: RunNote
+         *         保存したメモ
+         */
+        put: operations["save_note"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -839,6 +911,21 @@ export interface components {
              * @enum {string}
              */
             kind: "image" | "checkpoint" | "text" | "other";
+        };
+        /** RunNote */
+        RunNote: {
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Tags */
+            tags?: string[];
+            /**
+             * Starred
+             * @default false
+             */
+            starred: boolean;
         };
         /** RunParams */
         RunParams: {
@@ -1604,6 +1691,91 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobOutput"];
+                };
+            };
+            /** @description プロジェクトか実験が見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_notes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: components["schemas"]["RunNote"];
+                    };
+                };
+            };
+            /** @description プロジェクトか実験が見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_note: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                name: string;
+                date: string;
+                time: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunNote"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunNote"];
                 };
             };
             /** @description プロジェクトか実験が見つからない */

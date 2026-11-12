@@ -1,6 +1,6 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { api, type JobInfo } from './client'
+import { api, type JobInfo, type RunNote } from './client'
 
 export const keys = {
   projects: ['projects'] as const,
@@ -11,6 +11,7 @@ export const keys = {
   log: (projectId: string, runId: string) => ['projects', projectId, 'log', runId] as const,
   config: (projectId: string, path: string) => ['projects', projectId, 'config', path] as const,
   params: (projectId: string) => ['projects', projectId, 'params'] as const,
+  notes: (projectId: string) => ['projects', projectId, 'notes'] as const,
   jobs: ['jobs'] as const,
   job: (jobId: string) => ['jobs', jobId] as const,
   jobOutput: (jobId: string) => ['jobs', jobId, 'output'] as const,
@@ -171,4 +172,39 @@ export function useStopJob() {
 
 export function useRunParams(projectId: string) {
   return useQuery({ queryKey: keys.params(projectId), queryFn: () => api.listParams(projectId) })
+}
+
+export function useNotes(projectId: string) {
+  return useQuery({ queryKey: keys.notes(projectId), queryFn: () => api.listNotes(projectId) })
+}
+
+/** 実験のメモを保存する. 一覧の表示はすぐに変え, 失敗したら元に戻す */
+export function useSaveNote(projectId: string) {
+  const client = useQueryClient()
+  const key = keys.notes(projectId)
+  return useMutation({
+    // 保存は全体の置き換えなので, 古い保存が後に届かないように 1 つずつ実行
+    scope: { id: `notes-${projectId}` },
+    mutationKey: ['save-note', projectId],
+    mutationFn: ({ runId, note }: { runId: string; note: RunNote }) =>
+      api.saveNote(projectId, runId, note),
+    onMutate: async ({ runId, note }) => {
+      await client.cancelQueries({ queryKey: key })
+      const previous = client.getQueryData<Record<string, RunNote>>(key)
+      client.setQueryData<Record<string, RunNote>>(key, (current) => ({
+        ...current,
+        [runId]: note,
+      }))
+      return { previous }
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) client.setQueryData(key, context.previous)
+    },
+    // 続けて保存している間は読み直さず, 最後の保存の後にだけ読み直す
+    onSettled: () => {
+      if (client.isMutating({ mutationKey: ['save-note', projectId] }) <= 1) {
+        void client.invalidateQueries({ queryKey: key })
+      }
+    },
+  })
 }

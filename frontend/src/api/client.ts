@@ -14,6 +14,8 @@ export type HistoryRow = History['rows'][number]
 export type LogEntry = Schemas['LogEntry']
 export type RunFile = Schemas['RunFile']
 export type Progress = Schemas['Progress']
+// 既定値のある項目もサーバーは必ず返すので, 全て必須として扱う
+export type RunNote = Required<Schemas['RunNote']>
 export type RunParams = Schemas['RunParams']
 type ProjectCreate = Schemas['ProjectCreate']
 export type JobInfo = Schemas['JobInfo']
@@ -37,7 +39,17 @@ async function readError(response: Response): Promise<string> {
     const body: unknown = await response.json()
     if (body && typeof body === 'object' && 'detail' in body) {
       const detail = (body as { detail: unknown }).detail
-      return typeof detail === 'string' ? detail : JSON.stringify(detail)
+      if (typeof detail === 'string') return detail
+      // 入力の検証のエラー (422) は, 項目と理由だけを読める形にする
+      if (Array.isArray(detail)) {
+        return detail
+          .map((item: { loc?: unknown[]; msg?: string }) => {
+            const field = (item.loc ?? []).filter((part) => part !== 'body').join('.')
+            return field ? `${field}: ${item.msg ?? ''}` : (item.msg ?? '')
+          })
+          .join(' / ')
+      }
+      return JSON.stringify(detail)
     }
   } catch {
     // JSON でない場合は状態の文を使う
@@ -114,6 +126,13 @@ export const api = {
     }),
   listParams: (projectId: string) =>
     request<RunParams[]>(`/api/projects/${encodeURIComponent(projectId)}/params`),
+  listNotes: (projectId: string) =>
+    request<Record<string, RunNote>>(`/api/projects/${encodeURIComponent(projectId)}/notes`),
+  saveNote: (projectId: string, runId: string, note: RunNote) =>
+    request<RunNote>(
+      `/api/projects/${encodeURIComponent(projectId)}/runs/${encodeRunId(runId)}/note`,
+      { method: 'PUT', body: JSON.stringify(note) },
+    ),
   listJobs: () => request<JobInfo[]>('/api/jobs'),
   getJob: (jobId: string) => request<JobInfo>(`/api/jobs/${encodeURIComponent(jobId)}`),
   stopJob: (jobId: string, force: boolean) =>
