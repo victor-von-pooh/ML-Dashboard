@@ -234,6 +234,12 @@ def test_rejected_launch_leaves_nothing(
     assert listed.status_code == 400
     assert "項目: 値" in listed.json()["detail"]
     assert "/tmp" not in listed.json()["detail"]
+    moved = client.post(url, json={
+        "script": "train.py",
+        "config_text": "experiment:\n  output_dir: elsewhere\n"
+    })
+    assert moved.status_code == 400
+    assert "output_dir" in moved.json()["detail"]
     both = client.post(url, json={
         "script": "train.py", "config_text": "{}\n",
         "config_path": "configs/experiment/train.yaml"

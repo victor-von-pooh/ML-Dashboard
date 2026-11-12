@@ -415,6 +415,11 @@ def test_token_required(tmp_path: Path) -> None:
     wrong = client.get("/api/projects", headers={"x-dashboard-token": "x"})
     assert wrong.status_code == 401
     assert client.get("/api/auth?token=x").status_code == 401
+    assert client.get("/api/auth?token=%C3%A9").status_code == 401
+    non_ascii = client.get(
+        "/api/projects", headers={"x-dashboard-token": b"r\xe9"}
+    )
+    assert non_ascii.status_code == 401
 
     # ヘッダーのトークンか, URL で受け取って保存した Cookie で利用可能
     header = client.get(

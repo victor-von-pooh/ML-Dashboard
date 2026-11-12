@@ -49,7 +49,7 @@ make serve   # 画面をビルドして http://127.0.0.1:8765 で起動
 ## 開発
 
 ```bash
-make dev-backend    # API (http://127.0.0.1:8765, 変更を自動で反映). 表示されたトークンで http://localhost:5173/api/auth?token=... を開く
+make dev-backend    # API (http://127.0.0.1:8765, 変更を自動で反映). 表示された http://localhost:5173/api/auth?token=... を開く
 make dev-frontend   # 画面 (http://localhost:5173, API に転送. ポートを変えた場合は両方に PORT=... を付ける)
 make check          # lint, 型検査, テスト
 make api            # バックエンドの API を変えたら, 画面の型を作り直す

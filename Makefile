@@ -3,6 +3,9 @@
 # 待ち受けるポート (make serve PORT=8800 のように変更)
 PORT ?= 8765
 
+# 開発用のサーバーは変更のたびに作り直されるので, make を実行した間は同じトークンを使用
+DEV_TOKEN ?= $(shell python3 -c 'import secrets; print(secrets.token_urlsafe(16))')
+
 .PHONY: setup dev-backend dev-frontend build serve api check
 
 # 依存のインストール
@@ -13,7 +16,8 @@ setup:
 
 # 開発用のサーバー (2 つの端末で起動)
 dev-backend:
-	cd backend && uv run uvicorn ml_dashboard.app:create_app --factory --reload --port $(PORT)
+	@echo "画面を開く: http://localhost:5173/api/auth?token=$(DEV_TOKEN)"
+	cd backend && ML_DASHBOARD_TOKEN=$(DEV_TOKEN) uv run uvicorn ml_dashboard.app:create_app --factory --reload --port $(PORT)
 
 dev-frontend:
 	cd frontend && API_PORT=$(PORT) pnpm dev

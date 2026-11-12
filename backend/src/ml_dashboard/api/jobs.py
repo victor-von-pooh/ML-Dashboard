@@ -15,7 +15,6 @@ from ml_dashboard.core.projects import (
     EXPERIMENT_DIR,
     Project,
     ProjectError,
-    get_output_dirs,
     list_experiment_configs,
     list_scripts,
 )
@@ -170,7 +169,7 @@ def check_config(
     """
     # ML-Found の読み込みは PyTorch も読むので, 使うときだけ読み込み
     # ダッシュボードの submodule の ML-Found で確かめるので, プロジェクトの
-    # ML-Found の版が違う場合は, 学習を始めてからエラーになることもある
+    # ML-Found の版が違う場合は, 学習を始めてからのエラーの可能性あり
     from ml_found.config import load_config
     from ml_found.experiment.setup import (
         check_name,
@@ -249,6 +248,18 @@ def validate_text(project: Project, text: str) -> dict[str, dict[str, object]]:
             "書いてください"
         )
 
+    # 出力先を変えた実験は実験の一覧に出せないので, 画面からの起動では変更不可
+    experiment = loaded.get("experiment") if isinstance(
+        loaded, (dict, DictConfig)
+    ) else None
+    if isinstance(experiment, (dict, DictConfig)) and (
+        "output_dir" in experiment
+    ):
+        raise ValueError(
+            "画面から起動する学習では experiment.output_dir を変えられません "
+            "(プロジェクトの実験の一覧に表示できないため)"
+        )
+
     # 一時ファイルの場所はエラーの文から除去
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "experiment.yaml"
@@ -262,12 +273,16 @@ def validate_text(project: Project, text: str) -> dict[str, dict[str, object]]:
     return diff
 
 
-def to_job_info(job: Job, project: Optional[Project]) -> JobInfo:
+def to_job_info(
+    jobs: JobManager, job: Job, project: Optional[Project]
+) -> JobInfo:
     """
     ジョブに実験の概要と進み具合を加える関数
 
     Parameters
     ----------
+    jobs: JobManager
+        ジョブの管理
     job: Job
         ジョブ
     project: Optional[Project]
@@ -282,7 +297,7 @@ def to_job_info(job: Job, project: Optional[Project]) -> JobInfo:
     progress = None
     if project is not None and job.run_id is not None:
         try:
-            output_dirs = get_output_dirs(Path(project.path))
+            output_dirs = jobs.output_dirs(job, project)
             run_dir = resolve_run_dir(output_dirs, job.run_id)
             run = summarize_run(run_dir.parent.parent.parent, run_dir)
             if job.status == "running":
@@ -403,7 +418,7 @@ def create_job(
         )
 
     # 起動する前に ML-Found で config の誤りを確認
-    # ジョブのディレクトリは確認が通ってから作り, 失敗した起動を残さない
+    # ジョブのディレクトリは確認が通ってから作り, 失敗した起動は残さない設定
     config_path = None
     try:
         if body.config_text is not None:
@@ -434,7 +449,7 @@ def create_job(
         raise HTTPException(
             400, f"学習を起動できませんでした: {error}"
         ) from error
-    info = to_job_info(job, project)
+    info = to_job_info(get_jobs(request), job, project)
 
     return info
 
@@ -477,7 +492,7 @@ def list_jobs(request: Request) -> list[JobInfo]:
     """
     projects = project_map(request)
     jobs = [
-        to_job_info(job, projects.get(job.project_id))
+        to_job_info(get_jobs(request), job, projects.get(job.project_id))
         for job in get_jobs(request).list_jobs(projects)
     ]
 
@@ -529,7 +544,7 @@ def get_job(request: Request, job_id: str) -> JobInfo:
         ジョブの情報
     """
     job, project = load_job(request, job_id)
-    info = to_job_info(job, project)
+    info = to_job_info(get_jobs(request), job, project)
 
     return info
 
@@ -557,7 +572,7 @@ def stop_job(request: Request, job_id: str, body: StopRequest) -> JobInfo:
     job = get_jobs(request).stop(job_id, projects, body.force)
     if job is None:
         raise HTTPException(404, f"ジョブが見つかりません: {job_id}")
-    info = to_job_info(job, projects.get(job.project_id))
+    info = to_job_info(get_jobs(request), job, projects.get(job.project_id))
 
     return info
 

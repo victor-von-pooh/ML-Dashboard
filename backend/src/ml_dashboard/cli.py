@@ -61,10 +61,12 @@ def main() -> None:
         )
 
     # 起動ごとのトークン付きの URL の表示
+    # 全てのアドレスで待ち受ける場合も, 手元のブラウザで開ける URL を表示
     app = create_app(token=get_token(None))
+    shown = "127.0.0.1" if args.host in ("0.0.0.0", "::") else args.host
     print(
         "ML-Dashboard を開く: "
-        f"http://{args.host}:{args.port}/api/auth?token={app.state.token}",
+        f"http://{shown}:{args.port}/api/auth?token={app.state.token}",
         flush=True
     )
     uvicorn.run(app, host=args.host, port=args.port)

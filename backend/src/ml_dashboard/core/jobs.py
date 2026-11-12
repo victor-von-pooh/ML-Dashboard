@@ -495,11 +495,10 @@ class JobManager:
 
             # 実験が無い場合と強制の場合は, このサーバーが起動したものに限り
             # シグナルを送信 (起動し直した後の pid は別のプロセスの可能性)
-            process = self.processes.get(job.id)
-            if (run_dir is None or force) and process is not None:
+            if (run_dir is None or force) and self.owns(job, run_dir):
                 number = min(job.force_count, len(FORCE_SIGNALS) - 1)
                 try:
-                    os.killpg(process.pid, FORCE_SIGNALS[number])
+                    os.killpg(job.pid or 0, FORCE_SIGNALS[number])
                 except ProcessLookupError:
                     pass
                 if force:
@@ -510,6 +509,38 @@ class JobManager:
             self.save(job)
 
         return job
+
+    def owns(self, job: Job, run_dir: Optional[Path]) -> bool:
+        """
+        ジョブのプロセスにシグナルを送ってよいかを確かめる関数
+
+        Parameters
+        ----------
+        job: Job
+            ジョブ
+        run_dir: Optional[Path]
+            ジョブの実験のディレクトリ
+
+        Returns
+        ----------
+        owned: bool
+            このサーバーが起動したプロセスか, 起動し直した後でも実験の
+            run.json の pid とホスト名がジョブと同じで, 実行中かどうか
+        """
+        if job.id in self.processes:
+            return True
+        if run_dir is None or job.pid is None:
+            return False
+
+        status = read_json(run_dir / "run.json")
+        owned = (
+            status.get("status") == "running"
+            and status.get("pid") == job.pid
+            and status.get("hostname") == socket.gethostname()
+            and pid_alive(job.pid)
+        )
+
+        return owned
 
     def output_tail(self, job: Job) -> str:
         """
@@ -537,7 +568,9 @@ class JobManager:
 
         # 進捗バーが \r で同じ行を書き直した分と, 端末の制御文字の除去
         raw = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", raw)
-        lines = [line.rsplit("\r", 1)[-1] for line in raw.split("\n")]
+        lines = [
+            line.rstrip("\r").rsplit("\r", 1)[-1] for line in raw.split("\n")
+        ]
         text = "\n".join(lines)
 
         return text

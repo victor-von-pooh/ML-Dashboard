@@ -94,7 +94,7 @@ export function JobCard({ job, detail = false }: { job: JobInfo; detail?: boolea
             )}
           </div>
           <p className="mt-1 truncate font-mono text-xs text-ink-3" title={job.config}>
-            {job.config.includes('/jobs/')
+            {job.config_text != null
               ? '画面で書き換えた config'
               : job.config.split('/').slice(-3).join('/')}
           </p>

@@ -125,10 +125,11 @@ def make_auth_check(
         # 学習を起動できるので, 同じ端末の他の利用者からも使えないように確認
         path = request.url.path
         if path.startswith("/api") and path != AUTH_PATH:
-            given = request.cookies.get(TOKEN_COOKIE) or request.headers.get(
-                "x-dashboard-token", ""
-            )
-            if not secrets.compare_digest(given, token):
+            given = [
+                request.cookies.get(TOKEN_COOKIE, ""),
+                request.headers.get("x-dashboard-token", "")
+            ]
+            if not any(same_token(value, token) for value in given):
                 response: Response = JSONResponse(
                     {
                         "detail": "起動したときに表示された URL "
@@ -143,6 +144,27 @@ def make_auth_check(
         return response
 
     return check
+
+
+def same_token(given: str, token: str) -> bool:
+    """
+    トークンが一致するかを, 時間で推測されないように比べる関数
+
+    Parameters
+    ----------
+    given: str
+        送られたトークン
+    token: str
+        起動ごとのトークン
+
+    Returns
+    ----------
+    same: bool
+        一致するかどうか (ASCII 以外の文字も比較可能)
+    """
+    same = secrets.compare_digest(given.encode(), token.encode())
+
+    return same
 
 
 def get_token(token: Optional[str]) -> str:
@@ -294,7 +316,7 @@ def create_app(
         response: Response
             画面への移動, トークンが違う場合は 401
         """
-        if not secrets.compare_digest(token, app.state.token):
+        if not same_token(token, app.state.token):
             response: Response = JSONResponse(
                 {"detail": "トークンが違います"}, status_code=401
             )
