@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# ビルド済みの画面 (frontend の pnpm build で作る)
+backend/src/ml_dashboard/static/
+
+# OS とエディタ
+.DS_Store
+.idea/
+.vscode/

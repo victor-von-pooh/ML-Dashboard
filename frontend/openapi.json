@@ -1,0 +1,1155 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ML-Dashboard",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/projects": {
+      "get": {
+        "summary": "List Projects",
+        "description": "登録したプロジェクトの一覧を返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\n\nReturns\n----------\nprojects: list[ProjectInfo]\n    プロジェクトの一覧",
+        "operationId": "list_projects_api_projects_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectInfo"
+                  },
+                  "type": "array",
+                  "title": "Response List Projects Api Projects Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Project",
+        "description": "プロジェクトを登録する関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nbody: ProjectCreate\n    プロジェクトのディレクトリ, 名前, Python\n\nReturns\n----------\ninfo: ProjectInfo\n    登録したプロジェクト",
+        "operationId": "create_project_api_projects_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/scan": {
+      "post": {
+        "summary": "Scan Projects",
+        "description": "ディレクトリの下の ML-Found のプロジェクトを探す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nbody: ScanRequest\n    探し始めるディレクトリ\n\nReturns\n----------\ncandidates: list[ProjectCandidate]\n    見つけたプロジェクトと, 登録済みかどうか",
+        "operationId": "scan_projects_api_projects_scan_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectCandidate"
+                  },
+                  "type": "array",
+                  "title": "Response Scan Projects Api Projects Scan Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{project_id}": {
+      "get": {
+        "summary": "Read Project",
+        "description": "プロジェクトの詳細を返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\n\nReturns\n----------\ndetail: ProjectDetail\n    出力先, 学習のスクリプト, experiment の config を加えた情報",
+        "operationId": "read_project_api_projects__project_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Project",
+        "description": "プロジェクトの登録を外す関数, 実験のファイルは消さない\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\n\nReturns\n----------\nNone",
+        "operationId": "delete_project_api_projects__project_id__delete",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{project_id}/runs": {
+      "get": {
+        "summary": "List Runs",
+        "description": "プロジェクトの実験の一覧を返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\n\nReturns\n----------\nruns: list[RunSummary]\n    実験の概要, 新しい順",
+        "operationId": "list_runs_api_projects__project_id__runs_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RunSummary"
+                  },
+                  "title": "Response List Runs Api Projects  Project Id  Runs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{project_id}/runs/{run_id}/history": {
+      "get": {
+        "summary": "Get History",
+        "description": "実験の指標の推移を返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\nrun_id: str\n    実験の ID\n\nReturns\n----------\nhistory: History\n    history.csv の中身",
+        "operationId": "get_history_api_projects__project_id__runs__run_id__history_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/History"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{project_id}/runs/{run_id}/log": {
+      "get": {
+        "summary": "Get Log",
+        "description": "実験のログを返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\nrun_id: str\n    実験の ID\n\nReturns\n----------\nentries: list[LogEntry]\n    train.log の記録",
+        "operationId": "get_log_api_projects__project_id__runs__run_id__log_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LogEntry"
+                  },
+                  "title": "Response Get Log Api Projects  Project Id  Runs  Run Id  Log Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{project_id}/runs/{run_id}/files/{file_path}": {
+      "get": {
+        "summary": "Get File",
+        "description": "実験のディレクトリの中のファイルを返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\nrun_id: str\n    実験の ID\nfile_path: str\n    実験のディレクトリからの相対パス\n\nReturns\n----------\nresponse: FileResponse\n    ファイルの中身",
+        "operationId": "get_file_api_projects__project_id__runs__run_id__files__file_path__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "file_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{project_id}/runs/{run_id}": {
+      "get": {
+        "summary": "Get Run",
+        "description": "実験の詳細を返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\nrun_id: str\n    実験の ID\n\nReturns\n----------\ndetail: RunDetail\n    実験の詳細",
+        "operationId": "get_run_api_projects__project_id__runs__run_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BestValue": {
+        "properties": {
+          "monitor": {
+            "type": "string",
+            "title": "Monitor"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          },
+          "epoch": {
+            "type": "integer",
+            "title": "Epoch"
+          },
+          "value": {
+            "type": "number",
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "monitor",
+          "mode",
+          "epoch",
+          "value"
+        ],
+        "title": "BestValue"
+      },
+      "EnvSection": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "items": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "items"
+        ],
+        "title": "EnvSection"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "History": {
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "columns",
+          "rows"
+        ],
+        "title": "History"
+      },
+      "LogEntry": {
+        "properties": {
+          "time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "time",
+          "level",
+          "message"
+        ],
+        "title": "LogEntry"
+      },
+      "ProjectCandidate": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "registered": {
+            "type": "boolean",
+            "title": "Registered"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "name",
+          "registered"
+        ],
+        "title": "ProjectCandidate"
+      },
+      "ProjectCreate": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "python": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Python"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "ProjectCreate"
+      },
+      "ProjectDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "python": {
+            "type": "string",
+            "title": "Python"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "run_count": {
+            "type": "integer",
+            "title": "Run Count"
+          },
+          "latest_run": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Run"
+          },
+          "output_dir": {
+            "type": "string",
+            "title": "Output Dir"
+          },
+          "scripts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scripts"
+          },
+          "experiment_configs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Experiment Configs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "path",
+          "python",
+          "created_at",
+          "run_count",
+          "latest_run",
+          "output_dir",
+          "scripts",
+          "experiment_configs"
+        ],
+        "title": "ProjectDetail"
+      },
+      "ProjectInfo": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "python": {
+            "type": "string",
+            "title": "Python"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "run_count": {
+            "type": "integer",
+            "title": "Run Count"
+          },
+          "latest_run": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Run"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "path",
+          "python",
+          "created_at",
+          "run_count",
+          "latest_run"
+        ],
+        "title": "ProjectInfo"
+      },
+      "RunDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "started_at": {
+            "type": "string",
+            "title": "Started At"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "completed",
+              "stopped",
+              "failed",
+              "unknown"
+            ],
+            "title": "Status"
+          },
+          "epochs": {
+            "type": "integer",
+            "title": "Epochs"
+          },
+          "planned_epochs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Epochs"
+          },
+          "best": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BestValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "duration_sec": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Sec"
+          },
+          "early_stopped_epoch": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Early Stopped Epoch"
+          },
+          "diff": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Diff"
+          },
+          "final_metrics": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Final Metrics"
+          },
+          "config": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Config"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "device": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device"
+          },
+          "parameter_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parameter Count"
+          },
+          "model_structure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Structure"
+          },
+          "optimizer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Optimizer"
+          },
+          "scheduler": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduler"
+          },
+          "env": {
+            "items": {
+              "$ref": "#/components/schemas/EnvSection"
+            },
+            "type": "array",
+            "title": "Env"
+          },
+          "packages": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Packages"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/RunFile"
+            },
+            "type": "array",
+            "title": "Files"
+          },
+          "has_git_diff": {
+            "type": "boolean",
+            "title": "Has Git Diff"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "started_at",
+          "status",
+          "epochs",
+          "planned_epochs",
+          "best",
+          "duration_sec",
+          "early_stopped_epoch",
+          "diff",
+          "final_metrics",
+          "config",
+          "seed",
+          "device",
+          "parameter_count",
+          "model_structure",
+          "optimizer",
+          "scheduler",
+          "env",
+          "packages",
+          "files",
+          "has_git_diff"
+        ],
+        "title": "RunDetail"
+      },
+      "RunFile": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "image",
+              "checkpoint",
+              "text",
+              "other"
+            ],
+            "title": "Kind"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "size",
+          "kind"
+        ],
+        "title": "RunFile"
+      },
+      "RunSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "started_at": {
+            "type": "string",
+            "title": "Started At"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "completed",
+              "stopped",
+              "failed",
+              "unknown"
+            ],
+            "title": "Status"
+          },
+          "epochs": {
+            "type": "integer",
+            "title": "Epochs"
+          },
+          "planned_epochs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Epochs"
+          },
+          "best": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BestValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "duration_sec": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Sec"
+          },
+          "early_stopped_epoch": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Early Stopped Epoch"
+          },
+          "diff": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Diff"
+          },
+          "final_metrics": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Final Metrics"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "started_at",
+          "status",
+          "epochs",
+          "planned_epochs",
+          "best",
+          "duration_sec",
+          "early_stopped_epoch",
+          "diff",
+          "final_metrics"
+        ],
+        "title": "RunSummary"
+      },
+      "ScanRequest": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "ScanRequest"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

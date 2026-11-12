@@ -1,0 +1,91 @@
+import type { components } from './schema'
+
+// API の型 (バックエンドの OpenAPI から生成)
+type Schemas = components['schemas']
+export type ProjectInfo = Schemas['ProjectInfo']
+export type ProjectDetail = Schemas['ProjectDetail']
+export type ProjectCandidate = Schemas['ProjectCandidate']
+export type RunSummary = Schemas['RunSummary']
+export type RunDetail = Schemas['RunDetail']
+export type RunStatus = RunSummary['status']
+export type BestValue = Schemas['BestValue']
+export type History = Schemas['History']
+export type HistoryRow = History['rows'][number]
+export type LogEntry = Schemas['LogEntry']
+export type RunFile = Schemas['RunFile']
+
+/** API がエラーを返したときの例外 */
+export class ApiError extends Error {
+  readonly status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
+}
+
+/** エラーのレスポンスから表示する文を取り出す */
+async function readError(response: Response): Promise<string> {
+  try {
+    const body: unknown = await response.json()
+    if (body && typeof body === 'object' && 'detail' in body) {
+      const detail = (body as { detail: unknown }).detail
+      return typeof detail === 'string' ? detail : JSON.stringify(detail)
+    }
+  } catch {
+    // JSON でない場合は状態の文を使う
+  }
+  return `${response.status} ${response.statusText}`
+}
+
+/** JSON の API を呼ぶ */
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...init?.headers },
+  })
+  if (!response.ok) {
+    throw new ApiError(response.status, await readError(response))
+  }
+  if (response.status === 204) {
+    return undefined as T
+  }
+  return (await response.json()) as T
+}
+
+/** 実験の ID を URL に入れる形にする (区切りの / は残す) */
+export function encodeRunId(runId: string): string {
+  return runId.split('/').map(encodeURIComponent).join('/')
+}
+
+/** 実験のファイルの URL */
+export function runFileUrl(projectId: string, runId: string, path: string): string {
+  const file = path.split('/').map(encodeURIComponent).join('/')
+  return `/api/projects/${encodeURIComponent(projectId)}/runs/${encodeRunId(runId)}/files/${file}`
+}
+
+export const api = {
+  listProjects: () => request<ProjectInfo[]>('/api/projects'),
+  getProject: (id: string) => request<ProjectDetail>(`/api/projects/${encodeURIComponent(id)}`),
+  addProject: (body: { path: string; name?: string | null; python?: string | null }) =>
+    request<ProjectInfo>('/api/projects', { method: 'POST', body: JSON.stringify(body) }),
+  removeProject: (id: string) =>
+    request<void>(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  scanProjects: (path: string) =>
+    request<ProjectCandidate[]>('/api/projects/scan', {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    }),
+  listRuns: (projectId: string) =>
+    request<RunSummary[]>(`/api/projects/${encodeURIComponent(projectId)}/runs`),
+  getRun: (projectId: string, runId: string) =>
+    request<RunDetail>(`/api/projects/${encodeURIComponent(projectId)}/runs/${encodeRunId(runId)}`),
+  getHistory: (projectId: string, runId: string) =>
+    request<History>(
+      `/api/projects/${encodeURIComponent(projectId)}/runs/${encodeRunId(runId)}/history`,
+    ),
+  getLog: (projectId: string, runId: string) =>
+    request<LogEntry[]>(
+      `/api/projects/${encodeURIComponent(projectId)}/runs/${encodeRunId(runId)}/log`,
+    ),
+}
