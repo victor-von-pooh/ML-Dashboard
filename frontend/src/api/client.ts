@@ -39,7 +39,17 @@ async function readError(response: Response): Promise<string> {
     const body: unknown = await response.json()
     if (body && typeof body === 'object' && 'detail' in body) {
       const detail = (body as { detail: unknown }).detail
-      return typeof detail === 'string' ? detail : JSON.stringify(detail)
+      if (typeof detail === 'string') return detail
+      // 入力の検証のエラー (422) は, 項目と理由だけを読める形にする
+      if (Array.isArray(detail)) {
+        return detail
+          .map((item: { loc?: unknown[]; msg?: string }) => {
+            const field = (item.loc ?? []).filter((part) => part !== 'body').join('.')
+            return field ? `${field}: ${item.msg ?? ''}` : (item.msg ?? '')
+          })
+          .join(' / ')
+      }
+      return JSON.stringify(detail)
     }
   } catch {
     // JSON でない場合は状態の文を使う

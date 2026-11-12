@@ -172,13 +172,26 @@ function RunsPage({ projectId }: { projectId: string }) {
       const note = notes.data?.[run.id]
       return note ? [note] : []
     })
+    // タグは使った実験の数が多い順 (同じなら数字を数として並べる)
+    const tagCounts = new Map<string, number>()
+    for (const note of present) {
+      for (const item of note.tags) tagCounts.set(item, (tagCounts.get(item) ?? 0) + 1)
+    }
     return {
-      allTags: [...new Set(present.flatMap((note) => note.tags))].sort(),
+      allTags: [...tagCounts.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ja', { numeric: true }))
+        .map(([item, count]) => ({ tag: item, count })),
       starredCount: present.filter((note) => note.starred).length,
     }
   }, [all, notes.data])
   // 絞り込み中のタグは, そのタグが無くなっても外せるように一覧に残す
-  const tagChips = tag && !allTags.includes(tag) ? [...allTags, tag] : allTags
+  const [showAllTags, setShowAllTags] = useState(false)
+  const TAG_LIMIT = 12
+  const tagChips =
+    tag && !allTags.some((item) => item.tag === tag) ? [...allTags, { tag, count: 0 }] : allTags
+  const shownTags = showAllTags
+    ? tagChips
+    : tagChips.filter((item, index) => index < TAG_LIMIT || item.tag === tag)
 
   const counts = useMemo(() => {
     const result: Record<string, number> = { all: all.length }
@@ -198,6 +211,9 @@ function RunsPage({ projectId }: { projectId: string }) {
       </>
     )
   }
+
+  const visibleIds = new Set(visible.map((run) => run.id))
+  const hiddenSelected = selected.filter((id) => !visibleIds.has(id)).length
 
   const totalTime = all.reduce((sum, run) => sum + (run.duration_sec ?? 0), 0)
   const full = selected.length >= MAX_COMPARE
@@ -328,7 +344,7 @@ function RunsPage({ projectId }: { projectId: string }) {
               <span aria-hidden>★ </span>星付き <span className="tabular">{starredCount}</span>
             </button>
           )}
-          {tagChips.map((item) => (
+          {shownTags.map(({ tag: item, count }) => (
             <button
               key={item}
               type="button"
@@ -342,10 +358,27 @@ function RunsPage({ projectId }: { projectId: string }) {
               )}
             >
               <span aria-hidden># </span>
-              {item}
+              <span className="inline-block max-w-40 truncate align-bottom" title={item}>
+                {item}
+              </span>{' '}
+              <span className="tabular text-ink-3">{count}</span>
             </button>
           ))}
+          {tagChips.length > TAG_LIMIT && (
+            <button
+              type="button"
+              onClick={() => setShowAllTags((value) => !value)}
+              className="px-2 py-1 text-xs text-accent-text hover:underline"
+            >
+              {showAllTags ? 'たたむ' : `他 ${tagChips.length - shownTags.length} 個`}
+            </button>
+          )}
         </div>
+      )}
+      {hiddenSelected > 0 && (
+        <p className="mb-2 text-xs text-ink-3">
+          比較に選んだ実験のうち {hiddenSelected} 件は絞り込みで隠れています.
+        </p>
       )}
       {full && (
         <p className="mb-2 text-xs text-ink-3">
