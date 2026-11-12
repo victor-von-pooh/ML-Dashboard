@@ -144,8 +144,11 @@ export function LineChart({
           nameLocation: 'middle',
           nameGap: 24,
           nameTextStyle: { color: ink3, fontSize: 11 },
-          min: 'dataMin',
-          max: 'dataMax',
+          // 1 エポックだけの場合も点が端に寄らないように幅を確保
+          min: (value: { min: number; max: number }) =>
+            value.min === value.max ? value.min - 1 : value.min,
+          max: (value: { min: number; max: number }) =>
+            value.min === value.max ? value.max + 1 : value.max,
           minInterval: 1,
           axisLine: { lineStyle: { color: grid } },
           axisLabel: { color: ink3, fontSize: 11 },

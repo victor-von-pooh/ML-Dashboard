@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
 import { useHistory, useLog, useProject, useRun } from '../../api/hooks'
@@ -19,7 +20,16 @@ export function RunDetailPage() {
   const { projectId = '', '*': runId = '' } = useParams()
   const project = useProject(projectId)
   const run = useRun(projectId, runId)
-  const history = useHistory(projectId, runId)
+  const running = run.data?.status === 'running'
+  const history = useHistory(projectId, runId, running)
+
+  // 学習が終わったら, 最後のエポックの記録を読むためにもう一度読み直す
+  const wasRunning = useRef(false)
+  const refetchHistory = history.refetch
+  useEffect(() => {
+    if (wasRunning.current && !running) void refetchHistory()
+    wasRunning.current = running
+  }, [running, refetchHistory])
   const [params, setParams] = useSearchParams()
   const tab = toTab(params.get('tab'))
   const log = useLog(projectId, runId, tab === 'log')

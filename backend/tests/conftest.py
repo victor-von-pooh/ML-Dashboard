@@ -122,6 +122,9 @@ def client(tmp_path: Path) -> TestClient:
     test_client: TestClient
         API を呼ぶクライアント
     """
-    test_client = TestClient(create_app(tmp_path / "home"))
+    test_client = TestClient(
+        create_app(tmp_path / "home", token="test-token"),
+        cookies={"ml_dashboard_token": "test-token"}
+    )
 
     return test_client

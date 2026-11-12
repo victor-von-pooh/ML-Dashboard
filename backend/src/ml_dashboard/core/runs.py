@@ -543,6 +543,11 @@ def read_progress(run_dir: Path) -> Optional[Progress]:
     if not data:
         return None
 
+    # 経過時間はこのプロセスの分なので, 再開した最初のエポックも追加
+    start = read_json(run_dir / "run.json").get("start_epoch")
+    if isinstance(start, int):
+        data["start_epoch"] = start
+
     try:
         progress = Progress.model_validate(data)
     except ValueError:

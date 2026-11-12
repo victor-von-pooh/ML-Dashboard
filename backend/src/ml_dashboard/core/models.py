@@ -50,6 +50,7 @@ class Progress(BaseModel):
     total_batches: Optional[int]
     elapsed_sec: float
     updated_at: str
+    start_epoch: int = 1
 
 
 class RunSummary(BaseModel):

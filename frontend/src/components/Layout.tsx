@@ -1,8 +1,8 @@
 import clsx from 'clsx'
-import { FolderKanban, LayoutGrid, Moon, Sun } from 'lucide-react'
+import { FolderKanban, LayoutGrid, ListChecks, Moon, Sun } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router'
 
-import { useProjects } from '../api/hooks'
+import { useProjects, useRunningJobCount } from '../api/hooks'
 import { useTheme } from '../lib/themeContext'
 
 function ThemeToggle() {
@@ -32,6 +32,7 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
 /** 左のサイドバーと本文の枠 */
 export function Layout() {
   const projects = useProjects()
+  const runningJobs = useRunningJobCount()
 
   return (
     <div className="flex h-full">
@@ -47,6 +48,16 @@ export function Layout() {
           <NavLink to="/" end className={linkClass}>
             <LayoutGrid className="size-4" aria-hidden />
             プロジェクト
+          </NavLink>
+          <NavLink to="/jobs" className={linkClass}>
+            <ListChecks className="size-4" aria-hidden />
+            ジョブ
+            {runningJobs > 0 && (
+              <span className="tabular ml-auto rounded-full bg-accent-strong px-1.5 text-xs text-white">
+                {runningJobs}
+                <span className="sr-only"> 件が実行中</span>
+              </span>
+            )}
           </NavLink>
           <div className="mt-4 mb-1 px-2.5 text-[11px] font-semibold tracking-wider text-ink-3 uppercase">
             Projects
