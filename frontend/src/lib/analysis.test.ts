@@ -70,10 +70,10 @@ describe('analysis', () => {
     ]
     // 見た目は同じでも型が違う値は別のまとまり (良い順)
     expect(groupByParam(mixed, 'v', 'best', 'max').map((row) => row.value)).toEqual([
-      '1',
+      '"1"',
       '1',
       '(項目なし)',
-      'null',
+      '"null"',
       'null',
     ])
     expect(groupByParam(mixed, 'v', 'best', 'max')).toHaveLength(5)

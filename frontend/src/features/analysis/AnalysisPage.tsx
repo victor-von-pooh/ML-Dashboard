@@ -10,6 +10,7 @@ import { Card, EmptyState, ErrorBox, PageHeader, Spinner } from '../../component
 import {
   type Direction,
   formatParam,
+  needsQuote,
   groupByParam,
   metricDirection,
   metricOptions,
@@ -103,11 +104,12 @@ export function AnalysisPage() {
 
   // 散布図の点と, 最良の実験. 数値の軸では数値の無い実験は数だけ表示
   const valued = runs.filter((run) => metricValue(run, metric) !== null)
+  const quote = needsQuote(runs, xKey)
   const points: ScatterPoint[] = valued.flatMap((run): ScatterPoint[] => {
     const y = metricValue(run, metric) as number
     const x = run.params[xKey]
     if (param?.numeric) return typeof x === 'number' ? [{ id: run.id, x, y }] : []
-    return [{ id: run.id, x: formatParam(x), y }]
+    return [{ id: run.id, x: formatParam(x, quote), y }]
   })
   const unplotted = valued.length - points.length
   const noResult = runs.length - valued.length
@@ -129,6 +131,10 @@ export function AnalysisPage() {
   const allRanking = sensitivity(runs, varying, metric, direction)
   const ranking = allRanking.filter((item) => item.spread > 0)
   const flat = allRanking.length - ranking.length
+  const barMax =
+    Math.max(0, ...ranking.filter((item) => !item.noise).map((item) => item.spread)) ||
+    Math.max(0, ...ranking.map((item) => item.spread)) ||
+    1
   const metricLabel = metrics.find((item) => item.id === metric)?.label ?? metric
 
   const header = (
@@ -275,16 +281,18 @@ export function AnalysisPage() {
                   <tr className="border-b border-line">
                     <th className="px-4 py-2 font-medium">値</th>
                     <th className="px-4 py-2 text-right font-medium">実験</th>
-                    <th className="px-4 py-2 text-right font-medium">
-                      最良 ({higherIsBetter ? '大きいほど良い' : '小さいほど良い'})
+                    <th className="px-4 py-2 text-right font-medium whitespace-nowrap">
+                      最良 {higherIsBetter ? '(↑)' : '(↓)'}
                     </th>
                     <th className="px-4 py-2 text-right font-medium">平均</th>
                   </tr>
                 </thead>
                 <tbody>
                   {groups.map((row, index) => (
-                    <tr key={row.value} className="border-b border-line last:border-b-0">
-                      <td className="px-4 py-1.5 font-mono text-xs break-all">{row.value}</td>
+                    <tr key={row.key} className="border-b border-line last:border-b-0">
+                      <td className="px-3 py-1.5 font-mono text-xs [overflow-wrap:anywhere] sm:px-4">
+                        {row.value}
+                      </td>
                       <td className="tabular px-4 py-1.5 text-right text-ink-2">{row.count}</td>
                       <td
                         className={clsx(
@@ -335,7 +343,8 @@ export function AnalysisPage() {
                   </thead>
                   <tbody>
                     {ranking.map((item) => {
-                      const max = Math.max(...ranking.map((row) => row.spread)) || 1
+                      // 記録の設定の行で棒の長さが決まらないように, 結果に関係しそうな行で揃える
+                      const max = barMax
                       const key = item.keys[0] ?? ''
                       return (
                         <tr
@@ -375,7 +384,7 @@ export function AnalysisPage() {
                               <div className="h-1.5 w-24 shrink-0 overflow-hidden rounded-full bg-surface-2 sm:w-40">
                                 <div
                                   className="h-full rounded-full bg-accent"
-                                  style={{ width: `${(item.spread / max) * 100}%` }}
+                                  style={{ width: `${Math.min(1, item.spread / max) * 100}%` }}
                                 />
                               </div>
                               <span className="tabular text-xs text-ink-2">

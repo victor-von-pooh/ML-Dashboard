@@ -45,20 +45,26 @@ export function ScatterChart({
   const ref = useRef<HTMLDivElement>(null)
   const chartRef = useRef<echarts.ECharts | null>(null)
   const selectRef = useRef(onSelect)
+  const highlightRef = useRef(highlight)
   const { theme } = useTheme()
 
   // 最新の選択の処理を保持 (グラフを作り直さずに差し替え)
   useEffect(() => {
     selectRef.current = onSelect
-  }, [onSelect])
+    highlightRef.current = highlight
+  }, [onSelect, highlight])
 
   useEffect(() => {
     if (!ref.current) return
     const chart = echarts.init(ref.current, undefined, { renderer: 'canvas' })
     chartRef.current = chart
     chart.on('click', (event) => {
-      const data = event.data as { id?: string } | undefined
-      if (data?.id) selectRef.current?.(data.id)
+      // まとめた点は, 最良の実験が含まれていればそれを開く
+      const data = event.data as { id?: string; ids?: string[] } | undefined
+      const target = data?.ids?.includes(highlightRef.current ?? '')
+        ? highlightRef.current
+        : data?.id
+      if (target) selectRef.current?.(target)
     })
     const observer = new ResizeObserver(() => chart.resize())
     observer.observe(ref.current)
@@ -143,13 +149,23 @@ export function ScatterChart({
             color: ink3,
             fontSize: 11,
             formatter: categories ? undefined : (value: number) => formatAxis(value),
+            showMinLabel: Boolean(categories),
+            showMaxLabel: Boolean(categories),
           },
           splitLine: { show: !categories, lineStyle: { color: grid, opacity: 0.6 } },
         },
         yAxis: {
           type: useLogY ? 'log' : 'value',
+          min: (value: { min: number; max: number }) => pad(value, useLogY, -1),
+          max: (value: { min: number; max: number }) => pad(value, useLogY, 1),
           scale: true,
-          axisLabel: { color: ink3, fontSize: 11, formatter: (value: number) => formatAxis(value) },
+          axisLabel: {
+            color: ink3,
+            fontSize: 11,
+            formatter: (value: number) => formatAxis(value),
+            showMinLabel: false,
+            showMaxLabel: false,
+          },
           splitLine: { lineStyle: { color: grid, opacity: 0.6 } },
         },
         series: [

@@ -18,6 +18,7 @@ export interface VaryingParam {
 // 結果に関係しにくい設定の項目 (分析の既定と順位の上位から外す)
 const NOISE = [
   /^experiment\./,
+  /(^|[._])seed/,
   /^trainer\.progress_bar/,
   /^trainer\.checkpoint\./,
   /^trainer\.log_/,
@@ -47,11 +48,25 @@ export function paramKey(value: ParamValue | undefined): string {
   return value === undefined ? MISSING : JSON.stringify(value)
 }
 
-/** 値を表に出す文字列にする */
-export function formatParam(value: ParamValue | undefined): string {
+/** 値を表に出す文字列にする. 文字列は数値や null と見分けられるように引用符で囲む */
+export function formatParam(value: ParamValue | undefined, quote = false): string {
   if (value === undefined) return MISSING_LABEL
   if (value === null) return 'null'
+  if (typeof value === 'string' && quote) return JSON.stringify(value)
   return String(value)
+}
+
+/** 項目の値の中に, 見た目が同じで型が違う値があるか */
+export function needsQuote(runs: RunParams[], key: string): boolean {
+  const labels = new Map<string, string>()
+  for (const run of runs) {
+    const value = run.params[key]
+    const label = formatParam(value)
+    const exact = paramKey(value)
+    if (labels.has(label) && labels.get(label) !== exact) return true
+    labels.set(label, exact)
+  }
+  return false
 }
 
 /** 実験の間で値が違う項目を, 全ての実験にある項目から, 違う値の数が少ない順に並べる */
@@ -138,12 +153,13 @@ export function groupByParam(
   metric: string,
   direction: Direction,
 ): GroupRow[] {
+  const quote = needsQuote(runs, key)
   const groups = new Map<string, { label: string; values: number[] }>()
   for (const run of runs) {
     const value = metricValue(run, metric)
     if (value === null) continue
     const param = run.params[key]
-    const group = groups.get(paramKey(param)) ?? { label: formatParam(param), values: [] }
+    const group = groups.get(paramKey(param)) ?? { label: formatParam(param, quote), values: [] }
     group.values.push(value)
     groups.set(paramKey(param), group)
   }
