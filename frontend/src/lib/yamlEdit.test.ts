@@ -16,6 +16,13 @@ describe('setYamlValue', () => {
     expect(setYamlValue('# メモ\n', 'trainer.epochs', 5)).toContain('epochs: 5')
   })
 
+  it('1 行の空の辞書に書き足すと複数行の辞書にする', () => {
+    const text = 'optimizer:\n  name: Adam\n  params: {}\n'
+    expect(setYamlValue(text, 'optimizer.params.lr', 0.01)).toBe(
+      'optimizer:\n  name: Adam\n  params:\n    lr: 0.01\n',
+    )
+  })
+
   it('壊れた YAML はエラーにする', () => {
     expect(() => setYamlValue('trainer: [', 'trainer.epochs', 5)).toThrow()
   })

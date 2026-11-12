@@ -9,7 +9,13 @@ export function setYamlValue(text: string, key: string, value: unknown): string 
   if (!isMap(document.contents) || document.contents.items.length === 0) {
     document.contents = document.createNode({}) as never
   }
-  document.setIn(key.split('.'), value)
+  const path = key.split('.')
+  document.setIn(path, value)
+  // params: {} のような 1 行の辞書に書き足した場合も, 複数行の辞書で書く
+  for (let depth = 1; depth <= path.length; depth += 1) {
+    const node = document.getIn(path.slice(0, depth), true)
+    if (isMap(node) && node.items.length > 0) node.flow = false
+  }
   return document.toString()
 }
 

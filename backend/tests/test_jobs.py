@@ -320,3 +320,31 @@ def test_registry_and_required_params(
     ).json()
     assert typo["ok"] is False
     assert "lerning_rate" in typo["error"]
+
+
+def test_validate_custom_optimizer(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    プロジェクトの中の自作の Optimizer を確かめられることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    (project_dir / "my_optim_for_test.py").write_text(
+        "from torch import optim\n\n\nclass Mine(optim.SGD):\n    pass\n"
+    )
+    project_id = register(client, project_dir)
+    result = client.post(
+        f"/api/projects/{project_id}/validate",
+        json={"text": "optimizer:\n  name: my_optim_for_test.Mine\n"}
+    ).json()
+    assert result["ok"] is True, result["error"]

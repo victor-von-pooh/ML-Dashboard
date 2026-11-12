@@ -129,12 +129,14 @@ function ClassSection({
   config,
   allowNone,
   onEdit,
+  disabled,
 }: {
   title: string
   section: 'optimizer' | 'scheduler'
   specs: ClassSpec[]
   config: Config
   allowNone: boolean
+  disabled: boolean
   onEdit: (change: (text: string) => string) => void
 }) {
   const selectId = useId()
@@ -153,11 +155,22 @@ function ClassSection({
 
   const choose = (value: string | null) => {
     setChosen(value)
-    // クラスを変えると引数も変わるので, 引数を空にしてから名前を設定
+    // クラスを変えると引数も変わるので, 新しいクラスにもある引数 (lr など) だけを残す
+    const nextSpec = specs.find((item) => item.name === value)
+    const kept = Object.fromEntries(
+      Object.entries(params).filter(([key, param]) =>
+        nextSpec?.params.some((item) => item.name === key && item.default !== param),
+      ),
+    )
     onEdit((text) => {
-      let next = setYamlValue(text, `${section}.params`, {})
-      next = setYamlValue(next, `${section}.name`, value)
-      if (section === 'scheduler' && value && STEP_SCHEDULERS.has(value)) {
+      let next = setYamlValue(text, `${section}.name`, value)
+      if (value === null) {
+        // Scheduler を使わない場合は, 引数と interval を消して名前だけを残す
+        next = deleteYamlValue(next, `${section}.params`)
+        return deleteYamlValue(next, 'scheduler.interval')
+      }
+      next = setYamlValue(next, `${section}.params`, kept)
+      if (section === 'scheduler' && STEP_SCHEDULERS.has(value)) {
         next = setYamlValue(next, 'scheduler.interval', 'step')
       }
       return next
@@ -165,7 +178,7 @@ function ClassSection({
   }
 
   return (
-    <section className="space-y-3">
+    <fieldset disabled={disabled} aria-label={title} className="space-y-3 disabled:opacity-60">
       <div className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] items-center gap-2">
         <label htmlFor={selectId} className="text-sm font-semibold">
           {title}
@@ -247,7 +260,7 @@ function ClassSection({
           {advanced ? '詳細な引数をたたむ' : `詳細な引数 (${hidden})`}
         </button>
       )}
-    </section>
+    </fieldset>
   )
 }
 
@@ -284,6 +297,8 @@ export function ConfigForm({
   const current = resolved.data?.ok ? (resolved.data.config as Config) : null
   if (current && current !== lastGood) setLastGood(current)
   const config = current ?? lastGood
+  // 今の YAML が読めず, 前の値を出している状態 (フォームの値と YAML が合わない)
+  const stale = !current && resolved.data !== undefined && !resolved.data.ok
   const [editError, setEditError] = useState<string | null>(null)
 
   // 続けて書き換える場合 (クラスの名前と引数) も, 直前の書き換えの結果に重ねる
@@ -328,8 +343,14 @@ export function ConfigForm({
         </p>
       ) : (
         <div className="space-y-6">
-          {resolved.data && !resolved.data.ok && (
-            <ErrorBox error={resolved.data.error} live={false} />
+          {stale && (
+            <>
+              <ErrorBox error={resolved.data?.error} live={false} />
+              <p className="text-xs text-ink-3">
+                最後に読めた config を表示しています. YAML
+                の欄を直すまでフォームは書き換えられません.
+              </p>
+            </>
           )}
           {resolved.data?.ok &&
             (resolved.data.warnings ?? []).map((warning) => (
@@ -354,6 +375,7 @@ export function ConfigForm({
                 event.key === 'Enter' && commitEpochs(event.currentTarget.value)
               }
               aria-invalid={epochsInvalid}
+              disabled={stale}
               className="h-8 w-32 rounded-md border border-line bg-bg px-2 font-mono text-xs aria-[invalid=true]:border-critical"
             />
           </div>
@@ -363,6 +385,7 @@ export function ConfigForm({
             specs={registry.data?.optimizers ?? []}
             config={config}
             allowNone={false}
+            disabled={stale}
             onEdit={onEdit}
           />
           <ClassSection
@@ -371,6 +394,7 @@ export function ConfigForm({
             specs={registry.data?.schedulers ?? []}
             config={config}
             allowNone
+            disabled={stale}
             onEdit={onEdit}
           />
           {editError && <ErrorBox error={editError} live={false} />}

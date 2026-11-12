@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { CheckCircle2, Play, RotateCcw, ShieldCheck } from 'lucide-react'
+import { CheckCircle2, Play, RotateCcw, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { useEffect, useId, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
@@ -159,7 +159,13 @@ export function LaunchPage() {
             </div>
           </Card>
 
-          <ConfigForm projectId={projectId} text={text} onChange={editText} />
+          <ConfigForm
+            // config を選び直したら, フォームの状態 (選び直した名前など) も作り直す
+            key={configPath ?? 'none'}
+            projectId={projectId}
+            text={text}
+            onChange={editText}
+          />
 
           <Card title="起動の前の確認">
             <div className="space-y-3 text-sm">
@@ -184,6 +190,15 @@ export function LaunchPage() {
                       </li>
                     ))}
                   </ul>
+                  {(validate.data.warnings ?? []).map((warning) => (
+                    <p
+                      key={warning}
+                      className="mt-2 flex items-start gap-1.5 text-xs text-warning-text"
+                    >
+                      <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                      {warning}
+                    </p>
+                  ))}
                 </div>
               )}
               {validate.error && <ErrorBox error={validate.error} />}

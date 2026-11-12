@@ -1,3 +1,4 @@
+import sys
 import tempfile
 from dataclasses import asdict
 from pathlib import Path
@@ -244,13 +245,21 @@ def check_config(
     from ml_found.training.optim import check_optim_config
 
     # start_experiment が出力先を作る前に行う確認と同じものを実行
+    # 自作の Optimizer (custom_optim.Lion など) を読めるように,
+    # 学習のスクリプトと同じくプロジェクトのディレクトリから読み込む
     project_dir = Path(project.path)
-    cfg, diff = load_config(str(project_dir / DEFAULT_CONFIG), str(path))
-    check_name(cfg.experiment.name)
-    check_optim_config(cfg)
-    warnings = check_param_names(cfg)
-    check_trainer_config(cfg)
-    check_resume_path(cfg, project_dir)
+    sys.path.insert(0, str(project_dir))
+    try:
+        cfg, diff = load_config(
+            str(project_dir / DEFAULT_CONFIG), str(path)
+        )
+        check_name(cfg.experiment.name)
+        check_optim_config(cfg)
+        warnings = check_param_names(cfg)
+        check_trainer_config(cfg)
+        check_resume_path(cfg, project_dir)
+    finally:
+        sys.path.remove(str(project_dir))
     config = OmegaConf.to_container(cfg, resolve=True)
     checked = CheckedConfig(
         diff={
