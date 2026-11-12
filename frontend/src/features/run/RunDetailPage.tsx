@@ -5,10 +5,23 @@ import { useHistory, useLog, useProject, useRun } from '../../api/hooks'
 import { ErrorBox, PageHeader, Spinner, StatTile, StatusBadge, Tabs } from '../../components/ui'
 import { tabPanelProps, useStableId } from '../../lib/a11y'
 import { formatDateTime, formatDuration, formatMetric } from '../../lib/format'
+import { groupImageSeries } from '../../lib/images'
+import type { RunFile } from '../../api/client'
+import { ImageTimeline } from './ImageTimeline'
 import { MetricCharts } from './MetricCharts'
 import { ConfigTab, EnvTab, FilesTab, LogTab, ModelTab } from './RunTabs'
 
-const TAB_IDS = ['charts', 'config', 'model', 'env', 'log', 'files'] as const
+// 同じファイルの一覧からは同じ並びを返し, 描画のたびに作り直さないようにする
+const seriesCache = new WeakMap<RunFile[], ReturnType<typeof groupImageSeries>>()
+function seriesOf(files: RunFile[]) {
+  const cached = seriesCache.get(files)
+  if (cached) return cached
+  const series = groupImageSeries(files)
+  seriesCache.set(files, series)
+  return series
+}
+
+const TAB_IDS = ['charts', 'images', 'config', 'model', 'env', 'log', 'files'] as const
 type TabId = (typeof TAB_IDS)[number]
 
 /** URL の値を画面のタブに直す */
@@ -31,8 +44,8 @@ export function RunDetailPage() {
     wasRunning.current = running
   }, [running, refetchHistory])
   const [params, setParams] = useSearchParams()
-  const tab = toTab(params.get('tab'))
-  const log = useLog(projectId, runId, tab === 'log')
+  const requestedTab = toTab(params.get('tab'))
+  const log = useLog(projectId, runId, requestedTab === 'log')
   const idBase = useStableId('run')
 
   // 再読み込みやリンクで同じタブを開けるように, タブは URL に保存
@@ -67,6 +80,11 @@ export function RunDetailPage() {
     )
   }
   const data = run.data
+
+  // 番号の付いた画像 (エポックごとの生成画像など) の並び. 無い実験で画像のタブを
+  // 開いた場合 (共有したリンクなど) は学習曲線を表示
+  const series = seriesOf(data.files)
+  const tab: TabId = requestedTab === 'images' && series.length === 0 ? 'charts' : requestedTab
 
   const monitor = data.best?.monitor
   const others = Object.entries(data.final_metrics).filter(
@@ -135,6 +153,9 @@ export function RunDetailPage() {
         onChange={setTab}
         items={[
           { id: 'charts', label: '学習曲線' },
+          ...(series.length > 0
+            ? [{ id: 'images' as const, label: '画像の推移', count: series.length }]
+            : []),
           { id: 'config', label: 'config', count: Object.keys(data.diff).length },
           { id: 'model', label: 'モデル' },
           { id: 'env', label: '環境' },
@@ -155,6 +176,9 @@ export function RunDetailPage() {
           ) : (
             <Spinner />
           ))}
+        {tab === 'images' && (
+          <ImageTimeline series={series} projectId={projectId} runId={data.id} />
+        )}
         {tab === 'config' && <ConfigTab run={data} />}
         {tab === 'model' && <ModelTab run={data} />}
         {tab === 'env' && <EnvTab run={data} projectId={projectId} />}
