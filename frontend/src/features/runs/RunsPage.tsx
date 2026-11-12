@@ -331,7 +331,12 @@ function RunsPage({ projectId }: { projectId: string }) {
                   projectId={projectId}
                   checked={selected.includes(run.id)}
                   disabled={!selected.includes(run.id) && full}
-                  isBest={run.id === bestRun?.id}
+                  isBest={
+                    bestRun?.best != null &&
+                    run.name === bestRun.name &&
+                    run.best?.monitor === bestRun.best.monitor &&
+                    run.best.value === bestRun.best.value
+                  }
                   onToggle={() => toggle(run.id)}
                 />
               ))}
@@ -431,7 +436,10 @@ function RunRow({
           <>
             <div className="flex items-center justify-end gap-1 font-medium">
               {isBest && (
-                <Trophy className="size-3.5 text-warning" aria-label="同じ名前の実験のベスト" />
+                <Trophy
+                  className="size-3.5 text-warning"
+                  aria-label="同じ名前の実験のベスト (同じ値は全て)"
+                />
               )}
               {formatMetric(run.best.value)}
             </div>

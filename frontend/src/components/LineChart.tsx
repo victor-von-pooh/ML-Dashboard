@@ -105,7 +105,8 @@ export function LineChart({
         grid: {
           left: 8,
           right: 20,
-          top: legend ? 40 : 20,
+          // 目印のラベルを描く余白を上に確保
+          top: (legend ? 40 : 20) + (markers.length > 0 ? 14 : 0),
           bottom: xLabel ? 36 : 24,
           containLabel: true,
         },
@@ -199,7 +200,7 @@ export function LineChart({
               symbol: 'none',
               silent: true,
               lineStyle: { color: ink3, type: 'dashed', width: 1 },
-              label: { color: ink2, fontSize: 11, formatter: '{b}', position: 'insideEndTop' },
+              label: { color: ink2, fontSize: 11, formatter: '{b}', position: 'end' },
               data: markers.map((m) => ({ xAxis: m.x, name: m.label })),
             },
           },

@@ -65,7 +65,7 @@ export function ConfigTab({ run }: { run: RunDetail }) {
   }, [run.config, query])
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
       <Card title="default との差分" padded={false}>
         {changed.size === 0 ? (
           <p className="px-4 py-6 text-sm text-ink-3">default のまま学習しました.</p>
@@ -117,11 +117,11 @@ export function ModelTab({ run }: { run: RunDetail }) {
     ['Scheduler', run.scheduler],
   ]
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <div className="grid items-start gap-4 lg:grid-cols-2">
       {blocks.map(([title, text]) => (
         <Card key={title} title={title} className={title === 'モデルの構造' ? 'lg:row-span-2' : ''}>
           {text ? (
-            <pre className="max-h-[520px] overflow-auto font-mono text-xs leading-relaxed text-ink-2">
+            <pre className="max-h-[520px] overflow-auto font-mono text-xs leading-relaxed break-all whitespace-pre-wrap text-ink-2">
               {text}
             </pre>
           ) : (
@@ -174,6 +174,13 @@ export function EnvTab({ run, projectId }: { run: RunDetail; projectId: string }
   )
 }
 
+/** ログの時刻. 最初の記録と日付が違う場合は月日も付ける */
+function formatLogTime(time: string | null | undefined, firstDate: string | undefined): string {
+  if (!time) return ''
+  const clock = time.slice(11, 19)
+  return time.slice(0, 10) === firstDate ? clock : `${time.slice(5, 10)} ${clock}`
+}
+
 // 絞り込みに使うレベル. 書式が違う行と DEBUG は INFO と同じ扱い
 const LEVELS = ['INFO', 'WARNING', 'ERROR'] as const
 type Level = (typeof LEVELS)[number]
@@ -196,6 +203,9 @@ export function LogTab({ entries }: { entries: LogEntry[] }) {
     }
     return result
   }, [entries])
+
+  // 日付をまたいだ記録だけ, 時刻に日付も付けて表示
+  const firstDate = entries.find((entry) => entry.time)?.time?.slice(0, 10)
 
   const word = query.toLowerCase()
   const visible = entries.filter(
@@ -250,7 +260,7 @@ export function LogTab({ entries }: { entries: LogEntry[] }) {
               )}
             >
               <span className="tabular shrink-0 text-ink-3" title={entry.time ?? undefined}>
-                {entry.time?.slice(11, 19) ?? ''}
+                {formatLogTime(entry.time, firstDate)}
               </span>
               {group !== 'INFO' && (
                 <span
