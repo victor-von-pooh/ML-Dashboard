@@ -518,6 +518,53 @@
         }
       }
     },
+    "/api/projects/{project_id}/params": {
+      "get": {
+        "summary": "List Params",
+        "description": "プロジェクトの実験の config と結果を分析用に返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\n\nReturns\n----------\nparams: list[RunParams]\n    実験ごとの平らな config と結果, 読めない実験は除外",
+        "operationId": "list_params",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RunParams"
+                  },
+                  "title": "Response List Params"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "プロジェクトか実験が見つからない"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects/{project_id}/configs/{config_path}": {
       "get": {
         "summary": "Read Config",
@@ -1714,6 +1761,88 @@
           "kind"
         ],
         "title": "RunFile"
+      },
+      "RunParams": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "started_at": {
+            "type": "string",
+            "title": "Started At"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "completed",
+              "stopped",
+              "failed",
+              "unknown"
+            ],
+            "title": "Status"
+          },
+          "best": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BestValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "final_metrics": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Final Metrics"
+          },
+          "params": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Params"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "started_at",
+          "status",
+          "best",
+          "final_metrics",
+          "params"
+        ],
+        "title": "RunParams"
       },
       "RunSummary": {
         "properties": {

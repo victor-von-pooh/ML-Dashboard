@@ -315,6 +315,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/params": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Params
+         * @description プロジェクトの実験の config と結果を分析用に返す関数
+         *
+         *     Parameters
+         *     ----------
+         *     request: Request
+         *         リクエスト
+         *     project_id: str
+         *         プロジェクトの ID
+         *
+         *     Returns
+         *     ----------
+         *     params: list[RunParams]
+         *         実験ごとの平らな config と結果, 読めない実験は除外
+         */
+        get: operations["list_params"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}/configs/{config_path}": {
         parameters: {
             query?: never;
@@ -808,6 +840,29 @@ export interface components {
              */
             kind: "image" | "checkpoint" | "text" | "other";
         };
+        /** RunParams */
+        RunParams: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Started At */
+            started_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "completed" | "stopped" | "failed" | "unknown";
+            best: components["schemas"]["BestValue"] | null;
+            /** Final Metrics */
+            final_metrics: {
+                [key: string]: number | null;
+            };
+            /** Params */
+            params: {
+                [key: string]: boolean | number | string | null;
+            };
+        };
         /** RunSummary */
         RunSummary: {
             /** Id */
@@ -1237,6 +1292,44 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description プロジェクトか実験が見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_params: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunParams"][];
+                };
             };
             /** @description プロジェクトか実験が見つからない */
             404: {

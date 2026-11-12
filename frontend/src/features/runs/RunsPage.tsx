@@ -3,6 +3,7 @@ import {
   ArrowDown,
   ArrowUp,
   FlaskConical,
+  ChartScatter,
   GitCompareArrows,
   Play,
   Search,
@@ -202,6 +203,13 @@ function RunsPage({ projectId }: { projectId: string }) {
         subtitle={<span className="font-mono text-xs">{project.data?.path}</span>}
         actions={
           <>
+            <Link
+              to={`/projects/${projectId}/analysis`}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-sm font-medium hover:bg-surface-2"
+            >
+              <ChartScatter className="size-4" aria-hidden />
+              分析
+            </Link>
             <Link
               to={`/projects/${projectId}/launch`}
               className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-sm font-medium hover:bg-surface-2"

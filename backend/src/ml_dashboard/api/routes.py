@@ -12,6 +12,7 @@ from ml_dashboard.core.models import (
     ProjectDetail,
     ProjectInfo,
     RunDetail,
+    RunParams,
     RunSummary,
 )
 from ml_dashboard.core.projects import (
@@ -28,6 +29,7 @@ from ml_dashboard.core.runs import (
     TEXT_SUFFIXES,
     RunData,
     RunNotFoundError,
+    collect_params,
     find_run_dirs,
     make_run_id,
     resolve_run_dir,
@@ -493,3 +495,32 @@ def get_file(
     )
 
     return response
+
+
+@router.get("/projects/{project_id}/params", responses=NOT_FOUND)
+def list_params(request: Request, project_id: str) -> list[RunParams]:
+    """
+    プロジェクトの実験の config と結果を分析用に返す関数
+
+    Parameters
+    ----------
+    request: Request
+        リクエスト
+    project_id: str
+        プロジェクトの ID
+
+    Returns
+    ----------
+    params: list[RunParams]
+        実験ごとの平らな config と結果, 読めない実験は除外
+    """
+    output_dirs = get_project_output_dirs(get_project(request, project_id))
+    params = [
+        item for item in (
+            collect_params(output_dir, run_dir)
+            for output_dir, run_dir in find_run_dirs(output_dirs)
+        )
+        if item is not None
+    ]
+
+    return params
