@@ -6,6 +6,7 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { useConfig, useCreateJob, useProject, useValidateConfig } from '../../api/hooks'
 import { Button, Card, ErrorBox, PageHeader, Spinner } from '../../components/ui'
 import { formatValue } from '../../lib/format'
+import { ConfigForm } from './ConfigForm'
 
 /** config とスクリプトを選び, 必要なら書き換えて学習を起動する画面 */
 export function LaunchPage() {
@@ -97,7 +98,7 @@ export function LaunchPage() {
         subtitle="プロジェクトの Python で学習のスクリプトを別のプロセスとして動かします"
       />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
         <div className="space-y-4">
           <Card title="設定">
             <div className="space-y-4 text-sm">
@@ -157,6 +158,8 @@ export function LaunchPage() {
               )}
             </div>
           </Card>
+
+          <ConfigForm projectId={projectId} text={text} onChange={editText} />
 
           <Card title="起動の前の確認">
             <div className="space-y-3 text-sm">

@@ -23,6 +23,32 @@ export type ValidateResult = Schemas['ValidateResult']
 export type ConfigText = Schemas['ConfigText']
 type JobCreate = Schemas['JobCreate']
 
+/** ML-Found の登録簿の引数の仕様 (describe_optimizers の形) */
+export interface ParamSpec {
+  name: string
+  kind: string
+  default: unknown
+  required: boolean
+  advanced: boolean
+  description: string
+  minimum: number | null
+  maximum: number | null
+}
+
+/** ML-Found の登録簿のクラスの仕様 */
+export interface ClassSpec {
+  name: string
+  description: string
+  params: ParamSpec[]
+  supported: boolean
+  note: string
+}
+
+export interface Registry {
+  optimizers: ClassSpec[]
+  schedulers: ClassSpec[]
+}
+
 /** API がエラーを返したときの例外 */
 export class ApiError extends Error {
   readonly status: number
@@ -133,6 +159,7 @@ export const api = {
       `/api/projects/${encodeURIComponent(projectId)}/runs/${encodeRunId(runId)}/note`,
       { method: 'PUT', body: JSON.stringify(note) },
     ),
+  getRegistry: () => request<Registry>('/api/registry'),
   listJobs: () => request<JobInfo[]>('/api/jobs'),
   getJob: (jobId: string) => request<JobInfo>(`/api/jobs/${encodeURIComponent(jobId)}`),
   stopJob: (jobId: string, force: boolean) =>

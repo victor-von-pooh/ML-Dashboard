@@ -1,7 +1,7 @@
 import tempfile
 from dataclasses import asdict
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from omegaconf import DictConfig, OmegaConf
@@ -49,6 +49,18 @@ class ValidateResult(BaseModel):
     ok: bool
     error: Optional[str]
     diff: dict[str, dict[str, object]]
+    # default と合わせた学習に使う config (フォームの今の値に使う)
+    config: dict[str, Any] = {}
+
+
+class CheckedConfig(BaseModel):
+    diff: dict[str, dict[str, object]]
+    config: dict[str, Any]
+
+
+class Registry(BaseModel):
+    optimizers: list[dict[str, Any]]
+    schedulers: list[dict[str, Any]]
 
 
 class JobCreate(BaseModel):
@@ -151,7 +163,7 @@ def resolve_config(project: Project, relative: str) -> Path:
 
 def check_config(
     project: Project, path: Path
-) -> dict[str, dict[str, object]]:
+) -> CheckedConfig:
     """
     ML-Found で config を読み込み, 学習を始める前の確認をする関数
 
@@ -164,8 +176,8 @@ def check_config(
 
     Returns
     ----------
-    diff: dict[str, dict[str, object]]
-        default との差分
+    checked: CheckedConfig
+        default との差分と, 学習に使う config 全体
     """
     # ML-Found の読み込みは PyTorch も読むので, 使うときだけ読み込み
     # ダッシュボードの submodule の ML-Found で確かめるので, プロジェクトの
@@ -177,23 +189,32 @@ def check_config(
         check_trainer_config,
     )
     from ml_found.training.optim import check_optim_config
+    from ml_found.training.registry import check_optim_params
 
     # start_experiment が出力先を作る前に行う確認と同じものを実行
     project_dir = Path(project.path)
     cfg, diff = load_config(str(project_dir / DEFAULT_CONFIG), str(path))
     check_name(cfg.experiment.name)
     check_optim_config(cfg)
+    check_optim_params(cfg)
     check_trainer_config(cfg)
     check_resume_path(cfg, project_dir)
-    result = {
-        str(key): {
-            "default": value.get("default"),
-            "experiment": value.get("experiment")
-        }
-        for key, value in diff.items()
-    }
+    config = OmegaConf.to_container(cfg, resolve=True)
+    checked = CheckedConfig(
+        diff={
+            str(key): {
+                "default": value.get("default"),
+                "experiment": value.get("experiment")
+            }
+            for key, value in diff.items()
+        },
+        config=(
+            {str(key): value for key, value in config.items()}
+            if isinstance(config, dict) else {}
+        )
+    )
 
-    return result
+    return checked
 
 
 def describe(error: Exception) -> str:
@@ -221,7 +242,7 @@ def describe(error: Exception) -> str:
     return message
 
 
-def validate_text(project: Project, text: str) -> dict[str, dict[str, object]]:
+def validate_text(project: Project, text: str) -> CheckedConfig:
     """
     書き換えた config の中身を一時ファイルに書いて確かめる関数
 
@@ -265,12 +286,12 @@ def validate_text(project: Project, text: str) -> dict[str, dict[str, object]]:
         path = Path(directory) / "experiment.yaml"
         path.write_text(text, encoding="utf-8")
         try:
-            diff = check_config(project, path)
+            checked = check_config(project, path)
         except Exception as error:
             message = str(error).replace(str(path), "experiment.yaml")
             raise ValueError(message) from error
 
-    return diff
+    return checked
 
 
 def to_job_info(
@@ -376,12 +397,14 @@ def validate_config(
 
     # 学習と同じ方法で読み込み, 失敗した場合は理由を返却
     try:
-        diff = validate_text(project, body.text)
+        checked = validate_text(project, body.text)
     except Exception as error:
         result = ValidateResult(ok=False, error=describe(error), diff={})
         return result
 
-    result = ValidateResult(ok=True, error=None, diff=diff)
+    result = ValidateResult(
+        ok=True, error=None, diff=checked.diff, config=checked.config
+    )
 
     return result
 
@@ -598,3 +621,30 @@ def get_output(request: Request, job_id: str) -> JobOutput:
     output = JobOutput(text=get_jobs(request).output_tail(job))
 
     return output
+
+
+@router.get("/registry")
+def read_registry() -> Registry:
+    """
+    選べる Optimizer と Scheduler と引数の仕様を返す関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    registry: Registry
+        ML-Found の登録簿の内容
+    """
+    # ML-Found の読み込みは PyTorch も読むので, 使うときだけ読み込み
+    from ml_found.training.registry import (
+        describe_optimizers,
+        describe_schedulers,
+    )
+
+    registry = Registry(
+        optimizers=describe_optimizers(), schedulers=describe_schedulers()
+    )
+
+    return registry

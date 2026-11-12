@@ -891,6 +891,25 @@
         }
       }
     },
+    "/api/registry": {
+      "get": {
+        "summary": "Read Registry",
+        "description": "選べる Optimizer と Scheduler と引数の仕様を返す関数\n\nParameters\n----------\nNone\n\nReturns\n----------\nregistry: Registry\n    ML-Found の登録簿の内容",
+        "operationId": "read_registry",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Registry"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects/{project_id}/notes": {
       "get": {
         "summary": "List Notes",
@@ -1622,6 +1641,32 @@
         ],
         "title": "ProjectInfo"
       },
+      "Registry": {
+        "properties": {
+          "optimizers": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Optimizers"
+          },
+          "schedulers": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Schedulers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "optimizers",
+          "schedulers"
+        ],
+        "title": "Registry"
+      },
       "RunDetail": {
         "properties": {
           "id": {
@@ -2188,6 +2233,12 @@
             },
             "type": "object",
             "title": "Diff"
+          },
+          "config": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Config",
+            "default": {}
           }
         },
         "type": "object",
