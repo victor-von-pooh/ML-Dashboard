@@ -10,14 +10,18 @@ PORT="${E2E_PORT:-8791}"
 # 前回の結果を消し, デモのプロジェクトを作業用のディレクトリに写す
 rm -rf "$WORK"
 mkdir -p "$WORK"
-cp -R ../../demo "$WORK/demo"
-rm -rf "$WORK/demo/outputs"
+rsync -a --exclude outputs ../../demo/ "$WORK/demo/"
 
 # config の違う 2 つの実験 (どちらも 3 エポック)
 cd ../../backend
+# 学習の出力は残し, 失敗した場合は表示してから止める
 for config in quick.yaml quick_sgd.yaml; do
-  uv run python "$WORK/demo/train.py" \
-    --experiment "configs/experiment/examples/$config" > /dev/null 2>&1
+  log="$WORK/train-${config%.yaml}.log"
+  if ! uv run python "$WORK/demo/train.py" \
+    --experiment "configs/experiment/examples/$config" > "$log" 2>&1; then
+    cat "$log"
+    exit 1
+  fi
 done
 
 # データの置き場も作業用のディレクトリにし, 決まったトークンで起動

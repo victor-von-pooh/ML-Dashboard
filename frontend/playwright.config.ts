@@ -19,7 +19,8 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   webServer: {
-    command: 'bash e2e/serve.sh',
+    // 手元では古い画面で確かめないように, 先に画面をビルド (CI はビルド済み)
+    command: process.env.CI ? 'bash e2e/serve.sh' : 'pnpm build && bash e2e/serve.sh',
     url: `http://127.0.0.1:${port}/api/projects`,
     env: { E2E_PORT: String(port) },
     timeout: 180_000,

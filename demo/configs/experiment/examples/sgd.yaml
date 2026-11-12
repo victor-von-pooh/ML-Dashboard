@@ -1,4 +1,7 @@
 # Adam の代わりに SGD を使う
+experiment:
+  name: spiral_sgd
+
 optimizer:
   name: SGD
   params:

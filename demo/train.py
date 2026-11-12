@@ -54,7 +54,7 @@ def make_spiral(
     n: int
         点の数
     noise: float
-        点の位置に加えるノイズの標準偏差
+        点の位置に加えるノイズの, 半径 1 での標準偏差 (半径に比例)
     generator: torch.Generator
         乱数の生成器
 
@@ -65,7 +65,7 @@ def make_spiral(
     y: torch.Tensor
         クラスのラベル (0 か 1), 形は (n,)
     """
-    # 半径を 0 から 1 まで増やしながら回転し, クラス 1 は半回転ずらす
+    # 半径を 0 から 1 まで増やしながら回転し, クラス 1 は半回転ずらした角度の計算
     y = torch.randint(0, 2, (n,), generator=generator)
     radius = torch.rand(n, generator=generator)
     angle = radius * 2 * math.pi + y * math.pi
@@ -168,7 +168,8 @@ def step(model: nn.Module, batch: tuple, phase: str) -> dict:
     # 予測して損失と正解率を計算
     x, y = batch
     logits = model(x)
-    loss = nn.functional.cross_entropy(logits, y)
+    ce = nn.CrossEntropyLoss()
+    loss = ce(logits, y)
     acc = (logits.argmax(dim=1) == y).float().mean()
     outputs = {"loss": loss, "acc": acc}
 
@@ -261,7 +262,7 @@ class SpiralTrainer(Trainer):
                     for c0, c1 in zip(*CLASS_COLORS, strict=True)
                 )
 
-        # 検証用の点を, 正解のクラスの色の 2x2 の点で重ねる
+        # 検証用の点を, 正解のクラスの色の 2x2 の点で描画
         scale = (IMAGE_SIZE - 1) / (2 * EXTENT)
         points = zip(
             self.valid_x.tolist(), self.valid_y.tolist(), strict=True

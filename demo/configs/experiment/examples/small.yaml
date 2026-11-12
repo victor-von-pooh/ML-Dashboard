@@ -1,3 +1,6 @@
 # 隠れ層を小さくして, 表現力の不足を見る
+experiment:
+  name: spiral_small
+
 model:
   hidden_dim: 4

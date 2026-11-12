@@ -16,6 +16,9 @@ async function registerDemo(request: APIRequestContext): Promise<string> {
   return ((await created.json()) as { id: string }).id
 }
 
+// 3 つ目のテストは実験を 1 つ足すので, 書いた順に実行
+test.describe.configure({ mode: 'serial' })
+
 let projectId = ''
 
 test.beforeAll(async ({ request }) => {
@@ -24,7 +27,7 @@ test.beforeAll(async ({ request }) => {
 
 test('プロジェクトから実験の一覧と詳細を開く', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('link', { name: /demo/ }).first().click()
+  await page.getByRole('main').getByRole('link', { name: /^demo/ }).first().click()
   await expect(page).toHaveURL(new RegExp(`/projects/${projectId}$`))
 
   // デモの 2 つの実験が完了の状態で並ぶ
@@ -61,7 +64,9 @@ test('2 つの実験を比べ, config の違いと同じエポックの画像を
   await expect(page.getByRole('img', { name: /boundary \(epoch 3\)/ })).toHaveCount(2)
 })
 
-test('フォームで config を変え, 学習を起動して完了まで見届ける', async ({ page }) => {
+test('フォームで config を変え, 学習を起動して完了まで見届ける', async ({ page, request }) => {
+  // 学習のプロセスの起動 (PyTorch の読み込み) を含むので長めに待機
+  test.setTimeout(90_000)
   await page.goto(`/projects/${projectId}/launch`)
   await page
     .getByLabel('experiment の config')
@@ -69,7 +74,7 @@ test('フォームで config を変え, 学習を起動して完了まで見届�
 
   // フォームで Optimizer を変えると YAML の欄に書き込まれる
   const editor = page.getByLabel('config の中身')
-  await expect(editor).toContainText('epochs: 3')
+  await expect(editor).toHaveValue(/epochs: 3/)
   await page.getByRole('combobox', { name: 'Optimizer' }).selectOption('SGD')
   await expect(editor).toHaveValue(/name: SGD/)
 
@@ -79,4 +84,17 @@ test('フォームで config を変え, 学習を起動して完了まで見届�
   await page.getByRole('button', { name: '学習を開始' }).click()
   await expect(page).toHaveURL(/\/jobs\//)
   await expect(page.getByText('完了', { exact: true }).first()).toBeVisible({ timeout: 45_000 })
+
+  // 起動した学習が実験の一覧に加わり, フォームで変えた Optimizer で学習している
+  await page.goto(`/projects/${projectId}`)
+  await expect(page.getByRole('checkbox', { name: /を比較に選ぶ/ })).toHaveCount(3)
+  const runs = (await (await request.get(`/api/projects/${projectId}/runs`)).json()) as {
+    id: string
+    started_at: string
+  }[]
+  const newest = runs.toSorted((a, b) => b.started_at.localeCompare(a.started_at))[0]!
+  const detail = (await (
+    await request.get(`/api/projects/${projectId}/runs/${newest.id}`)
+  ).json()) as { config: { optimizer: { name: string } } }
+  expect(detail.config.optimizer.name).toBe('SGD')
 })
