@@ -37,7 +37,8 @@ export function parseInput(kind: string, raw: string): unknown {
   const text = raw.trim()
   if (kind === 'bool') return text === 'true'
   if (text === '') return undefined
-  // 既定値が 0 のような整数でも小数を書けるように, int と float は同じ数として扱う
+  // int と float は同じ規則で数として読み, 整数かどうかは checkParamValue で確認
+  // (種類は ML-Found の登録簿が型の注釈から決めるので, weight_decay = 0 なども float)
   if (kind === 'int' || kind === 'float') {
     return /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(text) ? Number(text) : undefined
   }
@@ -65,4 +66,20 @@ export function formatInput(value: unknown): string {
   if (value === undefined) return ''
   if (typeof value === 'string') return value
   return JSON.stringify(value)
+}
+
+/** 引数の値の範囲と整数かどうか. 外れている場合は理由, 問題が無ければ null */
+export function checkParamValue(
+  spec: { kind: string; minimum?: number | null; maximum?: number | null },
+  value: unknown,
+): string | null {
+  // 数と, 数の配列 (min_lr などはグループごとに指定可能) の各要素を確かめる
+  const numbers = Array.isArray(value) ? value : [value]
+  for (const item of numbers) {
+    if (typeof item !== 'number') continue
+    if (spec.kind === 'int' && !Number.isInteger(item)) return '整数にしてください'
+    if (spec.minimum != null && item < spec.minimum) return `${spec.minimum} 以上にしてください`
+    if (spec.maximum != null && item > spec.maximum) return `${spec.maximum} 以下にしてください`
+  }
+  return null
 }

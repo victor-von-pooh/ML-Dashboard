@@ -78,6 +78,16 @@ test('フォームで config を変え, 学習を起動して完了まで見届�
   await page.getByRole('combobox', { name: 'Optimizer' }).selectOption('SGD')
   await expect(editor).toHaveValue(/name: SGD/)
 
+  // 範囲の外の値は書き込まず, 理由を表示
+  const lr = page.getByLabel('lr', { exact: true })
+  await lr.fill('-1')
+  await lr.press('Enter')
+  await expect(page.getByText('0 以上にしてください')).toBeVisible()
+  await expect(editor).not.toHaveValue(/lr: -1/)
+  await lr.fill('0.05')
+  await lr.press('Enter')
+  await expect(editor).toHaveValue(/lr: 0.05/)
+
   // ML-Found で確かめてから起動し, ジョブの画面で完了を待つ
   await page.getByRole('button', { name: 'ML-Found で config を確かめる' }).click()
   await expect(page.getByText(/読み込めました/)).toBeVisible()

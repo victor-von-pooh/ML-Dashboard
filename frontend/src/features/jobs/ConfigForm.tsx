@@ -4,7 +4,13 @@ import { useEffect, useId, useRef, useState } from 'react'
 
 import { api, type ClassSpec, type ParamSpec } from '../../api/client'
 import { Card, ErrorBox, Spinner } from '../../components/ui'
-import { deleteYamlValue, formatInput, parseInput, setYamlValue } from '../../lib/yamlEdit'
+import {
+  checkParamValue,
+  deleteYamlValue,
+  formatInput,
+  parseInput,
+  setYamlValue,
+} from '../../lib/yamlEdit'
 
 type Config = Record<string, unknown>
 
@@ -44,16 +50,27 @@ function ParamField({
   // 値が無いか null の場合は空にして, 既定値は薄い文字で表示
   const initial = value === null || value === undefined ? '' : formatInput(value)
   const [text, setText] = useState(initial)
-  const [invalid, setInvalid] = useState(false)
+  // 入力の誤り (読めない値や範囲の外). 誤りがある間は YAML に書き込まない
+  // YAML の欄で直接書いた範囲の外の値も, 作り直した時点で示す
+  const [error, setError] = useState<string | null>(() => checkParamValue(spec, value))
+  const invalid = error !== null
 
   const commit = () => {
-    if (text === initial) return
-    const parsed = parseInput(spec.kind, text)
-    if (parsed === undefined && text.trim() !== '') {
-      setInvalid(true)
+    if (text === initial) {
+      setError(checkParamValue(spec, value))
       return
     }
-    setInvalid(false)
+    const parsed = parseInput(spec.kind, text)
+    if (parsed === undefined && text.trim() !== '') {
+      setError(`${spec.kind === 'list' ? '[1, 2] のような配列' : '値'}として読めません`)
+      return
+    }
+    const rangeError = checkParamValue(spec, parsed)
+    if (rangeError) {
+      setError(rangeError)
+      return
+    }
+    setError(null)
     onChange(parsed)
   }
 
@@ -63,13 +80,8 @@ function ParamField({
   ]
     .filter(Boolean)
     .join(', ')
-  const help = [
-    spec.description,
-    range,
-    invalid ? `${spec.kind === 'list' ? '[1, 2] のような配列' : '値'}として読めません` : '',
-  ]
-    .filter(Boolean)
-    .join(' · ')
+  // 誤りの間は, 同じ内容になりやすい範囲の説明を省略
+  const help = [spec.description, error ? '' : range, error ?? ''].filter(Boolean).join(' · ')
 
   return (
     <div className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] items-start gap-2">
