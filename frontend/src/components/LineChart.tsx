@@ -201,7 +201,12 @@ export function LineChart({
               silent: true,
               lineStyle: { color: ink3, type: 'dashed', width: 1 },
               label: { color: ink2, fontSize: 11, formatter: '{b}', position: 'end' },
-              data: markers.map((m) => ({ xAxis: m.x, name: m.label })),
+              // 2 つ目以降の目印は線に沿わせて, 近いエポックでもラベルが重ならないようにする
+              data: markers.map((m, index) => ({
+                xAxis: m.x,
+                name: m.label,
+                label: index === 0 ? undefined : { position: 'insideEndTop' },
+              })),
             },
           },
         ],

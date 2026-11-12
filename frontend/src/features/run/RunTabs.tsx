@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from 'react'
 
 import { runFileUrl, type LogEntry, type RunDetail } from '../../api/client'
 import { Card } from '../../components/ui'
-import { formatBytes, formatValue } from '../../lib/format'
+import { formatBytes, formatLogTime, formatValue } from '../../lib/format'
 import { flattenConfig } from '../../lib/metrics'
 
 /** 検索できる「項目名 = 値」の表 */
@@ -65,7 +65,7 @@ export function ConfigTab({ run }: { run: RunDetail }) {
   }, [run.config, query])
 
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
       <Card title="default との差分" padded={false}>
         {changed.size === 0 ? (
           <p className="px-4 py-6 text-sm text-ink-3">default のまま学習しました.</p>
@@ -117,11 +117,11 @@ export function ModelTab({ run }: { run: RunDetail }) {
     ['Scheduler', run.scheduler],
   ]
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-2">
+    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
       {blocks.map(([title, text]) => (
         <Card key={title} title={title} className={title === 'モデルの構造' ? 'lg:row-span-2' : ''}>
           {text ? (
-            <pre className="max-h-[520px] overflow-auto font-mono text-xs leading-relaxed break-all whitespace-pre-wrap text-ink-2">
+            <pre className="max-h-[520px] overflow-auto font-mono text-xs leading-relaxed whitespace-pre-wrap text-ink-2 [overflow-wrap:anywhere]">
               {text}
             </pre>
           ) : (
@@ -139,7 +139,7 @@ export function EnvTab({ run, projectId }: { run: RunDetail; projectId: string }
     name.toLowerCase().includes(query.toLowerCase()),
   )
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <div className="space-y-4">
         {run.env.length === 0 && (
           <p className="text-sm text-ink-3">ログに環境の情報がありません.</p>
@@ -172,13 +172,6 @@ export function EnvTab({ run, projectId }: { run: RunDetail; projectId: string }
       </Card>
     </div>
   )
-}
-
-/** ログの時刻. 最初の記録と日付が違う場合は月日も付ける */
-function formatLogTime(time: string | null | undefined, firstDate: string | undefined): string {
-  if (!time) return ''
-  const clock = time.slice(11, 19)
-  return time.slice(0, 10) === firstDate ? clock : `${time.slice(5, 10)} ${clock}`
 }
 
 // 絞り込みに使うレベル. 書式が違う行と DEBUG は INFO と同じ扱い

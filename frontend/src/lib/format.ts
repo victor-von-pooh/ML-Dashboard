@@ -61,3 +61,13 @@ export function formatValue(value: unknown): string {
   if (typeof value === 'string') return value
   return JSON.stringify(value)
 }
+
+/** ログの時刻. 最初の記録と日付が違う場合は月日も付ける */
+export function formatLogTime(
+  time: string | null | undefined,
+  firstDate: string | undefined,
+): string {
+  if (!time) return ''
+  const clock = time.slice(11, 19)
+  return time.slice(0, 10) === firstDate ? clock : `${time.slice(5, 10)} ${clock}`
+}

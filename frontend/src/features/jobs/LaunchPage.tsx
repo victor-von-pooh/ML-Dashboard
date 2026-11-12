@@ -46,7 +46,11 @@ export function LaunchPage() {
   // 書き換えたまま再読み込みやタブを閉じる場合はブラウザで確認
   useEffect(() => {
     if (!edited) return
-    const warn = (event: BeforeUnloadEvent) => event.preventDefault()
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      // 古いブラウザでは returnValue の設定も必要
+      event.returnValue = ''
+    }
     window.addEventListener('beforeunload', warn)
     return () => window.removeEventListener('beforeunload', warn)
   }, [edited])
@@ -93,7 +97,7 @@ export function LaunchPage() {
         subtitle="プロジェクトの Python で学習のスクリプトを別のプロセスとして動かします"
       />
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         <div className="space-y-4">
           <Card title="設定">
             <div className="space-y-4 text-sm">

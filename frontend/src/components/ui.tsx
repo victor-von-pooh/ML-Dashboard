@@ -8,7 +8,13 @@ import {
   XCircle,
   type LucideIcon,
 } from 'lucide-react'
-import { useRef, type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode } from 'react'
+import {
+  useEffect,
+  useRef,
+  type ButtonHTMLAttributes,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react'
 
 import type { RunStatus } from '../api/client'
 
@@ -207,6 +213,11 @@ export function Tabs<T extends string>({
   label: string
 }) {
   const refs = useRef<Record<string, HTMLButtonElement | null>>({})
+
+  // 狭い画面でも選んだタブが見えるように, 選び直したら横に送る
+  useEffect(() => {
+    refs.current[value]?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [value])
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const index = items.findIndex((item) => item.id === value)

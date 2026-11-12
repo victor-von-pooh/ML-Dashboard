@@ -69,7 +69,7 @@ export function MetricCharts({
           縦軸を対数にする (正の値だけの指標)
         </label>
       </div>
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {charts.map(({ group, series }) => (
           <Card
             key={group.name}
