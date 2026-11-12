@@ -276,3 +276,26 @@ def test_params(client: TestClient, project_dir: Path) -> None:
     assert run["params"]["trainer.flag"] is True
     assert run["params"]["trainer.none"] is None
     assert run["best"]["value"] == 0.9
+
+
+def test_flatten_params_edge_cases() -> None:
+    """
+    分析用の平らな config の端の場合を確かめる関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    None
+    """
+    from ml_dashboard.core.runs import flatten_params
+
+    assert flatten_params({}) == {}
+    assert flatten_params({"a": {}, "b": [[1], 2]}) == {
+        "a": "{}", "b": "[[1], 2]"
+    }
+    assert flatten_params({"x": float("nan"), "y": b"raw"}) == {
+        "x": None, "y": "\"b'raw'\""
+    }

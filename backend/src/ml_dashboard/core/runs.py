@@ -872,10 +872,11 @@ def flatten_params(data: Any, prefix: str = "") -> dict[str, ParamValue]:
     Returns
     ----------
     flat: dict[str, ParamValue]
-        . でつないだ項目名と, 数値, 文字列, 真偽値, None の値
+        . でつないだ項目名と, 数値, 文字列, 真偽値, None の値.
+        nan と inf も None (欠損) として扱い
     """
-    # 辞書は子の項目ごとに平らにして集約
-    if isinstance(data, dict) and data:
+    # 辞書は子の項目ごとに平らにして集約 (最上位の空の辞書は項目なし)
+    if isinstance(data, dict) and (data or not prefix):
         flat: dict[str, ParamValue] = {}
         for key, item in data.items():
             child = f"{prefix}.{key}" if prefix else str(key)
@@ -888,7 +889,7 @@ def flatten_params(data: Any, prefix: str = "") -> dict[str, ParamValue]:
     elif isinstance(data, (int, float)):
         value = to_float(data)
     else:
-        value = json.dumps(data, ensure_ascii=False)
+        value = json.dumps(data, ensure_ascii=False, default=str)
     flat = {prefix: value}
 
     return flat
@@ -914,14 +915,13 @@ def collect_params(output_dir: Path, run_dir: Path) -> Optional[RunParams]:
     try:
         data = RunData(output_dir, run_dir)
         summary = data.summary()
+        params = RunParams(
+            id=summary.id, name=summary.name, started_at=summary.started_at,
+            status=summary.status, best=summary.best,
+            final_metrics=summary.final_metrics,
+            params=flatten_params(data.config)
+        )
     except Exception:
         return None
-
-    params = RunParams(
-        id=summary.id, name=summary.name, started_at=summary.started_at,
-        status=summary.status, best=summary.best,
-        final_metrics=summary.final_metrics,
-        params=flatten_params(data.config)
-    )
 
     return params

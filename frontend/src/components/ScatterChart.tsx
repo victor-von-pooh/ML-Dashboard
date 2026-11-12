@@ -79,7 +79,27 @@ export function ScatterChart({
     const accent = cssVar('--series-1')
     const best = cssVar('--series-2')
     const positiveX = points.every((point) => typeof point.x !== 'number' || point.x > 0)
-    const positiveY = points.every((point) => point.y > 0)
+
+    // 同じ位置の点は 1 つにまとめて大きくし, 最良の点は最後 (一番上) に描画
+    const merged = new Map<string, { x: number | string; y: number; ids: string[] }>()
+    for (const point of points) {
+      const key = `${point.x}|${point.y}`
+      const item = merged.get(key) ?? { x: point.x, y: point.y, ids: [] }
+      item.ids.push(point.id)
+      merged.set(key, item)
+    }
+    const items = [...merged.values()].sort(
+      (a, b) => Number(a.ids.includes(highlight ?? '')) - Number(b.ids.includes(highlight ?? '')),
+    )
+
+    // 数値の軸は両端の点が軸に重ならないように余白を確保
+    const pad = (value: { min: number; max: number }, log: boolean, side: -1 | 1) => {
+      if (log) return side < 0 ? value.min / 1.5 : value.max * 1.5
+      const span = value.max - value.min || Math.abs(value.max) || 1
+      return (side < 0 ? value.min : value.max) + side * span * 0.06
+    }
+    const useLogX = !categories && logX && positiveX
+    const useLogY = logY && points.every((point) => point.y > 0)
 
     chart.setOption(
       {
@@ -90,13 +110,28 @@ export function ScatterChart({
           backgroundColor: surface,
           borderColor: grid,
           textStyle: { color: cssVar('--text'), fontSize: 12 },
-          formatter: (params: { data: { id: string; value: [number | string, number] } }) => {
+          // 実験の ID と config の値は利用者の書いた文字列なので, HTML として扱わないように変換
+          formatter: (params: { data: { ids: string[]; value: [number | string, number] } }) => {
             const [x, y] = params.data.value
-            return `${params.data.id}<br/>${xLabel}: ${typeof x === 'number' ? formatAxis(x) : x}<br/>${yLabel}: ${formatMetric(y)}`
+            const escape = echarts.format.encodeHTML
+            const shownX = typeof x === 'number' ? formatAxis(x) : x
+            const ids = params.data.ids
+            return [
+              ...ids.slice(0, 5).map(escape),
+              ...(ids.length > 5 ? [`他 ${ids.length - 5} 件`] : []),
+              `${escape(xLabel)}: ${escape(String(shownX))}`,
+              `${escape(yLabel)}: ${escape(formatMetric(y))}`,
+            ].join('<br/>')
           },
         },
         xAxis: {
-          type: categories ? 'category' : logX && positiveX ? 'log' : 'value',
+          type: categories ? 'category' : useLogX ? 'log' : 'value',
+          min: categories
+            ? undefined
+            : (value: { min: number; max: number }) => pad(value, useLogX, -1),
+          max: categories
+            ? undefined
+            : (value: { min: number; max: number }) => pad(value, useLogX, 1),
           data: categories ?? undefined,
           name: xLabel,
           nameLocation: 'middle',
@@ -112,7 +147,7 @@ export function ScatterChart({
           splitLine: { show: !categories, lineStyle: { color: grid, opacity: 0.6 } },
         },
         yAxis: {
-          type: logY && positiveY ? 'log' : 'value',
+          type: useLogY ? 'log' : 'value',
           scale: true,
           axisLabel: { color: ink3, fontSize: 11, formatter: (value: number) => formatAxis(value) },
           splitLine: { lineStyle: { color: grid, opacity: 0.6 } },
@@ -122,17 +157,21 @@ export function ScatterChart({
             type: 'scatter',
             symbolSize: 10,
             cursor: onSelect ? 'pointer' : 'default',
-            data: points.map((point) => ({
-              id: point.id,
-              value: [point.x, point.y],
-              itemStyle: {
-                color: point.id === highlight ? best : accent,
-                borderColor: surface,
-                borderWidth: 2,
-                opacity: 0.9,
-              },
-              symbolSize: point.id === highlight ? 14 : 10,
-            })),
+            data: items.map((item) => {
+              const top = item.ids.includes(highlight ?? '')
+              return {
+                ids: item.ids,
+                id: item.ids[0],
+                value: [item.x, item.y],
+                itemStyle: {
+                  color: top ? best : accent,
+                  borderColor: surface,
+                  borderWidth: 2,
+                  opacity: 0.9,
+                },
+                symbolSize: (top ? 14 : 10) + Math.log2(item.ids.length) * 4,
+              }
+            }),
             emphasis: { scale: 1.3, label: { show: false } },
             labelLine: { lineStyle: { color: ink2 } },
           },

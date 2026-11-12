@@ -8,8 +8,10 @@ import { useProject, useRunParams } from '../../api/hooks'
 import { ScatterChart, type ScatterPoint } from '../../components/ScatterChart'
 import { Card, EmptyState, ErrorBox, PageHeader, Spinner } from '../../components/ui'
 import {
+  type Direction,
   formatParam,
   groupByParam,
+  metricDirection,
   metricOptions,
   metricValue,
   sensitivity,
@@ -57,7 +59,7 @@ export function AnalysisPage() {
   const params = useRunParams(projectId)
   const navigate = useNavigate()
   const [search, setSearch] = useSearchParams()
-  const [logX, setLogX] = useState(false)
+  const [logXChoice, setLogX] = useState<{ key: string; on: boolean } | null>(null)
   const [logY, setLogY] = useState(false)
 
   // 選んだ内容は URL に保存し, 共有や再読み込みで同じ画面を開けるようにする
@@ -75,35 +77,56 @@ export function AnalysisPage() {
     for (const run of all) counts.set(run.name, (counts.get(run.name) ?? 0) + 1)
     return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name)
   }, [all])
-  const name = search.get('name') ?? names[0] ?? ''
+  // URL の値は, 今の実験に無い場合 (古いリンクなど) は既定に戻す
+  const pick = (value: string | null, allowed: string[], fallback: string) =>
+    value !== null && allowed.includes(value) ? value : fallback
+  const name = pick(search.get('name'), names, names[0] ?? '')
   const runs = useMemo(() => all.filter((run) => run.name === name), [all, name])
 
   const varying = useMemo(() => varyingParams(runs), [runs])
   const metrics = useMemo(() => metricOptions(runs), [runs])
-  const xKey = search.get('x') ?? varying.find((item) => item.key !== 'experiment.seed')?.key ?? ''
-  const metric = search.get('y') ?? 'best'
-  const higherIsBetter = runs.find((run) => run.best)?.best?.mode === 'max'
+  const defaultX = varying.find((item) => item.complete && !item.noise)?.key
+  const xKey = pick(
+    search.get('x'),
+    varying.map((item) => item.key),
+    defaultX ?? varying[0]?.key ?? '',
+  )
+  const metric = pick(
+    search.get('y'),
+    metrics.map((item) => item.id),
+    'best',
+  )
+  const inferred = metricDirection(runs, metric)
+  const direction: Direction = pick(search.get('dir'), ['max', 'min'], inferred) as Direction
+  const higherIsBetter = direction === 'max'
   const param = varying.find((item) => item.key === xKey)
 
-  // 散布図の点と, 最良の実験
-  const points: ScatterPoint[] = runs.flatMap((run) => {
-    const y = metricValue(run, metric)
+  // 散布図の点と, 最良の実験. 数値の軸では数値の無い実験は数だけ表示
+  const valued = runs.filter((run) => metricValue(run, metric) !== null)
+  const points: ScatterPoint[] = valued.flatMap((run): ScatterPoint[] => {
+    const y = metricValue(run, metric) as number
     const x = run.params[xKey]
-    if (y === null || x === undefined) return []
-    return [{ id: run.id, x: param?.numeric && typeof x === 'number' ? x : formatParam(x), y }]
+    if (param?.numeric) return typeof x === 'number' ? [{ id: run.id, x, y }] : []
+    return [{ id: run.id, x: formatParam(x), y }]
   })
-  const categories = param?.numeric
-    ? null
-    : [...new Set(points.map((point) => String(point.x)))].sort()
+  const unplotted = valued.length - points.length
+  const noResult = runs.length - valued.length
   const bestPoint = points.reduce<ScatterPoint | null>(
     (best, point) =>
       !best || (higherIsBetter ? point.y > best.y : point.y < best.y) ? point : best,
     null,
   )
 
-  const groups = xKey ? groupByParam(runs, xKey, metric, higherIsBetter) : []
+  // 値の名前の軸は, 表と同じく良い順に並べる
+  const groups = xKey ? groupByParam(runs, xKey, metric, direction) : []
+  const categories = param?.numeric ? null : groups.map((row) => row.value)
+
+  // 20 倍以上の範囲に広がる正の数値 (学習率など) は, 既定で横軸を対数にする
+  const xs = points.flatMap((point) => (typeof point.x === 'number' ? [point.x] : []))
+  const autoLog = xs.length > 1 && Math.min(...xs) > 0 && Math.max(...xs) / Math.min(...xs) >= 20
+  const logX = logXChoice?.key === xKey ? logXChoice.on : autoLog
   // 結果が変わらなかった項目は数だけ表示
-  const allRanking = sensitivity(runs, varying, metric, higherIsBetter)
+  const allRanking = sensitivity(runs, varying, metric, direction)
   const ranking = allRanking.filter((item) => item.spread > 0)
   const flat = allRanking.length - ranking.length
   const metricLabel = metrics.find((item) => item.id === metric)?.label ?? metric
@@ -139,6 +162,20 @@ export function AnalysisPage() {
   return (
     <>
       {header}
+      {names.length > 1 && (
+        <div className="mb-4">
+          <Select
+            label="実験の名前"
+            value={name}
+            onChange={(value) => {
+              const next = new URLSearchParams()
+              next.set('name', value)
+              setSearch(next, { replace: true })
+            }}
+            options={names.map((item) => ({ id: item, label: item }))}
+          />
+        </div>
+      )}
       {varying.length === 0 ? (
         <EmptyState icon={ChartScatter} title="比べられる項目がありません">
           同じ名前の実験で config の値が違うものが 2 つ以上あると, 値と結果の関係を表示します.
@@ -146,32 +183,35 @@ export function AnalysisPage() {
       ) : (
         <div className="space-y-6">
           <div className="flex flex-wrap items-end gap-3">
-            {names.length > 1 && (
-              <Select
-                label="実験の名前"
-                value={name}
-                onChange={(value) => {
-                  const next = new URLSearchParams()
-                  next.set('name', value)
-                  setSearch(next, { replace: true })
-                }}
-                options={names.map((item) => ({ id: item, label: item }))}
-              />
-            )}
             <Select
               label="横軸: config の項目"
               value={xKey}
               onChange={(value) => update('x', value)}
               options={varying.map((item) => ({
                 id: item.key,
-                label: `${item.key} (${item.values} 通り)`,
+                label: `${item.key} (${item.values} 通り${item.complete ? '' : ', 一部の実験だけ'}${item.noise ? ', 記録や環境' : ''})`,
               }))}
             />
             <Select
               label="縦軸: 結果"
               value={metric}
-              onChange={(value) => update('y', value)}
+              onChange={(value) => {
+                // 結果を変えたら, 良い向きは新しい結果から推測し直す
+                const next = new URLSearchParams(search)
+                next.set('y', value)
+                next.delete('dir')
+                setSearch(next, { replace: true })
+              }}
               options={metrics}
+            />
+            <Select
+              label="良い向き"
+              value={direction}
+              onChange={(value) => update('dir', value)}
+              options={[
+                { id: 'max', label: `大きいほど良い${inferred === 'max' ? ' (推測)' : ''}` },
+                { id: 'min', label: `小さいほど良い${inferred === 'min' ? ' (推測)' : ''}` },
+              ]}
             />
             <div className="flex gap-4 pb-2 text-xs text-ink-2">
               {param?.numeric && (
@@ -179,7 +219,7 @@ export function AnalysisPage() {
                   <input
                     type="checkbox"
                     checked={logX}
-                    onChange={(event) => setLogX(event.target.checked)}
+                    onChange={(event) => setLogX({ key: xKey, on: event.target.checked })}
                     className="accent-[var(--accent)]"
                   />
                   横軸を対数
@@ -204,7 +244,13 @@ export function AnalysisPage() {
                   {xKey} と {metricLabel}
                 </span>
               }
-              actions={<span className="text-xs text-ink-3">{points.length} 実験</span>}
+              actions={
+                <span className="text-xs text-ink-3">
+                  {points.length} 実験
+                  {unplotted > 0 && ` (値の無い ${unplotted} 実験は除外)`}
+                  {noResult > 0 && ` (結果の無い ${noResult} 実験は除外)`}
+                </span>
+              }
             >
               <ScatterChart
                 points={points}
@@ -229,7 +275,9 @@ export function AnalysisPage() {
                   <tr className="border-b border-line">
                     <th className="px-4 py-2 font-medium">値</th>
                     <th className="px-4 py-2 text-right font-medium">実験</th>
-                    <th className="px-4 py-2 text-right font-medium">最良</th>
+                    <th className="px-4 py-2 text-right font-medium">
+                      最良 ({higherIsBetter ? '大きいほど良い' : '小さいほど良い'})
+                    </th>
                     <th className="px-4 py-2 text-right font-medium">平均</th>
                   </tr>
                 </thead>
@@ -258,53 +306,90 @@ export function AnalysisPage() {
 
           <Card title="結果への影響が大きい項目" padded={false}>
             <p className="px-4 pt-3 text-xs text-ink-3">
-              値ごとの最良の {metricLabel} の差が大きい順. 他の項目も同時に変えた実験が混ざるので,
-              目安として見てください.
+              値ごとの最良の {metricLabel} の差が大きい順. 他の項目も同時に変えた実験が混ざり, 1
+              つの実験で決まる値もあるので, 目安として見てください. いつも一緒に変えた項目は 1
+              行にまとめ, 乱数シードや記録の設定は後ろに並べます.
             </p>
-            <table className="mt-2 w-full text-sm">
-              <thead className="text-left text-xs text-ink-3">
-                <tr className="border-b border-line">
-                  <th className="px-4 py-2 font-medium">項目</th>
-                  <th className="px-4 py-2 text-right font-medium">値の数</th>
-                  <th className="px-4 py-2 font-medium">最良の差</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ranking.map((item) => {
-                  const max = ranking[0]?.spread || 1
-                  return (
-                    <tr key={item.key} className="border-b border-line last:border-b-0">
-                      <td className="px-4 py-1.5">
-                        <button
-                          type="button"
-                          onClick={() => update('x', item.key)}
+            {ranking.length === 0 ? (
+              <p className="px-4 py-4 text-sm text-ink-3">
+                値を変えて結果が変わった項目はありません.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="mt-2 w-full min-w-[480px] text-sm">
+                  <thead className="text-left text-xs text-ink-3">
+                    <tr className="border-b border-line">
+                      <th scope="col" className="px-4 py-2 font-medium">
+                        項目
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-4 py-2 text-right font-medium whitespace-nowrap"
+                      >
+                        値の数
+                      </th>
+                      <th scope="col" className="px-4 py-2 font-medium whitespace-nowrap">
+                        最良の差
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ranking.map((item) => {
+                      const max = Math.max(...ranking.map((row) => row.spread)) || 1
+                      const key = item.keys[0] ?? ''
+                      return (
+                        <tr
+                          key={item.keys.join('|')}
                           className={clsx(
-                            'font-mono text-xs hover:text-accent-text',
-                            item.key === xKey && 'font-semibold text-accent-text',
+                            'border-b border-line last:border-b-0',
+                            item.noise && 'text-ink-3',
                           )}
                         >
-                          {item.key}
-                        </button>
-                      </td>
-                      <td className="tabular px-4 py-1.5 text-right text-ink-2">{item.groups}</td>
-                      <td className="px-4 py-1.5">
-                        <div className="flex items-center gap-2">
-                          <div className="h-1.5 w-40 overflow-hidden rounded-full bg-surface-2">
-                            <div
-                              className="h-full rounded-full bg-accent"
-                              style={{ width: `${(item.spread / max) * 100}%` }}
-                            />
-                          </div>
-                          <span className="tabular text-xs text-ink-2">
-                            {formatMetric(item.spread)}
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                          <td className="px-4 py-1.5">
+                            <button
+                              type="button"
+                              onClick={() => update('x', key)}
+                              className={clsx(
+                                'text-left font-mono text-xs break-all hover:text-accent-text',
+                                item.keys.includes(xKey) && 'font-semibold text-accent-text',
+                              )}
+                            >
+                              {item.keys.join(' / ')}
+                            </button>
+                            <div className="text-[11px] text-ink-3">
+                              {[
+                                item.keys.length > 1 && 'いつも同時に変更',
+                                item.single && '1 つの実験だけの値あり',
+                                !item.complete && '一部の実験だけの項目',
+                                item.noise && '記録や環境の設定',
+                              ]
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </div>
+                          </td>
+                          <td className="tabular px-4 py-1.5 text-right text-ink-2">
+                            {item.groups}
+                          </td>
+                          <td className="px-4 py-1.5">
+                            <div className="flex items-center gap-2">
+                              <div className="h-1.5 w-24 shrink-0 overflow-hidden rounded-full bg-surface-2 sm:w-40">
+                                <div
+                                  className="h-full rounded-full bg-accent"
+                                  style={{ width: `${(item.spread / max) * 100}%` }}
+                                />
+                              </div>
+                              <span className="tabular text-xs text-ink-2">
+                                {formatMetric(item.spread)}
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
             {flat > 0 && (
               <p className="border-t border-line px-4 py-2 text-xs text-ink-3">
                 値を変えても最良の {metricLabel} が変わらなかった項目: {flat} 個
