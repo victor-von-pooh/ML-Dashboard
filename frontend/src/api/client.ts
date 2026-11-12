@@ -23,6 +23,11 @@ export type ValidateResult = Schemas['ValidateResult']
 export type ConfigText = Schemas['ConfigText']
 type JobCreate = Schemas['JobCreate']
 
+// ML-Found の登録簿 (describe_optimizers と describe_schedulers の形)
+export type ParamSpec = Schemas['ParamSpec']
+export type ClassSpec = Schemas['ClassSpec']
+export type Registry = Schemas['Registry']
+
 /** API がエラーを返したときの例外 */
 export class ApiError extends Error {
   readonly status: number
@@ -133,6 +138,7 @@ export const api = {
       `/api/projects/${encodeURIComponent(projectId)}/runs/${encodeRunId(runId)}/note`,
       { method: 'PUT', body: JSON.stringify(note) },
     ),
+  getRegistry: () => request<Registry>('/api/registry'),
   listJobs: () => request<JobInfo[]>('/api/jobs'),
   getJob: (jobId: string) => request<JobInfo>(`/api/jobs/${encodeURIComponent(jobId)}`),
   stopJob: (jobId: string, force: boolean) =>

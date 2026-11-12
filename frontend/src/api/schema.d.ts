@@ -577,6 +577,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/registry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Registry
+         * @description 選べる Optimizer と Scheduler と引数の仕様を返す関数
+         *
+         *     Parameters
+         *     ----------
+         *     None
+         *
+         *     Returns
+         *     ----------
+         *     registry: Registry
+         *         ML-Found の登録簿の内容
+         */
+        get: operations["read_registry"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}/notes": {
         parameters: {
             query?: never;
@@ -667,6 +696,19 @@ export interface components {
             /** Value */
             value: number;
         };
+        /** ClassSpec */
+        ClassSpec: {
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Params */
+            params: components["schemas"]["ParamSpec"][];
+            /** Supported */
+            supported: boolean;
+            /** Note */
+            note: string;
+        };
         /** ConfigText */
         ConfigText: {
             /** Path */
@@ -756,6 +798,25 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** ParamSpec */
+        ParamSpec: {
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /** Default */
+            default: unknown;
+            /** Required */
+            required: boolean;
+            /** Advanced */
+            advanced: boolean;
+            /** Description */
+            description: string;
+            /** Minimum */
+            minimum: number | null;
+            /** Maximum */
+            maximum: number | null;
+        };
         /** Progress */
         Progress: {
             /** Phase */
@@ -839,6 +900,13 @@ export interface components {
             latest_run: string | null;
             /** Error */
             error?: string | null;
+        };
+        /** Registry */
+        Registry: {
+            /** Optimizers */
+            optimizers: components["schemas"]["ClassSpec"][];
+            /** Schedulers */
+            schedulers: components["schemas"]["ClassSpec"][];
         };
         /** RunDetail */
         RunDetail: {
@@ -1014,6 +1082,18 @@ export interface components {
                     [key: string]: unknown;
                 };
             };
+            /**
+             * Config
+             * @default {}
+             */
+            config: {
+                [key: string]: unknown;
+            };
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
         };
         /** ValidationError */
         ValidationError: {
@@ -1707,6 +1787,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_registry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Registry"];
                 };
             };
         };

@@ -281,3 +281,70 @@ def test_edited_config_text(client: TestClient, project_dir: Path) -> None:
     ).json()
     assert plain["config_text"] is None
     wait_for(client, plain["id"], "status", "finished")
+
+
+def test_registry_and_required_params(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    登録簿と, 必須の引数の不足を注意として返すことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    registry = client.get("/api/registry").json()
+    adam = next(
+        item for item in registry["optimizers"] if item["name"] == "Adam"
+    )
+    assert any(param["name"] == "lr" for param in adam["params"])
+
+    # スクリプトが補う可能性がある必須の引数の不足は注意, 名前の誤りはエラー
+    project_id = register(client, project_dir)
+    url = f"/api/projects/{project_id}/validate"
+    missing = client.post(
+        url, json={"text": "scheduler:\n  name: StepLR\n  params: {}\n"}
+    ).json()
+    assert missing["ok"] is True
+    assert "step_size" in missing["warnings"][0]
+    assert missing["config"]["scheduler"]["name"] == "StepLR"
+    typo = client.post(
+        url, json={"text": "optimizer:\n  params:\n    lerning_rate: 1\n"}
+    ).json()
+    assert typo["ok"] is False
+    assert "lerning_rate" in typo["error"]
+
+
+def test_validate_custom_optimizer(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    プロジェクトの中の自作の Optimizer を確かめられることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    (project_dir / "my_optim_for_test.py").write_text(
+        "from torch import optim\n\n\nclass Mine(optim.SGD):\n    pass\n"
+    )
+    project_id = register(client, project_dir)
+    result = client.post(
+        f"/api/projects/{project_id}/validate",
+        json={"text": "optimizer:\n  name: my_optim_for_test.Mine\n"}
+    ).json()
+    assert result["ok"] is True, result["error"]

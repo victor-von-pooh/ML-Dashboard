@@ -1,11 +1,12 @@
 import clsx from 'clsx'
-import { CheckCircle2, Play, RotateCcw, ShieldCheck } from 'lucide-react'
+import { CheckCircle2, Play, RotateCcw, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { useEffect, useId, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
 import { useConfig, useCreateJob, useProject, useValidateConfig } from '../../api/hooks'
 import { Button, Card, ErrorBox, PageHeader, Spinner } from '../../components/ui'
 import { formatValue } from '../../lib/format'
+import { ConfigForm } from './ConfigForm'
 
 /** config とスクリプトを選び, 必要なら書き換えて学習を起動する画面 */
 export function LaunchPage() {
@@ -97,7 +98,7 @@ export function LaunchPage() {
         subtitle="プロジェクトの Python で学習のスクリプトを別のプロセスとして動かします"
       />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
         <div className="space-y-4">
           <Card title="設定">
             <div className="space-y-4 text-sm">
@@ -158,6 +159,14 @@ export function LaunchPage() {
             </div>
           </Card>
 
+          <ConfigForm
+            // config を選び直したら, フォームの状態 (選び直した名前など) も作り直す
+            key={configPath ?? 'none'}
+            projectId={projectId}
+            text={text}
+            onChange={editText}
+          />
+
           <Card title="起動の前の確認">
             <div className="space-y-3 text-sm">
               <Button
@@ -181,6 +190,15 @@ export function LaunchPage() {
                       </li>
                     ))}
                   </ul>
+                  {(validate.data.warnings ?? []).map((warning) => (
+                    <p
+                      key={warning}
+                      className="mt-2 flex items-start gap-1.5 text-xs text-warning-text"
+                    >
+                      <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                      {warning}
+                    </p>
+                  ))}
                 </div>
               )}
               {validate.error && <ErrorBox error={validate.error} />}
