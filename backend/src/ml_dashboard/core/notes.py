@@ -4,6 +4,7 @@ import re
 import tempfile
 import threading
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -13,6 +14,7 @@ MAX_TAGS = 20
 MAX_TAG = 40
 
 
+# 保存は全体の置き換え (省略した項目は既定値)
 class RunNote(BaseModel):
     note: str = Field(default="", max_length=MAX_NOTE)
     tags: list[str] = Field(default_factory=list, max_length=MAX_TAGS)
@@ -88,6 +90,27 @@ class NoteStore:
 
         return path
 
+    def read(self, project_id: str) -> Any:
+        """
+        プロジェクトのメモのファイルを読み込む関数
+
+        Parameters
+        ----------
+        project_id: str
+            プロジェクトの ID
+
+        Returns
+        ----------
+        data: Any
+            ファイルの中身, ファイルが無い場合は空の辞書
+        """
+        path = self.path(project_id)
+        if not path.exists():
+            return {}
+        data = json.loads(path.read_text(encoding="utf-8"))
+
+        return data
+
     def load(self, project_id: str) -> dict[str, RunNote]:
         """
         プロジェクトの実験のメモを読み込む関数
@@ -103,8 +126,7 @@ class NoteStore:
             実験の ID ごとのメモ, 壊れた項目は除外
         """
         try:
-            text = self.path(project_id).read_text(encoding="utf-8")
-            data = json.loads(text)
+            data = self.read(project_id)
         except (OSError, ValueError):
             return {}
 
@@ -136,6 +158,13 @@ class NoteStore:
             保存したメモ
         """
         with self.lock:
+            # 壊れたファイルを空として上書きしないように, 読めない場合は退避
+            try:
+                self.read(project_id)
+            except (OSError, ValueError):
+                path = self.path(project_id)
+                if path.exists():
+                    os.replace(path, path.with_suffix(".corrupt"))
             notes = self.load(project_id)
             if note.is_empty():
                 notes.pop(run_id, None)
@@ -153,6 +182,25 @@ class NoteStore:
                 encoding="utf-8"
             ) as file:
                 file.write(text)
-            os.replace(file.name, self.path(project_id))
+            try:
+                os.replace(file.name, self.path(project_id))
+            finally:
+                Path(file.name).unlink(missing_ok=True)
 
         return note
+
+    def remove(self, project_id: str) -> None:
+        """
+        プロジェクトのメモを消す関数 (登録を外したとき)
+
+        Parameters
+        ----------
+        project_id: str
+            プロジェクトの ID
+
+        Returns
+        ----------
+        None
+        """
+        with self.lock:
+            self.path(project_id).unlink(missing_ok=True)

@@ -13,7 +13,6 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { encodeRunId, type RunNote, type RunStatus, type RunSummary } from '../../api/client'
-import { StarButton } from '../run/NotePanel'
 import { useNotes, useProject, useRuns, useSaveNote } from '../../api/hooks'
 import {
   Button,
@@ -26,6 +25,7 @@ import {
 } from '../../components/ui'
 import { formatDateTime, formatDuration, formatMetric, formatRelative } from '../../lib/format'
 import { MAX_COMPARE, summarizeDiff } from '../../lib/metrics'
+import { StarButton } from '../run/NotePanel'
 
 type SortKey = 'started' | 'best' | 'duration' | 'epochs'
 
@@ -166,9 +166,19 @@ function RunsPage({ projectId }: { projectId: string }) {
     )
   }, [all, query, status, sort, notes.data, starredOnly, tag])
 
-  // 書かれたタグの一覧と星の数
-  const allTags = [...new Set(Object.values(notes.data ?? {}).flatMap((note) => note.tags))].sort()
-  const starredCount = Object.values(notes.data ?? {}).filter((note) => note.starred).length
+  // 今ある実験に書かれたタグの一覧と星の数 (消えた実験のメモは数えない)
+  const { allTags, starredCount } = useMemo(() => {
+    const present = all.flatMap((run) => {
+      const note = notes.data?.[run.id]
+      return note ? [note] : []
+    })
+    return {
+      allTags: [...new Set(present.flatMap((note) => note.tags))].sort(),
+      starredCount: present.filter((note) => note.starred).length,
+    }
+  }, [all, notes.data])
+  // 絞り込み中のタグは, そのタグが無くなっても外せるように一覧に残す
+  const tagChips = tag && !allTags.includes(tag) ? [...allTags, tag] : allTags
 
   const counts = useMemo(() => {
     const result: Record<string, number> = { all: all.length }
@@ -297,13 +307,13 @@ function RunsPage({ projectId }: { projectId: string }) {
           ))}
         </div>
       </div>
-      {(allTags.length > 0 || starredCount > 0) && (
+      {(tagChips.length > 0 || starredCount > 0 || starredOnly) && (
         <div
           className="mb-3 flex flex-wrap items-center gap-1"
           role="group"
           aria-label="星とタグで絞り込む"
         >
-          {starredCount > 0 && (
+          {(starredCount > 0 || starredOnly) && (
             <button
               type="button"
               onClick={() => setStarredOnly((value) => !value)}
@@ -315,10 +325,10 @@ function RunsPage({ projectId }: { projectId: string }) {
                   : 'border-line text-ink-2 hover:bg-surface-2',
               )}
             >
-              ★ 星付き <span className="tabular">{starredCount}</span>
+              <span aria-hidden>★ </span>星付き <span className="tabular">{starredCount}</span>
             </button>
           )}
-          {allTags.map((item) => (
+          {tagChips.map((item) => (
             <button
               key={item}
               type="button"
@@ -331,7 +341,8 @@ function RunsPage({ projectId }: { projectId: string }) {
                   : 'border-line text-ink-2 hover:bg-surface-2',
               )}
             >
-              # {item}
+              <span aria-hidden># </span>
+              {item}
             </button>
           ))}
         </div>
@@ -482,14 +493,20 @@ function RunRow({
         <div className="tabular text-xs text-ink-3">{formatDateTime(run.started_at)}</div>
         {note && (note.tags.length > 0 || note.note) && (
           <div className="mt-0.5 flex max-w-72 flex-wrap items-center gap-1">
-            {note.tags.map((item) => (
+            {note.tags.slice(0, 3).map((item) => (
               <span
                 key={item}
                 className="rounded-full bg-accent-soft px-1.5 text-[11px] text-accent-text"
               >
-                # {item}
+                <span aria-hidden># </span>
+                {item}
               </span>
             ))}
+            {note.tags.length > 3 && (
+              <span className="text-[11px] text-ink-3" title={note.tags.slice(3).join(', ')}>
+                +{note.tags.length - 3}
+              </span>
+            )}
             {note.note && (
               <span className="truncate text-[11px] text-ink-3" title={note.note}>
                 {note.note}

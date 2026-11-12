@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { Check, Star, Tag, X } from 'lucide-react'
-import { useId, useState, type KeyboardEvent } from 'react'
+import { useEffect, useId, useState, type KeyboardEvent } from 'react'
 
 import type { RunNote } from '../../api/client'
 import { useNotes, useSaveNote } from '../../api/hooks'
@@ -49,11 +49,22 @@ export function NotePanel({ projectId, runId }: { projectId: string; runId: stri
   const text = draft ?? saved.note
   const dirty = draft !== null && draft !== saved.note
 
-  const store = (next: Partial<RunNote>) =>
-    save.mutate({ runId, note: { ...saved, note: text, ...next } })
+  // 星とタグの変更では書きかけのメモは保存しない (保存のボタンか欄を離れたときだけ)
+  const store = (next: Partial<RunNote>) => save.mutate({ runId, note: { ...saved, ...next } })
+
+  // 書きかけのまま再読み込みやタブを閉じる場合はブラウザで確認
+  useEffect(() => {
+    if (!dirty) return
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirty])
 
   const addTag = () => {
-    const tag = tagInput.trim()
+    const tag = tagInput.replace(/\s+/g, ' ').trim()
     if (!tag || saved.tags.includes(tag)) return setTagInput('')
     store({ tags: [...saved.tags, tag] })
     setTagInput('')
@@ -64,6 +75,7 @@ export function NotePanel({ projectId, runId }: { projectId: string; runId: stri
       event.preventDefault()
       addTag()
     }
+    if (event.key === 'Escape') setTagInput('')
   }
 
   return (
@@ -84,16 +96,18 @@ export function NotePanel({ projectId, runId }: { projectId: string; runId: stri
             variant="primary"
             icon={Check}
             onClick={() => {
-              store({})
+              store({ note: text })
               setDraft(null)
             }}
             disabled={save.isPending}
           >
             保存
           </Button>
-        ) : save.isSuccess ? (
-          <span className="text-xs text-ink-3">保存しました</span>
-        ) : undefined
+        ) : (
+          <span className="text-xs text-ink-3" aria-live="polite">
+            {save.isPending ? '保存中' : save.isSuccess ? '保存しました' : ''}
+          </span>
+        )
       }
     >
       <div className="space-y-3">
@@ -109,7 +123,7 @@ export function NotePanel({ projectId, runId }: { projectId: string; runId: stri
                 type="button"
                 onClick={() => store({ tags: saved.tags.filter((item) => item !== tag) })}
                 aria-label={`タグ ${tag} を外す`}
-                className="rounded-full hover:bg-accent/20"
+                className="-m-1 rounded-full p-1 hover:bg-accent/20"
               >
                 <X className="size-3" aria-hidden />
               </button>
@@ -123,7 +137,6 @@ export function NotePanel({ projectId, runId }: { projectId: string; runId: stri
             value={tagInput}
             onChange={(event) => setTagInput(event.target.value)}
             onKeyDown={onTagKey}
-            onBlur={addTag}
             maxLength={40}
             placeholder="タグを追加 (Enter)"
             className="h-7 w-40 rounded-md border border-line bg-bg px-2 text-xs outline-none focus:border-accent"
@@ -139,7 +152,7 @@ export function NotePanel({ projectId, runId }: { projectId: string; runId: stri
           onBlur={() => {
             // 欄を離れたら書きかけを保存
             if (dirty) {
-              store({})
+              store({ note: text })
               setDraft(null)
             }
           }}

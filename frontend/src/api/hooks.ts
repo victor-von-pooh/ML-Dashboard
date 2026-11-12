@@ -183,6 +183,9 @@ export function useSaveNote(projectId: string) {
   const client = useQueryClient()
   const key = keys.notes(projectId)
   return useMutation({
+    // 保存は全体の置き換えなので, 古い保存が後に届かないように 1 つずつ実行
+    scope: { id: `notes-${projectId}` },
+    mutationKey: ['save-note', projectId],
     mutationFn: ({ runId, note }: { runId: string; note: RunNote }) =>
       api.saveNote(projectId, runId, note),
     onMutate: async ({ runId, note }) => {
@@ -197,6 +200,11 @@ export function useSaveNote(projectId: string) {
     onError: (_error, _variables, context) => {
       if (context?.previous) client.setQueryData(key, context.previous)
     },
-    onSettled: () => client.invalidateQueries({ queryKey: key }),
+    // 続けて保存している間は読み直さず, 最後の保存の後にだけ読み直す
+    onSettled: () => {
+      if (client.isMutating({ mutationKey: ['save-note', projectId] }) <= 1) {
+        void client.invalidateQueries({ queryKey: key })
+      }
+    },
   })
 }

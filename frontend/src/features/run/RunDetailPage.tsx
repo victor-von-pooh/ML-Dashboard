@@ -148,7 +148,7 @@ export function RunDetailPage() {
       </div>
 
       <div className="mb-6">
-        <NotePanel projectId={projectId} runId={data.id} />
+        <NotePanel key={data.id} projectId={projectId} runId={data.id} />
       </div>
 
       <Tabs<TabId>

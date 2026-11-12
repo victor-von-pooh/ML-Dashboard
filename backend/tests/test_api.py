@@ -341,3 +341,35 @@ def test_notes(client: TestClient, project_dir: Path) -> None:
     assert missing.status_code == 404
     long_tag = client.put(url, json={"tags": ["x" * 41]})
     assert long_tag.status_code == 422
+
+
+def test_notes_corrupt_file_and_remove(
+    client: TestClient, project_dir: Path, tmp_path: Path
+) -> None:
+    """
+    壊れたメモのファイルを退避し, 登録を外すとメモも消えることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    project_id = register(client, project_dir)
+    notes_dir = tmp_path / "home" / "notes"
+    notes_dir.mkdir(parents=True)
+    (notes_dir / f"{project_id}.json").write_text("{broken")
+
+    url = f"/api/projects/{project_id}/runs/demo/2026-11-08/10-00-00/note"
+    assert client.put(url, json={"note": "x"}).status_code == 200
+    assert (notes_dir / f"{project_id}.corrupt").read_text() == "{broken"
+
+    client.delete(f"/api/projects/{project_id}")
+    assert not (notes_dir / f"{project_id}.json").exists()
