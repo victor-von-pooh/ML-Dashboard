@@ -14,6 +14,8 @@ export type HistoryRow = History['rows'][number]
 export type LogEntry = Schemas['LogEntry']
 export type RunFile = Schemas['RunFile']
 export type Progress = Schemas['Progress']
+// 既定値のある項目もサーバーは必ず返すので, 全て必須として扱う
+export type RunNote = Required<Schemas['RunNote']>
 export type RunParams = Schemas['RunParams']
 type ProjectCreate = Schemas['ProjectCreate']
 export type JobInfo = Schemas['JobInfo']
@@ -114,6 +116,13 @@ export const api = {
     }),
   listParams: (projectId: string) =>
     request<RunParams[]>(`/api/projects/${encodeURIComponent(projectId)}/params`),
+  listNotes: (projectId: string) =>
+    request<Record<string, RunNote>>(`/api/projects/${encodeURIComponent(projectId)}/notes`),
+  saveNote: (projectId: string, runId: string, note: RunNote) =>
+    request<RunNote>(
+      `/api/projects/${encodeURIComponent(projectId)}/runs/${encodeRunId(runId)}/note`,
+      { method: 'PUT', body: JSON.stringify(note) },
+    ),
   listJobs: () => request<JobInfo[]>('/api/jobs'),
   getJob: (jobId: string) => request<JobInfo>(`/api/jobs/${encodeURIComponent(jobId)}`),
   stopJob: (jobId: string, force: boolean) =>

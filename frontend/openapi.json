@@ -890,6 +890,133 @@
           }
         }
       }
+    },
+    "/api/projects/{project_id}/notes": {
+      "get": {
+        "summary": "List Notes",
+        "description": "プロジェクトの実験のメモ, タグ, 星を返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\n\nReturns\n----------\nnotes: dict[str, RunNote]\n    実験の ID ごとのメモ (書いた実験だけ)",
+        "operationId": "list_notes",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/RunNote"
+                  },
+                  "title": "Response List Notes"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "プロジェクトか実験が見つからない"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{project_id}/runs/{name}/{date}/{time}/note": {
+      "put": {
+        "summary": "Save Note",
+        "description": "実験のメモ, タグ, 星を保存する関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\nname: str\n    実験の名前\ndate: str\n    日付のディレクトリ名\ntime: str\n    時刻のディレクトリ名\nbody: RunNote\n    保存するメモ, 空にすると削除\n\nReturns\n----------\nnote: RunNote\n    保存したメモ",
+        "operationId": "save_note",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "date",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Date"
+            }
+          },
+          {
+            "name": "time",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Time"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunNote"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunNote"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "プロジェクトか実験が見つからない"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1761,6 +1888,31 @@
           "kind"
         ],
         "title": "RunFile"
+      },
+      "RunNote": {
+        "properties": {
+          "note": {
+            "type": "string",
+            "maxLength": 20000,
+            "title": "Note",
+            "default": ""
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Tags"
+          },
+          "starred": {
+            "type": "boolean",
+            "title": "Starred",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "RunNote"
       },
       "RunParams": {
         "properties": {

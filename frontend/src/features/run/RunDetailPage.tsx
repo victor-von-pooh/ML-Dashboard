@@ -6,6 +6,7 @@ import { ErrorBox, PageHeader, Spinner, StatTile, StatusBadge, Tabs } from '../.
 import { tabPanelProps, useStableId } from '../../lib/a11y'
 import { formatDateTime, formatDuration, formatMetric } from '../../lib/format'
 import { MetricCharts } from './MetricCharts'
+import { NotePanel } from './NotePanel'
 import { ConfigTab, EnvTab, FilesTab, LogTab, ModelTab } from './RunTabs'
 
 const TAB_IDS = ['charts', 'config', 'model', 'env', 'log', 'files'] as const
@@ -126,6 +127,10 @@ export function RunDetailPage() {
           value={formatMetric(monitor ? data.final_metrics[monitor] : undefined)}
           hint={others.map(([key, value]) => `${key} ${formatMetric(value)}`).join(' · ')}
         />
+      </div>
+
+      <div className="mb-6">
+        <NotePanel projectId={projectId} runId={data.id} />
       </div>
 
       <Tabs<TabId>
