@@ -16,7 +16,7 @@ dev-backend:
 	cd backend && uv run uvicorn ml_dashboard.app:create_app --factory --reload --port $(PORT)
 
 dev-frontend:
-	cd frontend && pnpm dev
+	cd frontend && API_PORT=$(PORT) pnpm dev
 
 # 画面をビルドしてバックエンドのパッケージに入れる
 build:

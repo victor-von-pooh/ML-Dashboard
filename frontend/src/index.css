@@ -15,8 +15,9 @@
   --text-3: #6b6a65;
   --accent: #2a78d6;
   --accent-soft: #e6f0fb;
-  /* 文字とボタンの背景に使う濃い色 (小さな文字でも 4.5:1 以上) */
+  /* ボタンの背景 (accent-strong) と文字 (accent-text) の色. 小さな文字でも 4.5:1 以上 */
   --accent-strong: #1f63b8;
+  --accent-text: #1f63b8;
   --good-text: #0a7a0a;
   --serious-text: #a84a24;
   --critical-text: #b52e2e;
@@ -51,6 +52,7 @@
   --accent: #3987e5;
   --accent-soft: #1b2a3d;
   --accent-strong: #2a6fc7;
+  --accent-text: #6aa6ee;
   --good-text: #4cc44c;
   --serious-text: #f09a76;
   --critical-text: #f07b7b;
@@ -77,6 +79,7 @@
   --color-accent: var(--accent);
   --color-accent-soft: var(--accent-soft);
   --color-accent-strong: var(--accent-strong);
+  --color-accent-text: var(--accent-text);
   --color-good-text: var(--good-text);
   --color-serious-text: var(--serious-text);
   --color-critical-text: var(--critical-text);

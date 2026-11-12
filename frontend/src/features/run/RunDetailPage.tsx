@@ -48,7 +48,7 @@ export function RunDetailPage() {
         <ErrorBox error={run.error}>
           <Link
             to={`/projects/${projectId}`}
-            className="mt-1 inline-block text-accent-strong hover:underline"
+            className="mt-1 inline-block text-accent-text hover:underline"
           >
             実験の一覧に戻る
           </Link>
@@ -79,7 +79,7 @@ export function RunDetailPage() {
           </span>
         }
       />
-      {data.error && <ErrorBox error={data.error} />}
+      {data.error && <ErrorBox error={data.error} live={false} />}
 
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <StatTile
@@ -112,7 +112,7 @@ export function RunDetailPage() {
           hint={data.seed != null ? `seed ${data.seed}` : undefined}
         />
         <StatTile
-          label={monitor ? `最後のエポックの ${monitor}` : '最後のエポック'}
+          label={monitor ? `最終 ${monitor}` : '最終エポック'}
           value={formatMetric(monitor ? data.final_metrics[monitor] : undefined)}
           hint={others.map(([key, value]) => `${key} ${formatMetric(value)}`).join(' · ')}
         />
@@ -120,6 +120,7 @@ export function RunDetailPage() {
 
       <Tabs<TabId>
         idBase={idBase}
+        label="実験の詳細"
         value={tab}
         onChange={setTab}
         items={[

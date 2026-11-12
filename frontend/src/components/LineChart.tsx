@@ -12,7 +12,7 @@ import { RotateCcw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { cssVar } from '../lib/colors'
-import { formatMetric } from '../lib/format'
+import { formatAxis, formatMetric } from '../lib/format'
 import { useTheme } from '../lib/themeContext'
 
 echarts.use([
@@ -124,7 +124,11 @@ export function LineChart({
               itemHeight: 4,
               textStyle: { color: ink2, fontSize: 12 },
             }
-          : { show: false },
+          : {
+              // 凡例を隠す場合は, 前に隠した系列も表示に戻す
+              show: false,
+              selected: Object.fromEntries(series.map((s) => [s.name, true])),
+            },
         tooltip: {
           trigger: 'axis',
           axisPointer: { type: 'line', lineStyle: { color: ink3 } },
@@ -153,11 +157,11 @@ export function LineChart({
           axisLabel: {
             color: ink3,
             fontSize: 11,
-            formatter: (value: number) => formatMetric(value),
+            formatter: (value: number) => formatAxis(value),
           },
           splitLine: { lineStyle: { color: grid, opacity: 0.6 } },
         },
-        // ページのスクロールを妨げないように, 拡大は Ctrl とホイールかドラッグ
+        // ページのスクロールを妨げないように, 拡大は Ctrl とホイール, ドラッグで移動
         dataZoom: [
           {
             type: 'inside',

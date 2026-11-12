@@ -76,7 +76,7 @@ export function Button({
 
 const STATUS: Record<RunStatus, { label: string; icon: LucideIcon; className: string }> = {
   completed: { label: '完了', icon: CheckCircle2, className: 'text-good-text bg-good/10' },
-  running: { label: '実行中', icon: Loader2, className: 'text-accent-strong bg-accent/10' },
+  running: { label: '実行中', icon: Loader2, className: 'text-accent-text bg-accent/10' },
   stopped: { label: '中断', icon: PauseCircle, className: 'text-serious-text bg-serious/10' },
   failed: { label: '失敗', icon: XCircle, className: 'text-critical-text bg-critical/10' },
   unknown: { label: '未完了', icon: CircleHelp, className: 'text-ink-2 bg-surface-2' },
@@ -116,11 +116,20 @@ export function Spinner({ label = '読み込み中' }: { label?: string }) {
   )
 }
 
-export function ErrorBox({ error, children }: { error: unknown; children?: ReactNode }) {
+/** エラーの表示. 操作の結果のエラーだけ読み上げ (live) の対象にする */
+export function ErrorBox({
+  error,
+  children,
+  live = true,
+}: {
+  error: unknown
+  children?: ReactNode
+  live?: boolean
+}) {
   const message = error instanceof Error ? error.message : String(error)
   return (
     <div
-      role="alert"
+      role={live ? 'alert' : undefined}
       className="flex items-start gap-2 rounded-lg border border-critical/30 bg-critical/5 px-4 py-3 text-sm text-ink"
     >
       <AlertTriangle className="mt-0.5 size-4 shrink-0 text-critical-text" aria-hidden />
@@ -143,7 +152,7 @@ export function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-line px-6 py-14 text-center">
-      <div className="rounded-full bg-accent-soft p-3 text-accent-strong">
+      <div className="rounded-full bg-accent-soft p-3 text-accent-text">
         <Icon className="size-6" aria-hidden />
       </div>
       <h3 className="text-base font-semibold">{title}</h3>
@@ -189,20 +198,28 @@ export function Tabs<T extends string>({
   value,
   onChange,
   idBase,
+  label,
 }: {
   items: TabItem<T>[]
   value: T
   onChange: (id: T) => void
   idBase: string
+  label: string
 }) {
   const refs = useRef<Record<string, HTMLButtonElement | null>>({})
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const index = items.findIndex((item) => item.id === value)
-    const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0
-    if (step === 0) return
+    const targets: Record<string, number> = {
+      ArrowRight: (index + 1) % items.length,
+      ArrowLeft: (index - 1 + items.length) % items.length,
+      Home: 0,
+      End: items.length - 1,
+    }
+    const target = targets[event.key]
+    if (target === undefined) return
     event.preventDefault()
-    const next = items[(index + step + items.length) % items.length]
+    const next = items[target]
     if (next) {
       onChange(next.id)
       refs.current[next.id]?.focus()
@@ -212,6 +229,7 @@ export function Tabs<T extends string>({
   return (
     <div
       role="tablist"
+      aria-label={label}
       onKeyDown={onKeyDown}
       className="flex gap-1 overflow-x-auto border-b border-line"
     >

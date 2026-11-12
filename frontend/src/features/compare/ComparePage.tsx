@@ -11,10 +11,14 @@ import { seriesVar } from '../../lib/colors'
 import { formatDateTime, formatDuration, formatMetric, formatValue } from '../../lib/format'
 import { MAX_COMPARE, diffConfigs, flattenConfig, groupMetrics, toPoints } from '../../lib/metrics'
 
-/** 実験の短い名前 (名前, 月日, 時刻) */
-function shortLabel(runId: string): string {
-  const parts = runId.split('/')
-  return parts.length >= 3 ? `${parts[0]} ${parts[1]?.slice(5)} ${parts[2]}` : runId
+/** 実験の短い名前. 名前が全て同じなら月日と時刻だけ, 違うなら名前と時刻 */
+function makeLabel(runIds: string[]): (runId: string) => string {
+  const names = new Set(runIds.map((id) => id.split('/')[0]))
+  return (runId) => {
+    const [name, date, time] = runId.split('/')
+    if (!date || !time) return runId
+    return names.size === 1 ? `${date.slice(5)} ${time}` : `${name} ${time}`
+  }
 }
 
 interface Slot {
@@ -33,7 +37,16 @@ export function ComparePage() {
   const project = useProject(projectId)
 
   // 同じ実験の重複を除き, 色の数までに制限
-  const runIds = useMemo(() => [...new Set(params.getAll('run'))].slice(0, MAX_COMPARE), [params])
+  const runIds = useMemo(
+    () => [...new Set(params.getAll('run').filter(Boolean))].slice(0, MAX_COMPARE),
+    [params],
+  )
+  const shortLabel = useMemo(() => makeLabel(runIds), [runIds])
+
+  // 一覧に戻るときに, 比較している実験を選んだままにする
+  const backParams = new URLSearchParams()
+  for (const id of runIds) backParams.append('sel', id)
+  const backUrl = `/projects/${projectId}?${backParams.toString()}`
   const details = useRunDetails(projectId, runIds)
   const histories = useHistories(projectId, runIds)
 
@@ -49,42 +62,31 @@ export function ComparePage() {
   const ready = slots.filter((slot): slot is Required<Omit<Slot, 'error'>> & Slot =>
     Boolean(slot.run && slot.history),
   )
-  const readyKey = ready.map((slot) => slot.id).join('|')
-
   // 全ての実験の列を, 指標の順にそろえて並べる
   // 検証用がある指標の学習用は, 指定した場合だけ表示
-  const charts = useMemo(() => {
-    const all = [...new Set(ready.flatMap((slot) => slot.history.columns))]
-    return groupMetrics(all)
-      .flatMap((group) => group.keys)
-      .filter(
-        (key) =>
-          showTrain || !key.startsWith('train/') || !all.includes(key.replace('train/', 'valid/')),
-      )
-      .map((column) => {
-        const having = ready.filter((slot) => slot.history.columns.includes(column))
-        const missing = ready.filter((slot) => !slot.history.columns.includes(column))
-        const series: ChartSeries[] = having.map((slot) => ({
-          name: shortLabel(slot.id),
-          color: slot.color,
-          points: toPoints(slot.history, column),
-        }))
-        return { column, series, missing: missing.map((slot) => shortLabel(slot.id)) }
-      })
-    // 読み込んだ実験の組と表示の設定が変わったときだけ作り直す
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [readyKey, showTrain, loading])
+  // 描き直してもグラフの拡大と凡例の選択は残るので, 描画ごとに作り直す
+  const allColumns = [...new Set(ready.flatMap((slot) => slot.history.columns))]
+  const charts = groupMetrics(allColumns)
+    .flatMap((group) => group.keys)
+    .filter(
+      (key) =>
+        showTrain ||
+        !key.startsWith('train/') ||
+        !allColumns.includes(key.replace('train/', 'valid/')),
+    )
+    .map((column) => {
+      const having = ready.filter((slot) => slot.history.columns.includes(column))
+      const missing = ready.filter((slot) => !slot.history.columns.includes(column))
+      const series: ChartSeries[] = having.map((slot) => ({
+        name: shortLabel(slot.id),
+        color: slot.color,
+        points: toPoints(slot.history, column),
+      }))
+      return { column, series, missing: missing.map((slot) => shortLabel(slot.id)) }
+    })
 
-  const configKeys = useMemo(
-    () => diffConfigs(ready.map((slot) => slot.run.config)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [readyKey, loading],
-  )
-  const flatConfigs = useMemo(
-    () => ready.map((slot) => flattenConfig(slot.run.config)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [readyKey, loading],
-  )
+  const configKeys = diffConfigs(ready.map((slot) => slot.run.config))
+  const flatConfigs = ready.map((slot) => flattenConfig(slot.run.config))
 
   const remove = (runId: string) => {
     const next = new URLSearchParams()
@@ -100,13 +102,13 @@ export function ComparePage() {
             プロジェクト
           </Link>
           {' / '}
-          <Link to={`/projects/${projectId}`} className="hover:text-ink">
+          <Link to={backUrl} className="hover:text-ink">
             {project.data?.name ?? projectId}
           </Link>
         </>
       }
       title="実験の比較"
-      subtitle={`${runIds.length} 件の実験`}
+      subtitle={`${runIds.length} 件の実験${ready.length < runIds.length && !loading ? ` (表示できたのは ${ready.length} 件)` : ''}`}
     />
   )
 
@@ -115,7 +117,7 @@ export function ComparePage() {
       <>
         {header}
         <EmptyState icon={GitCompareArrows} title="比べる実験を選んでください">
-          <Link to={`/projects/${projectId}`} className="text-accent-strong hover:underline">
+          <Link to={backUrl} className="text-accent-text hover:underline">
             実験の一覧
           </Link>
           で 2 つ以上の実験にチェックを入れて「比較」を押します.
@@ -130,7 +132,7 @@ export function ComparePage() {
       <div className="space-y-6">
         {/* 実験ごとの色の凡例と主な結果. 読めなかった実験も外せるように行を残す */}
         <Card title="実験" padded={false}>
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <table className="w-full min-w-[720px] text-sm">
               <thead className="text-left text-xs text-ink-3">
                 <tr className="border-b border-line">
@@ -156,7 +158,7 @@ export function ComparePage() {
                         />
                         <Link
                           to={`/projects/${projectId}/runs/${encodeRunId(slot.id)}`}
-                          className="font-medium hover:text-accent-strong"
+                          className="font-medium hover:text-accent-text"
                         >
                           {shortLabel(slot.id)}
                         </Link>
@@ -169,7 +171,7 @@ export function ComparePage() {
                     </td>
                     {slot.error ? (
                       <td colSpan={4} className="px-4 py-2">
-                        <ErrorBox error={slot.error} />
+                        <ErrorBox error={slot.error} live={false} />
                       </td>
                     ) : !slot.run ? (
                       <td colSpan={4} className="px-4 py-2 text-xs text-ink-3">

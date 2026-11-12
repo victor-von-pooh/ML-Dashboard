@@ -112,7 +112,9 @@ function RunsPage({ projectId }: { projectId: string }) {
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: 'started', desc: true })
 
   // 比較に選んだ実験は URL に残し, 比較から戻っても選んだままにする
-  const selected = params.getAll('sel')
+  // 読み込んだ後は, 一覧に無い ID と重複を除外
+  const known = runs.data ? new Set(runs.data.map((run) => run.id)) : null
+  const selected = [...new Set(params.getAll('sel'))].filter((id) => !known || known.has(id))
   const setSelected = (ids: string[]) => {
     const next = new URLSearchParams()
     for (const id of ids) next.append('sel', id)
@@ -123,7 +125,8 @@ function RunsPage({ projectId }: { projectId: string }) {
   const latest = useMemo(
     () =>
       all.reduce<RunSummary | undefined>(
-        (newest, run) => (!newest || run.started_at > newest.started_at ? run : newest),
+        (newest, run) =>
+          !newest || new Date(run.started_at) > new Date(newest.started_at) ? run : newest,
         undefined,
       ),
     [all],
@@ -154,7 +157,7 @@ function RunsPage({ projectId }: { projectId: string }) {
       <>
         <PageHeader breadcrumb={<Link to="/">プロジェクト</Link>} title={projectId} />
         <ErrorBox error={project.error}>
-          <Link to="/" className="mt-1 inline-block text-accent-strong hover:underline">
+          <Link to="/" className="mt-1 inline-block text-accent-text hover:underline">
             プロジェクトの一覧に戻る
           </Link>
         </ErrorBox>
@@ -247,7 +250,7 @@ function RunsPage({ projectId }: { projectId: string }) {
               className={clsx(
                 'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
                 status === item.id
-                  ? 'border-accent bg-accent-soft text-accent-strong'
+                  ? 'border-accent bg-accent-soft text-accent-text'
                   : 'border-line text-ink-2 hover:bg-surface-2',
               )}
             >
@@ -368,7 +371,7 @@ function RunRow({
       <td className="px-3 py-2.5">
         <Link
           to={`/projects/${projectId}/runs/${encodeRunId(run.id)}`}
-          className="font-medium text-ink hover:text-accent-strong"
+          className="font-medium text-ink hover:text-accent-text"
         >
           {run.name}
         </Link>
@@ -405,7 +408,7 @@ function RunRow({
           <div className="text-[11px] text-ink-3">Early Stopping</div>
         )}
         {progress && (
-          <div className="text-[11px] text-accent-strong">エポック {progress.epoch} を学習中</div>
+          <div className="text-[11px] text-accent-text">エポック {progress.epoch} を学習中</div>
         )}
       </td>
       <td className="tabular px-3 py-2.5 text-right">

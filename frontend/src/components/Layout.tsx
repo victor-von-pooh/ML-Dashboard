@@ -25,7 +25,7 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
   clsx(
     'flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm transition-colors',
     isActive
-      ? 'bg-accent-soft font-medium text-accent-strong'
+      ? 'bg-accent-soft font-medium text-accent-text'
       : 'text-ink-2 hover:bg-surface-2 hover:text-ink',
   )
 

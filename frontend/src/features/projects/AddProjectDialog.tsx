@@ -76,7 +76,7 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose: ()
     }
     await client.invalidateQueries({ queryKey: keys.projects, exact: true })
     setAdding(false)
-    if (!failed) close()
+    if (!failed) dialogRef.current?.close()
   }
 
   const toggle = (target: string) =>
@@ -93,9 +93,12 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose: ()
     <dialog
       ref={dialogRef}
       aria-labelledby={titleId}
-      onClose={close}
+      onClose={() => {
+        // 登録の途中で閉じられた場合は開き直し, 結果が分かるようにする
+        if (adding) dialogRef.current?.showModal()
+        else close()
+      }}
       onCancel={(event) => {
-        // 登録の途中で閉じると結果が分からなくなるので, 終わるまで閉じない
         if (adding) event.preventDefault()
       }}
       className="m-auto w-[min(640px,calc(100vw-2rem))] rounded-2xl border border-line bg-surface p-0 text-ink shadow-2xl backdrop:bg-black/40 backdrop:backdrop-blur-sm"
@@ -131,7 +134,12 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose: ()
             placeholder="例: ~/projects/my-experiments"
             className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-bg px-3 font-mono text-sm outline-none focus:border-accent"
           />
-          <Button type="submit" variant="primary" icon={FolderSearch} disabled={scan.isPending}>
+          <Button
+            type="submit"
+            variant="primary"
+            icon={FolderSearch}
+            disabled={scan.isPending || adding}
+          >
             探す
           </Button>
         </form>

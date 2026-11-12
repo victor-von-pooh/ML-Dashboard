@@ -154,7 +154,7 @@ export function EnvTab({ run, projectId }: { run: RunDetail; projectId: string }
             href={runFileUrl(projectId, run.id, 'git_diff.patch')}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1.5 text-sm text-accent-strong hover:underline"
+            className="inline-flex items-center gap-1.5 text-sm text-accent-text hover:underline"
           >
             <ExternalLink className="size-4" aria-hidden />
             学習時の未コミットの変更 (git_diff.patch)
@@ -225,7 +225,7 @@ export function LogTab({ entries }: { entries: LogEntry[] }) {
               className={clsx(
                 'rounded-full border px-2 py-0.5 text-[11px] font-medium',
                 levels.has(level)
-                  ? 'border-accent/40 bg-accent-soft text-accent-strong'
+                  ? 'border-accent/40 bg-accent-soft text-accent-text'
                   : 'border-line text-ink-3',
               )}
             >

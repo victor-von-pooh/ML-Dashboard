@@ -7,7 +7,7 @@ import { EmptyState } from './ui'
 export function NotFound() {
   return (
     <EmptyState icon={Compass} title="ページが見つかりません">
-      <Link to="/" className="text-accent-strong hover:underline">
+      <Link to="/" className="text-accent-text hover:underline">
         プロジェクトの一覧に戻る
       </Link>
     </EmptyState>
@@ -26,7 +26,7 @@ export function RouteError() {
     <div className="mx-auto max-w-2xl px-4 py-16">
       <EmptyState icon={TriangleAlert} title="画面を表示できませんでした">
         <p className="mb-4 font-mono text-xs break-all">{message}</p>
-        <a href="/" className="text-accent-strong hover:underline">
+        <a href="/" className="text-accent-text hover:underline">
           プロジェクトの一覧に戻る
         </a>
       </EmptyState>

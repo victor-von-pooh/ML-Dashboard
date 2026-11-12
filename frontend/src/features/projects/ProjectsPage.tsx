@@ -18,9 +18,9 @@ function ProjectCard({ project }: { project: ProjectInfo }) {
 
   // カード全体を押せるように, リンクの疑似要素を広げ, 削除のボタンはその上に重ねる
   return (
-    <div className="group relative flex flex-col gap-3 rounded-xl border border-line bg-surface p-4 transition hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-md">
+    <div className="group relative flex min-w-0 flex-col gap-3 rounded-xl border border-line bg-surface p-4 transition hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-md">
       <div className="flex items-start gap-3">
-        <div className="rounded-lg bg-accent-soft p-2 text-accent-strong">
+        <div className="rounded-lg bg-accent-soft p-2 text-accent-text">
           <FolderKanban className="size-5" aria-hidden />
         </div>
         <div className="min-w-0 flex-1">
@@ -32,8 +32,11 @@ function ProjectCard({ project }: { project: ProjectInfo }) {
               {project.name}
             </Link>
           </h3>
-          <p className="truncate font-mono text-xs text-ink-3" title={project.path}>
-            {project.path}
+          <p
+            className="truncate font-mono text-xs text-ink-3 [direction:rtl] text-left"
+            title={project.path}
+          >
+            <bdi>{project.path}</bdi>
           </p>
         </div>
         <button
@@ -48,7 +51,7 @@ function ProjectCard({ project }: { project: ProjectInfo }) {
         </button>
       </div>
       <div className="flex items-center gap-4 text-xs text-ink-2">
-        <span className="flex items-center gap-1">
+        <span className="flex shrink-0 items-center gap-1 whitespace-nowrap">
           <FlaskConical className="size-3.5" aria-hidden />
           <span className="tabular">{project.run_count}</span> 実験
         </span>
@@ -103,7 +106,7 @@ export function ProjectsPage() {
         </EmptyState>
       )}
       {projects.data && projects.data.length > 0 && (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {projects.data.map((project) => (
             <ProjectCard key={project.id} project={project} />
           ))}
