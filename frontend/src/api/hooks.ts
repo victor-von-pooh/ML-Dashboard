@@ -10,6 +10,7 @@ export const keys = {
   history: (projectId: string, runId: string) => ['projects', projectId, 'history', runId] as const,
   log: (projectId: string, runId: string) => ['projects', projectId, 'log', runId] as const,
   config: (projectId: string, path: string) => ['projects', projectId, 'config', path] as const,
+  params: (projectId: string) => ['projects', projectId, 'params'] as const,
   jobs: ['jobs'] as const,
   job: (jobId: string) => ['jobs', jobId] as const,
   jobOutput: (jobId: string) => ['jobs', jobId, 'output'] as const,
@@ -166,4 +167,8 @@ export function useStopJob() {
       void client.invalidateQueries({ queryKey: keys.jobs, exact: true })
     },
   })
+}
+
+export function useRunParams(projectId: string) {
+  return useQuery({ queryKey: keys.params(projectId), queryFn: () => api.listParams(projectId) })
 }

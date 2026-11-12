@@ -241,3 +241,61 @@ def test_files_stay_inside_run(client: TestClient, project_dir: Path) -> None:
 
     unknown = client.get("/api/projects/missing/runs")
     assert unknown.status_code == 404
+
+
+def test_params(client: TestClient, project_dir: Path) -> None:
+    """
+    分析用の config と結果を確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    run_dir = project_dir / "outputs" / "demo" / "2026-11-08" / "10-00-00"
+    (run_dir / "config.yaml").write_text(
+        "experiment:\n  name: demo\n"
+        "optimizer:\n  name: Adam\n  params:\n    lr: 0.01\n"
+        "trainer:\n  monitor: valid/acc\n  mode: max\n"
+        "  milestones: [1, 2]\n  extra: {}\n  flag: true\n  none: null\n"
+    )
+    project_id = register(client, project_dir)
+    params = client.get(f"/api/projects/{project_id}/params").json()
+
+    run = next(item for item in params if item["id"].endswith("10-00-00"))
+    assert run["params"]["optimizer.params.lr"] == 0.01
+    assert run["params"]["optimizer.name"] == "Adam"
+    assert run["params"]["trainer.milestones"] == "[1, 2]"
+    assert run["params"]["trainer.extra"] == "{}"
+    assert run["params"]["trainer.flag"] is True
+    assert run["params"]["trainer.none"] is None
+    assert run["best"]["value"] == 0.9
+
+
+def test_flatten_params_edge_cases() -> None:
+    """
+    分析用の平らな config の端の場合を確かめる関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    None
+    """
+    from ml_dashboard.core.runs import flatten_params
+
+    assert flatten_params({}) == {}
+    assert flatten_params({"a": {}, "b": [[1], 2]}) == {
+        "a": "{}", "b": "[[1], 2]"
+    }
+    assert flatten_params({"x": float("nan"), "y": b"raw"}) == {
+        "x": None, "y": "\"b'raw'\""
+    }

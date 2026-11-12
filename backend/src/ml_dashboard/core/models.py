@@ -1,4 +1,4 @@
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Union
 
 from pydantic import BaseModel
 
@@ -103,3 +103,17 @@ class RunDetail(RunSummary):
 class History(BaseModel):
     columns: list[str]
     rows: list[dict[str, Optional[float]]]
+
+
+# 分析に使う config の値 (入れ子は . でつないだ項目, 配列は JSON の文字列)
+ParamValue = Union[bool, float, str, None]
+
+
+class RunParams(BaseModel):
+    id: str
+    name: str
+    started_at: str
+    status: RunStatus
+    best: Optional[BestValue]
+    final_metrics: dict[str, Optional[float]]
+    params: dict[str, ParamValue]

@@ -24,9 +24,11 @@ from ml_dashboard.core.models import (
     History,
     LogEntry,
     Mode,
+    ParamValue,
     Progress,
     RunDetail,
     RunFile,
+    RunParams,
     RunStatus,
     RunSummary,
 )
@@ -854,3 +856,72 @@ def resolve_run_file(run_dir: Path, relative: str) -> Path:
         raise RunNotFoundError(f"ファイルが見つかりません: {relative}")
 
     return path
+
+
+def flatten_params(data: Any, prefix: str = "") -> dict[str, ParamValue]:
+    """
+    入れ子の config を分析に使える平らな辞書にする関数
+
+    Parameters
+    ----------
+    data: Any
+        config の値
+    prefix: str = ""
+        親の項目名
+
+    Returns
+    ----------
+    flat: dict[str, ParamValue]
+        . でつないだ項目名と, 数値, 文字列, 真偽値, None の値.
+        nan と inf も None (欠損) として扱い
+    """
+    # 辞書は子の項目ごとに平らにして集約 (最上位の空の辞書は項目なし)
+    if isinstance(data, dict) and (data or not prefix):
+        flat: dict[str, ParamValue] = {}
+        for key, item in data.items():
+            child = f"{prefix}.{key}" if prefix else str(key)
+            flat.update(flatten_params(item, child))
+        return flat
+
+    # 値は数値と真偽値はそのまま, 配列や空の辞書は JSON の文字列
+    if isinstance(data, bool) or data is None or isinstance(data, str):
+        value: ParamValue = data
+    elif isinstance(data, (int, float)):
+        value = to_float(data)
+    else:
+        value = json.dumps(data, ensure_ascii=False, default=str)
+    flat = {prefix: value}
+
+    return flat
+
+
+def collect_params(output_dir: Path, run_dir: Path) -> Optional[RunParams]:
+    """
+    実験の config と結果を分析用にまとめる関数
+
+    Parameters
+    ----------
+    output_dir: Path
+        プロジェクトの出力先
+    run_dir: Path
+        実験のディレクトリ
+
+    Returns
+    ----------
+    params: Optional[RunParams]
+        config の値と結果, 読めない実験は None
+    """
+    # 壊れた実験は分析から除外
+    try:
+        data = RunData(output_dir, run_dir)
+        summary = data.summary()
+        params = RunParams(
+            id=summary.id, name=summary.name, started_at=summary.started_at,
+            status=summary.status, best=summary.best,
+            final_metrics=summary.final_metrics,
+            params=flatten_params(data.config)
+        )
+    except Exception:
+        return None
+
+    return params

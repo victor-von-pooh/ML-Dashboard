@@ -6,6 +6,7 @@ import { createBrowserRouter, RouterProvider } from 'react-router'
 import { ApiError } from './api/client'
 import { Layout } from './components/Layout'
 import { NotFound, RouteError } from './components/RouteError'
+import { AnalysisPage } from './features/analysis/AnalysisPage'
 import { ComparePage } from './features/compare/ComparePage'
 import { JobDetailPage, JobsPage } from './features/jobs/JobsPage'
 import { LaunchPage } from './features/jobs/LaunchPage'
@@ -34,6 +35,7 @@ const router = createBrowserRouter([
       { path: '/', element: <ProjectsPage /> },
       { path: '/projects/:projectId', element: <ProjectRunsPage /> },
       { path: '/projects/:projectId/compare', element: <ComparePage /> },
+      { path: '/projects/:projectId/analysis', element: <AnalysisPage /> },
       { path: '/projects/:projectId/launch', element: <LaunchPage /> },
       { path: '/jobs', element: <JobsPage /> },
       { path: '/jobs/:jobId', element: <JobDetailPage /> },

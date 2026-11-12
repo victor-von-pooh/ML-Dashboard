@@ -14,6 +14,7 @@ export type HistoryRow = History['rows'][number]
 export type LogEntry = Schemas['LogEntry']
 export type RunFile = Schemas['RunFile']
 export type Progress = Schemas['Progress']
+export type RunParams = Schemas['RunParams']
 type ProjectCreate = Schemas['ProjectCreate']
 export type JobInfo = Schemas['JobInfo']
 export type ValidateResult = Schemas['ValidateResult']
@@ -111,6 +112,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  listParams: (projectId: string) =>
+    request<RunParams[]>(`/api/projects/${encodeURIComponent(projectId)}/params`),
   listJobs: () => request<JobInfo[]>('/api/jobs'),
   getJob: (jobId: string) => request<JobInfo>(`/api/jobs/${encodeURIComponent(jobId)}`),
   stopJob: (jobId: string, force: boolean) =>
