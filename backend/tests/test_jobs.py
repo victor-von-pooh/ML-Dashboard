@@ -17,7 +17,8 @@ args = parser.parse_args()
 print("experiment", Path(args.experiment).name, flush=True)
 
 now = datetime.now()
-run = Path("outputs/demo") / now.strftime("%Y-%m-%d") / now.strftime("%H-%M-%S")
+day, clock = now.strftime("%Y-%m-%d"), now.strftime("%H-%M-%S")
+run = Path("outputs/demo") / day / clock
 run.mkdir(parents=True)
 (run / "config.yaml").write_text("experiment:\\n  name: demo\\n")
 status = {"status": "running", "pid": os.getpid(), "planned_epochs": 100}

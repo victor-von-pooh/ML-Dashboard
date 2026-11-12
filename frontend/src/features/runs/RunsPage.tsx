@@ -1,5 +1,13 @@
 import clsx from 'clsx'
-import { ArrowDown, ArrowUp, FlaskConical, GitCompareArrows, Search, Trophy } from 'lucide-react'
+import {
+  ArrowDown,
+  ArrowUp,
+  FlaskConical,
+  GitCompareArrows,
+  Play,
+  Search,
+  Trophy,
+} from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 
@@ -194,6 +202,9 @@ function RunsPage({ projectId }: { projectId: string }) {
         subtitle={<span className="font-mono text-xs">{project.data?.path}</span>}
         actions={
           <>
+            <Button icon={Play} onClick={() => navigate(`/projects/${projectId}/launch`)}>
+              学習を起動
+            </Button>
             {selected.length > 0 && (
               <Button variant="ghost" onClick={() => setSelected([])}>
                 選択を解除

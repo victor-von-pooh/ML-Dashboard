@@ -15,6 +15,10 @@ export type LogEntry = Schemas['LogEntry']
 export type RunFile = Schemas['RunFile']
 export type Progress = Schemas['Progress']
 type ProjectCreate = Schemas['ProjectCreate']
+export type JobInfo = Schemas['JobInfo']
+export type ValidateResult = Schemas['ValidateResult']
+export type ConfigText = Schemas['ConfigText']
+type JobCreate = Schemas['JobCreate']
 
 /** API がエラーを返したときの例外 */
 export class ApiError extends Error {
@@ -90,4 +94,30 @@ export const api = {
     request<LogEntry[]>(
       `/api/projects/${encodeURIComponent(projectId)}/runs/${encodeRunId(runId)}/log`,
     ),
+  getConfig: (projectId: string, path: string) =>
+    request<ConfigText>(
+      `/api/projects/${encodeURIComponent(projectId)}/configs/${path
+        .split('/')
+        .map(encodeURIComponent)
+        .join('/')}`,
+    ),
+  validateConfig: (projectId: string, text: string) =>
+    request<ValidateResult>(`/api/projects/${encodeURIComponent(projectId)}/validate`, {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    }),
+  createJob: (projectId: string, body: JobCreate) =>
+    request<JobInfo>(`/api/projects/${encodeURIComponent(projectId)}/jobs`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  listJobs: () => request<JobInfo[]>('/api/jobs'),
+  getJob: (jobId: string) => request<JobInfo>(`/api/jobs/${encodeURIComponent(jobId)}`),
+  stopJob: (jobId: string, force: boolean) =>
+    request<JobInfo>(`/api/jobs/${encodeURIComponent(jobId)}/stop`, {
+      method: 'POST',
+      body: JSON.stringify({ force }),
+    }),
+  getJobOutput: (jobId: string) =>
+    request<{ text: string }>(`/api/jobs/${encodeURIComponent(jobId)}/output`),
 }

@@ -9,7 +9,14 @@ export const keys = {
   run: (projectId: string, runId: string) => ['projects', projectId, 'run', runId] as const,
   history: (projectId: string, runId: string) => ['projects', projectId, 'history', runId] as const,
   log: (projectId: string, runId: string) => ['projects', projectId, 'log', runId] as const,
+  config: (projectId: string, path: string) => ['projects', projectId, 'config', path] as const,
+  jobs: ['jobs'] as const,
+  job: (jobId: string) => ['jobs', jobId] as const,
+  jobOutput: (jobId: string) => ['jobs', jobId, 'output'] as const,
 }
+
+// 学習中の表示を更新する間隔 (ミリ秒)
+const LIVE_INTERVAL = 1500
 
 export function useProjects() {
   return useQuery({ queryKey: keys.projects, queryFn: api.listProjects })
@@ -20,20 +27,28 @@ export function useProject(id: string) {
 }
 
 export function useRuns(projectId: string) {
-  return useQuery({ queryKey: keys.runs(projectId), queryFn: () => api.listRuns(projectId) })
+  return useQuery({
+    queryKey: keys.runs(projectId),
+    queryFn: () => api.listRuns(projectId),
+    // 学習中の実験がある間だけ, 一定の間隔で読み直す
+    refetchInterval: (query) =>
+      query.state.data?.some((run) => run.status === 'running') ? LIVE_INTERVAL : false,
+  })
 }
 
 export function useRun(projectId: string, runId: string) {
   return useQuery({
     queryKey: keys.run(projectId, runId),
     queryFn: () => api.getRun(projectId, runId),
+    refetchInterval: (query) => (query.state.data?.status === 'running' ? LIVE_INTERVAL : false),
   })
 }
 
-export function useHistory(projectId: string, runId: string) {
+export function useHistory(projectId: string, runId: string, live = false) {
   return useQuery({
     queryKey: keys.history(projectId, runId),
     queryFn: () => api.getHistory(projectId, runId),
+    refetchInterval: live ? LIVE_INTERVAL * 2 : false,
   })
 }
 
@@ -83,4 +98,61 @@ export function useRemoveProject() {
 
 export function useScanProjects() {
   return useMutation({ mutationFn: api.scanProjects })
+}
+
+export function useConfig(projectId: string, path: string | null) {
+  return useQuery({
+    queryKey: keys.config(projectId, path ?? ''),
+    queryFn: () => api.getConfig(projectId, path ?? ''),
+    enabled: path !== null,
+    staleTime: 0,
+  })
+}
+
+export function useValidateConfig(projectId: string) {
+  return useMutation({ mutationFn: (text: string) => api.validateConfig(projectId, text) })
+}
+
+export function useCreateJob(projectId: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: Parameters<typeof api.createJob>[1]) => api.createJob(projectId, body),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.jobs }),
+  })
+}
+
+export function useJobs() {
+  return useQuery({
+    queryKey: keys.jobs,
+    queryFn: api.listJobs,
+    refetchInterval: (query) =>
+      query.state.data?.some((job) => job.status === 'running') ? LIVE_INTERVAL : 10_000,
+  })
+}
+
+export function useJob(jobId: string) {
+  return useQuery({
+    queryKey: keys.job(jobId),
+    queryFn: () => api.getJob(jobId),
+    refetchInterval: (query) => (query.state.data?.status === 'running' ? LIVE_INTERVAL : false),
+  })
+}
+
+export function useJobOutput(jobId: string, live: boolean) {
+  return useQuery({
+    queryKey: keys.jobOutput(jobId),
+    queryFn: () => api.getJobOutput(jobId),
+    refetchInterval: live ? LIVE_INTERVAL : false,
+  })
+}
+
+export function useStopJob() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ jobId, force }: { jobId: string; force: boolean }) => api.stopJob(jobId, force),
+    onSuccess: (job) => {
+      client.setQueryData(keys.job(job.id), job)
+      void client.invalidateQueries({ queryKey: keys.jobs, exact: true })
+    },
+  })
 }

@@ -19,7 +19,7 @@ export function RunDetailPage() {
   const { projectId = '', '*': runId = '' } = useParams()
   const project = useProject(projectId)
   const run = useRun(projectId, runId)
-  const history = useHistory(projectId, runId)
+  const history = useHistory(projectId, runId, run.data?.status === 'running')
   const [params, setParams] = useSearchParams()
   const tab = toTab(params.get('tab'))
   const log = useLog(projectId, runId, tab === 'log')

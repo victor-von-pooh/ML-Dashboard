@@ -392,7 +392,11 @@ class JobManager:
         size = path.stat().st_size
         with path.open("rb") as file:
             file.seek(max(0, size - OUTPUT_TAIL))
-            text = file.read().decode("utf-8", errors="replace")
+            raw = file.read().decode("utf-8", errors="replace")
+
+        # 進捗バーが \r で同じ行を書き直した分は, 最後の表示だけを残す
+        lines = [line.rsplit("\r", 1)[-1] for line in raw.split("\n")]
+        text = "\n".join(lines)
 
         return text
 

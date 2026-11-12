@@ -7,6 +7,8 @@ import { ApiError } from './api/client'
 import { Layout } from './components/Layout'
 import { NotFound, RouteError } from './components/RouteError'
 import { ComparePage } from './features/compare/ComparePage'
+import { JobDetailPage, JobsPage } from './features/jobs/JobsPage'
+import { LaunchPage } from './features/jobs/LaunchPage'
 import { ProjectsPage } from './features/projects/ProjectsPage'
 import { RunDetailPage } from './features/run/RunDetailPage'
 import { ProjectRunsPage } from './features/runs/RunsPage'
@@ -32,6 +34,9 @@ const router = createBrowserRouter([
       { path: '/', element: <ProjectsPage /> },
       { path: '/projects/:projectId', element: <ProjectRunsPage /> },
       { path: '/projects/:projectId/compare', element: <ComparePage /> },
+      { path: '/projects/:projectId/launch', element: <LaunchPage /> },
+      { path: '/jobs', element: <JobsPage /> },
+      { path: '/jobs/:jobId', element: <JobDetailPage /> },
       { path: '/projects/:projectId/runs/*', element: <RunDetailPage /> },
       { path: '*', element: <NotFound /> },
     ],
