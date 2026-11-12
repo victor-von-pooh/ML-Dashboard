@@ -9,7 +9,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
 
+from ml_dashboard.api.jobs import router as jobs_router
 from ml_dashboard.api.routes import router
+from ml_dashboard.core.jobs import JobManager
 from ml_dashboard.core.projects import ProjectError, ProjectStore
 from ml_dashboard.core.settings import get_data_dir
 
@@ -169,8 +171,10 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         generate_unique_id_function=route_id
     )
 
-    # プロジェクトの登録簿をアプリに保存
-    app.state.store = ProjectStore(data_dir or get_data_dir())
+    # プロジェクトの登録簿とジョブの管理をアプリに保存
+    home = data_dir or get_data_dir()
+    app.state.store = ProjectStore(home)
+    app.state.jobs = JobManager(home)
 
     # 他のホスト名での接続 (DNS rebinding) と, 他のサイトからの書き込みの拒否
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
@@ -179,6 +183,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
 
     # API と画面の登録
     app.include_router(router)
+    app.include_router(jobs_router)
     mount_frontend(app, STATIC_DIR)
 
     return app
