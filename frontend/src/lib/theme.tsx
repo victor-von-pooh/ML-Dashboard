@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useState, type ReactNode } from 'react'
 
 import { ThemeContext, type Theme } from './themeContext'
 
@@ -10,10 +10,14 @@ function currentTheme(): Theme {
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(currentTheme)
 
+  // 描画の前に html のクラスを切り替え, グラフが新しい色を読めるようにする
+  useLayoutEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark')
+  }, [theme])
+
   const toggle = useCallback(() => {
     setTheme((previous) => {
       const next: Theme = previous === 'dark' ? 'light' : 'dark'
-      document.documentElement.classList.toggle('dark', next === 'dark')
       try {
         localStorage.setItem('theme', next)
       } catch {

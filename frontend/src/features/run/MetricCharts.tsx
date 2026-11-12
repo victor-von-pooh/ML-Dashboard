@@ -49,7 +49,11 @@ export function MetricCharts({
   )
 
   if (history.rows.length === 0) {
-    return <p className="py-10 text-center text-sm text-ink-3">history.csv がまだありません.</p>
+    return (
+      <p className="py-10 text-center text-sm text-ink-3">
+        記録された指標がありません. 最初のエポックを終える前に止まったか, 学習中です.
+      </p>
+    )
   }
 
   return (
@@ -72,13 +76,19 @@ export function MetricCharts({
             title={<span className="font-mono">{group.name}</span>}
             actions={
               best && group.keys.includes(best.monitor) ? (
-                <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent">
+                <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent-text">
                   監視する指標
                 </span>
               ) : undefined
             }
           >
-            <LineChart series={series} markers={markers} logScale={logScale} xLabel="epoch" />
+            <LineChart
+              series={series}
+              markers={markers}
+              logScale={logScale}
+              xLabel="epoch"
+              label={`${group.name} のエポックごとの推移`}
+            />
           </Card>
         ))}
       </div>
