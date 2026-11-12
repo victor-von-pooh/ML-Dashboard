@@ -41,14 +41,16 @@ ML-Dashboard/
 │   └── tests/
 ├── frontend/          # TypeScript (React + Vite)
 │   ├── package.json
+│   ├── e2e/           # 画面の通しのテスト (Playwright)
 │   └── src/
 │       ├── api/       # API の型 (OpenAPI から生成) と呼び出し
 │       ├── components/
 │       ├── features/  # 画面ごとのまとまり
 │       └── lib/
+├── demo/              # 動作の確認と通しのテストに使う ML-Found のプロジェクト
 ├── docs/
 ├── Makefile           # よく使うコマンド
-└── .github/workflows/ # lint, 型検査, テスト
+└── .github/workflows/ # lint, 型検査, テスト, 通しのテスト
 ```
 
 - バックエンドは Python にする. 学習の起動と config の検証に ML-Found をそのまま使えるため
@@ -140,3 +142,9 @@ TODO の項目 3 (進捗を渡すコールバックと学習の中断) に当た
 
 ローカルの 1 人で使う前提で, `127.0.0.1` だけで待ち受ける.
 ファイルを返す API は, 登録したプロジェクトの実験のディレクトリの中だけを読めるようにし, パスの外への移動を拒否する.
+
+## テスト
+
+- バックエンド: pytest で API と ML-Found の出力の読み込みを確かめる (一時ディレクトリに ML-Found の出力の形を作る)
+- 画面: Vitest で表示に使う計算 (YAML の書き換え, 画像の並びなど) を確かめる
+- 通し: Playwright で, `demo/` の実験を実際に学習してからダッシュボードを起動し, 一覧, 詳細, 比較, フォームでの起動から完了までを操作する. 同時に届く要求で初めて ML-Found を読み込む場合など, 単体のテストでは出ない不具合を拾う

@@ -6,7 +6,7 @@ PORT ?= 8765
 # 開発用のサーバーは変更のたびに作り直されるので, make を実行した間は同じトークンを使用
 DEV_TOKEN ?= $(shell python3 -c 'import secrets; print(secrets.token_urlsafe(16))')
 
-.PHONY: setup dev-backend dev-frontend build serve api check
+.PHONY: setup dev-backend dev-frontend build serve api check demo e2e
 
 # 依存のインストール
 setup:
@@ -38,3 +38,13 @@ api:
 check:
 	cd backend && uv run ruff check . && uv run mypy src && uv run pytest -q
 	cd frontend && pnpm lint && pnpm format:check && pnpm typecheck && pnpm test
+
+# デモのプロジェクトで, config を変えた 3 つの実験を作る
+demo:
+	cd backend && for config in train.yaml examples/sgd.yaml examples/small.yaml; do \
+		uv run python ../demo/train.py --experiment configs/experiment/$$config || exit 1; \
+	done
+
+# 画面の通しのテスト (手元では入っている Chrome を使う)
+e2e: build
+	cd frontend && pnpm e2e

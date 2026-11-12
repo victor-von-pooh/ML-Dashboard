@@ -41,6 +41,16 @@ make serve   # 画面をビルドして http://127.0.0.1:8765 で起動
 
 起動したら, 画面の「プロジェクトを追加」から ML-Found を使っているディレクトリを登録する.
 
+### デモのプロジェクト
+
+手元に ML-Found のプロジェクトが無い場合は, `demo/` で試せる. 2 本の渦巻きを分ける小さなモデルを CPU で数秒ずつ学習し, エポックごとの決定境界の画像 (`boundary/epoch_001.png` など) も保存する.
+
+```bash
+make demo    # config を変えた 3 つの実験を作る
+```
+
+画面の「プロジェクトを追加」で `demo` のディレクトリを登録すると, 学習曲線, 決定境界の画像の推移, 実験の比較を確かめられる. 画面から学習を起動する場合は `configs/experiment/examples/quick.yaml` (3 エポック) が手軽.
+
 起動すると, 起動ごとのトークンが付いた URL (`http://127.0.0.1:8765/api/auth?token=...`) が表示されるので, それを開く. ダッシュボードは学習のプロセスを起動できるため, 同じ端末の他の利用者や他のサイトから使えないように, トークンを Cookie に保存したブラウザからだけ API を受け付ける. 毎回同じトークンにする場合は, 環境変数 `ML_DASHBOARD_TOKEN` で指定する.
 
 `make serve` は毎回画面をビルドしてから起動する. ポートを変える場合は `make serve PORT=8800` のように指定する. ビルド済みの場合は `cd backend && uv run ml-dashboard --port 8800` でも起動できる.
@@ -55,6 +65,7 @@ make serve   # 画面をビルドして http://127.0.0.1:8765 で起動
 make dev-backend    # API (http://127.0.0.1:8765, 変更を自動で反映). 表示された http://localhost:5173/api/auth?token=... を開く
 make dev-frontend   # 画面 (http://localhost:5173, API に転送. ポートを変えた場合は両方に PORT=... を付ける)
 make check          # lint, 型検査, テスト
+make e2e            # 画面の通しのテスト (Playwright). デモの実験を作ってからダッシュボードを起動して操作する
 make api            # バックエンドの API を変えたら, 画面の型を作り直す
 ```
 
@@ -62,6 +73,8 @@ make api            # バックエンドの API を変えたら, 画面の型を
 | --- | --- |
 | `backend/` | API (Python, FastAPI). `core/` が ML-Found の出力の読み込み, `api/` がルーティング |
 | `frontend/` | 画面 (TypeScript, React, Vite). `src/api/schema.d.ts` は OpenAPI から生成した型 |
+| `demo/` | 動作の確認と画面の通しのテストに使う ML-Found のプロジェクト |
+| `frontend/e2e/` | 画面の通しのテスト (Playwright) |
 | `ML-Found/` | submodule |
 | `docs/DESIGN.md` | 設計の方針と段階 |
 
