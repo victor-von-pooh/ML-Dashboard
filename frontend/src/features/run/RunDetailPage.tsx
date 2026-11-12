@@ -5,10 +5,12 @@ import { useHistory, useLog, useProject, useRun } from '../../api/hooks'
 import { ErrorBox, PageHeader, Spinner, StatTile, StatusBadge, Tabs } from '../../components/ui'
 import { tabPanelProps, useStableId } from '../../lib/a11y'
 import { formatDateTime, formatDuration, formatMetric } from '../../lib/format'
+import { groupImageSeries } from '../../lib/images'
+import { ImageTimeline } from './ImageTimeline'
 import { MetricCharts } from './MetricCharts'
 import { ConfigTab, EnvTab, FilesTab, LogTab, ModelTab } from './RunTabs'
 
-const TAB_IDS = ['charts', 'config', 'model', 'env', 'log', 'files'] as const
+const TAB_IDS = ['charts', 'images', 'config', 'model', 'env', 'log', 'files'] as const
 type TabId = (typeof TAB_IDS)[number]
 
 /** URL の値を画面のタブに直す */
@@ -67,6 +69,9 @@ export function RunDetailPage() {
     )
   }
   const data = run.data
+
+  // 番号の付いた画像 (エポックごとの生成画像など) の並び
+  const series = groupImageSeries(data.files)
 
   const monitor = data.best?.monitor
   const others = Object.entries(data.final_metrics).filter(
@@ -135,6 +140,9 @@ export function RunDetailPage() {
         onChange={setTab}
         items={[
           { id: 'charts', label: '学習曲線' },
+          ...(series.length > 0
+            ? [{ id: 'images' as const, label: '画像の推移', count: series.length }]
+            : []),
           { id: 'config', label: 'config', count: Object.keys(data.diff).length },
           { id: 'model', label: 'モデル' },
           { id: 'env', label: '環境' },
@@ -155,6 +163,9 @@ export function RunDetailPage() {
           ) : (
             <Spinner />
           ))}
+        {tab === 'images' && (
+          <ImageTimeline series={series} projectId={projectId} runId={data.id} />
+        )}
         {tab === 'config' && <ConfigTab run={data} />}
         {tab === 'model' && <ModelTab run={data} />}
         {tab === 'env' && <EnvTab run={data} projectId={projectId} />}
