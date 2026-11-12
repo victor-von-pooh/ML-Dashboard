@@ -13,3 +13,6 @@ backend/src/ml_dashboard/static/
 .DS_Store
 .idea/
 .vscode/
+
+# デモのプロジェクトの学習の結果
+demo/outputs/

@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# 画面の通しのテストの作業用のディレクトリと結果
+e2e/.work/
+test-results/
+playwright-report/

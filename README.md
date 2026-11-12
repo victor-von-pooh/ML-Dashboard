@@ -36,12 +36,24 @@ ML-Found が実験ごとに残すディレクトリ (`history.csv`, `config.yaml
 git clone --recursive https://github.com/victor-von-pooh/ML-Dashboard.git
 cd ML-Dashboard
 make setup   # submodule, Python と Node.js の依存
-make serve   # 画面をビルドして http://127.0.0.1:8765 で起動
+make serve   # 画面をビルドして http://127.0.0.1:8765 で起動 (端末を占有するので, 止めるまで使い続ける)
 ```
 
-起動したら, 画面の「プロジェクトを追加」から ML-Found を使っているディレクトリを登録する.
-
 起動すると, 起動ごとのトークンが付いた URL (`http://127.0.0.1:8765/api/auth?token=...`) が表示されるので, それを開く. ダッシュボードは学習のプロセスを起動できるため, 同じ端末の他の利用者や他のサイトから使えないように, トークンを Cookie に保存したブラウザからだけ API を受け付ける. 毎回同じトークンにする場合は, 環境変数 `ML_DASHBOARD_TOKEN` で指定する.
+
+開いたら, 画面の「プロジェクトを追加」から ML-Found を使っているディレクトリを絶対パスで登録する.
+
+### デモのプロジェクト
+
+手元に ML-Found のプロジェクトが無い場合は, `demo/` で試せる. 2 本の渦巻きを分ける小さなモデルを CPU で数秒ずつ学習し, エポックごとの決定境界の画像 (`boundary/epoch_001.png` など) も保存する.
+
+1. `make serve` の前か別の端末で `make demo` を実行し, config を変えた 3 つの実験 (Adam, SGD, 小さなモデル) を作る
+2. 画面の「プロジェクトを追加」で, clone したディレクトリの中の `demo` を絶対パス (例: `/home/me/ML-Dashboard/demo`) で登録する
+3. 学習曲線, 決定境界の画像の推移, 実験の比較を確かめる. 画面から学習を起動する場合は `configs/experiment/examples/quick.yaml` (3 エポック) が手軽
+
+`make demo` を実行するたびに実験が 3 つずつ増える. 消す場合は `demo/outputs/` を削除する.
+
+### 起動の設定
 
 `make serve` は毎回画面をビルドしてから起動する. ポートを変える場合は `make serve PORT=8800` のように指定する. ビルド済みの場合は `cd backend && uv run ml-dashboard --port 8800` でも起動できる.
 ローカルから 1 人で使う前提なので, 既定では `127.0.0.1` だけで待ち受ける. `--host` で変えられるが, トークンを知る人は学習のコードを実行できるので勧めない.
@@ -55,6 +67,7 @@ make serve   # 画面をビルドして http://127.0.0.1:8765 で起動
 make dev-backend    # API (http://127.0.0.1:8765, 変更を自動で反映). 表示された http://localhost:5173/api/auth?token=... を開く
 make dev-frontend   # 画面 (http://localhost:5173, API に転送. ポートを変えた場合は両方に PORT=... を付ける)
 make check          # lint, 型検査, テスト
+make e2e            # 画面の通しのテスト (Playwright). デモの実験を作ってからダッシュボードを起動して操作する
 make api            # バックエンドの API を変えたら, 画面の型を作り直す
 ```
 
@@ -62,6 +75,8 @@ make api            # バックエンドの API を変えたら, 画面の型を
 | --- | --- |
 | `backend/` | API (Python, FastAPI). `core/` が ML-Found の出力の読み込み, `api/` がルーティング |
 | `frontend/` | 画面 (TypeScript, React, Vite). `src/api/schema.d.ts` は OpenAPI から生成した型 |
+| `demo/` | 動作の確認と画面の通しのテストに使う ML-Found のプロジェクト |
+| `frontend/e2e/` | 画面の通しのテスト (Playwright) |
 | `ML-Found/` | submodule |
 | `docs/DESIGN.md` | 設計の方針と段階 |
 

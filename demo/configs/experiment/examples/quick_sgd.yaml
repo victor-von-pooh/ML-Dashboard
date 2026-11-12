@@ -1,0 +1,9 @@
+# quick.yaml と同じく 3 エポックで, Optimizer だけを SGD にする (比較の確認用)
+optimizer:
+  name: SGD
+  params:
+    lr: 0.1
+    momentum: 0.9
+
+trainer:
+  epochs: 3

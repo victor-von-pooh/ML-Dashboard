@@ -1,5 +1,7 @@
+import importlib
 import sys
 import tempfile
+import threading
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Literal, Optional
@@ -35,6 +37,35 @@ MAX_CONFIG_BYTES = 200_000
 BAD_REQUEST: dict[int | str, dict[str, str]] = {
     400: {"description": "受け付けられないリクエスト"}
 }
+
+
+# ML-Found のモジュールを初めて読み込むときの排他
+# ML-Found のモジュールは互いに読み込み合うので, 別々のスレッドの要求が
+# 同時に違うモジュールから読み込むと, Python の読み込みのロックが互いを
+# 待つ状態を検出してエラー (_DeadlockError)
+ML_FOUND_IMPORT_LOCK = threading.Lock()
+
+
+def import_ml_found() -> None:
+    """
+    ML-Found のパッケージを 1 つのスレッドから読み込む関数
+
+    PyTorch も読み込むので, 起動時ではなく初めて使うときに読み込む.
+    読み込んだ後は sys.modules から取り出すだけなので, 関数の中の
+    import は待たずに済む
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    None
+    """
+    # パッケージの最上位から読み込み, 中のモジュールを決まった順で読み込み
+    with ML_FOUND_IMPORT_LOCK:
+        # ml_found の __init__ が中のモジュールを全て読み込むので, これで十分
+        importlib.import_module("ml_found")
 
 
 class ConfigText(BaseModel):
@@ -199,6 +230,7 @@ def check_param_names(cfg: Any) -> list[str]:
         必須の引数の不足 (学習のスクリプトが start_experiment の前に補う
         場合があるので, エラーにはしない)
     """
+    import_ml_found()
     from ml_found.training.registry import check_optim_params
 
     # 名前の誤りはエラーのまま, 必須の引数の不足だけを注意として返却
@@ -236,6 +268,7 @@ def check_config(
     # ML-Found の読み込みは PyTorch も読むので, 使うときだけ読み込み
     # ダッシュボードの submodule の ML-Found で確かめるので, プロジェクトの
     # ML-Found の版が違う場合は, 学習を始めてからのエラーの可能性あり
+    import_ml_found()
     from ml_found.config import load_config
     from ml_found.experiment.setup import (
         check_name,
@@ -701,6 +734,7 @@ def read_registry() -> Registry:
         ML-Found の登録簿の内容
     """
     # ML-Found の読み込みは PyTorch も読むので, 使うときだけ読み込み
+    import_ml_found()
     from ml_found.training.registry import (
         describe_optimizers,
         describe_schedulers,
