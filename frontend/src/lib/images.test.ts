@@ -48,4 +48,14 @@ describe('groupImageSeries', () => {
   it('1 枚だけの並びと番号の無い画像は返さない', () => {
     expect(groupImageSeries([image('samples/epoch_001.png'), image('samples.png')])).toEqual([])
   })
+
+  it('番号だけのファイルはディレクトリの名前でまとめる', () => {
+    const series = groupImageSeries([
+      image('samples/001.png'),
+      image('samples/002.png'),
+      image('0.png'),
+      image('1.png'),
+    ])
+    expect(series.map((item) => item.name)).toEqual(['(画像)', 'samples'])
+  })
 })

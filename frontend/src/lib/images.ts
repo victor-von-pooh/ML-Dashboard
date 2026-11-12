@@ -16,11 +16,16 @@ export function groupImageSeries(files: RunFile[]): ImageSeries[] {
   for (const file of files) {
     if (file.kind !== 'image') continue
     const slash = file.path.lastIndexOf('/')
-    const dir = slash >= 0 ? file.path.slice(0, slash + 1) : ''
+    const dir = slash >= 0 ? file.path.slice(0, slash) : ''
     const match = NUMBERED.exec(file.path.slice(slash + 1))
     if (!match) continue
-    const name = `${dir}${(match[1] ?? '').replace(/[_-]$/, '')}` || dir.replace(/\/$/, '')
-    groups.set(name, [...(groups.get(name) ?? []), { path: file.path, step: Number(match[2]) }])
+
+    // 名前は「ディレクトリ/番号の前の部分」. 番号だけのファイルはディレクトリの名前
+    const prefix = (match[1] ?? '').replace(/[_.-]+$/, '')
+    const name = prefix ? (dir ? `${dir}/${prefix}` : prefix) : dir || '(画像)'
+    const frames = groups.get(name) ?? []
+    frames.push({ path: file.path, step: Number(match[2]) })
+    groups.set(name, frames)
   }
   return [...groups.entries()]
     .filter(([, frames]) => frames.length >= 2)
