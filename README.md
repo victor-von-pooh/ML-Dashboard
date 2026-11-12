@@ -4,6 +4,17 @@
 
 ML-Found が実験ごとに残すディレクトリ (`history.csv`, `config.yaml`, `train.log` など) をそのまま読むので, 学習のコードに手を加えなくても, 既にある実験を一覧にして比べられる.
 
+![実験の比較: 学習曲線, 同じエポックの決定境界の画像, config の違い](docs/images/compare.png)
+
+<table>
+  <tr>
+    <td><img src="docs/images/run_images.png" alt="実験の詳細: エポックごとの決定境界の画像の推移"></td>
+    <td><img src="docs/images/analysis_dark.png" alt="ハイパーパラメータの分析 (ダークモード): 学習率と検証用の正解率の関係"></td>
+  </tr>
+</table>
+
+画面の例は `demo/` のプロジェクト (2 本の渦巻きを分ける小さなモデル) の実験. 比較と画像の推移は `make demo` の実験で, 分析の画面はそれに加えて学習率と隠れ層の大きさを変えて `spiral` を何回か学習したもの.
+
 ## できること
 
 - **プロジェクト**: ML-Found を使っているディレクトリ (`configs/default/train.yaml` を持つもの) を登録する. 親のディレクトリを指定すると, 3 階層下までのプロジェクトをまとめて探して登録できる (隠しディレクトリと `outputs`, `data`, `node_modules` などは探さない)
