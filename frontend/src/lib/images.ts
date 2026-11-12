@@ -10,8 +10,8 @@ export interface ImageSeries {
 // ファイル名の末尾の番号 (epoch_010.png, step-200.jpg, 0005.png など)
 const NUMBERED = /^(.*?)(\d+)\.(png|jpe?g|gif|webp)$/i
 
-/** 番号の付いた画像を, 同じディレクトリと名前の並びごとにまとめる. 2 枚以上の並びだけを返す */
-export function groupImageSeries(files: RunFile[]): ImageSeries[] {
+/** 番号の付いた画像を, 同じディレクトリと名前の並びごとにまとめる. minFrames 枚以上の並びだけを返す */
+export function groupImageSeries(files: RunFile[], minFrames = 2): ImageSeries[] {
   const groups = new Map<string, { path: string; step: number }[]>()
   for (const file of files) {
     if (file.kind !== 'image') continue
@@ -28,7 +28,7 @@ export function groupImageSeries(files: RunFile[]): ImageSeries[] {
     groups.set(name, frames)
   }
   return [...groups.entries()]
-    .filter(([, frames]) => frames.length >= 2)
+    .filter(([, frames]) => frames.length >= minFrames)
     .map(([name, frames]) => ({ name, frames: frames.sort((a, b) => a.step - b.step) }))
     .sort((a, b) => a.name.localeCompare(b.name))
 }
@@ -62,4 +62,16 @@ export function sharedImageSeries(perRun: ImageSeries[][]): SharedImageSeries[] 
       )
       return { name, steps, frames }
     })
+}
+
+/** 番号以下で最も近い番号の画像. 保存の間隔が違う実験どうしでも比べられるようにする */
+export function frameAtOrBefore(
+  frames: Map<number, string>,
+  step: number,
+): { step: number; path: string } | null {
+  let best: { step: number; path: string } | null = null
+  for (const [key, path] of frames) {
+    if (key <= step && (!best || key > best.step)) best = { step: key, path }
+  }
+  return best
 }

@@ -1,9 +1,10 @@
+import clsx from 'clsx'
 import { ChevronLeft, ChevronRight, ImageOff } from 'lucide-react'
 import { useId, useState } from 'react'
 
 import { runFileUrl } from '../../api/client'
 import { Card } from '../../components/ui'
-import type { SharedImageSeries } from '../../lib/images'
+import { frameAtOrBefore, type SharedImageSeries } from '../../lib/images'
 
 interface RunColumn {
   id: string
@@ -30,16 +31,19 @@ function SharedSeriesViewer({
 }) {
   const sliderId = useId()
   const last = series.steps.length - 1
-  // null は最後の番号を表示 (学習中に画像が増えたら最新に追従)
-  const [index, setIndex] = useState<number | null>(null)
-  const current = index === null ? last : Math.min(index, last)
+  // 選んだ番号そのものを持つ (実験を外して番号の並びが変わっても, 同じエポックを表示)
+  // null は最後の番号. 選んだ番号が無くなった場合は, それ以下で最も近い番号
+  const [selected, setSelected] = useState<number | null>(null)
+  const found = selected === null ? -1 : series.steps.findLastIndex((value) => value <= selected)
+  const current = selected === null ? last : Math.max(found, 0)
   const step = series.steps[current]!
   const { title, unit } = splitName(series.name)
-  const stepLabel = unit ? `${unit} ${step}` : String(step)
+  const label = (value: number) => (unit ? `${unit} ${value}` : String(value))
+  const stepLabel = label(step)
 
   const select = (next: number) => {
     const clamped = Math.max(0, Math.min(last, next))
-    setIndex(clamped === last ? null : clamped)
+    setSelected(clamped === last ? null : series.steps[clamped]!)
   }
 
   return (
@@ -48,23 +52,31 @@ function SharedSeriesViewer({
       actions={<span className="tabular text-sm font-semibold text-ink">{stepLabel}</span>}
     >
       <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+        <div
+          className={clsx(
+            'grid grid-cols-2 gap-3',
+            runs.length >= 3 && 'md:grid-cols-3',
+            runs.length >= 4 && 'xl:grid-cols-4',
+          )}
+        >
           {runs.map((run, position) => {
             const frames = series.frames[position]
-            const path = frames?.get(step)
+            // その番号が無い実験は, それより前で最も近い番号の画像 (保存の間隔の違い)
+            const frame = frames ? frameAtOrBefore(frames, step) : null
             return (
               <figure key={run.id} className="min-w-0 space-y-1">
-                <div className="flex aspect-square items-center justify-center overflow-hidden rounded-lg border border-line bg-surface-2">
-                  {path ? (
+                <div className="flex min-h-32 items-center justify-center overflow-hidden rounded-lg border border-line bg-surface-2">
+                  {frame ? (
                     <img
-                      src={runFileUrl(projectId, run.id, path)}
-                      alt={`${run.label} の ${title} (${stepLabel})`}
-                      className="size-full object-contain [image-rendering:pixelated]"
+                      src={runFileUrl(projectId, run.id, frame.path)}
+                      alt={`${run.label} の ${title} (${label(frame.step)})`}
+                      loading="lazy"
+                      className="h-auto max-h-[360px] w-full object-contain [image-rendering:pixelated]"
                     />
                   ) : (
-                    <span className="flex flex-col items-center gap-1 px-2 text-center text-[11px] text-ink-3">
+                    <span className="flex flex-col items-center gap-1 px-2 text-center text-[11px] text-balance text-ink-3">
                       <ImageOff className="size-4" aria-hidden />
-                      {frames ? 'この番号の画像はありません' : 'この並びの画像はありません'}
+                      {frames ? 'この番号まで画像なし' : 'この並びは画像なし'}
                     </span>
                   )}
                 </div>
@@ -75,6 +87,11 @@ function SharedSeriesViewer({
                     aria-hidden
                   />
                   <span className="truncate">{run.label}</span>
+                  {frame && frame.step !== step && (
+                    <span className="tabular ml-auto shrink-0 text-ink-3">
+                      {label(frame.step)} (直近)
+                    </span>
+                  )}
                 </figcaption>
               </figure>
             )

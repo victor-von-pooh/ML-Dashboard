@@ -88,7 +88,7 @@ export function ComparePage() {
     })
 
   // 2 つ以上の実験にある番号付きの画像の並び (同じエポックの生成画像などを並べて比べる)
-  const sharedImages = sharedImageSeries(ready.map((slot) => groupImageSeries(slot.run.files)))
+  const sharedImages = sharedImageSeries(ready.map((slot) => groupImageSeries(slot.run.files, 1)))
 
   const configKeys = diffConfigs(ready.map((slot) => slot.run.config))
   const flatConfigs = ready.map((slot) => flattenConfig(slot.run.config))
