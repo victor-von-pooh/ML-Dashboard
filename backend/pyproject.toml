@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "ml-dashboard"
 version = "0.1.0"
-description = "ML-Found の実験の結果を確かめ, 学習を起動するローカルの Web アプリ"
+description = "ML-Found の実験の結果を確かめるローカルの Web アプリ"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"

@@ -72,13 +72,19 @@ export function MetricCharts({
             title={<span className="font-mono">{group.name}</span>}
             actions={
               best && group.keys.includes(best.monitor) ? (
-                <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent">
+                <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent-strong">
                   監視する指標
                 </span>
               ) : undefined
             }
           >
-            <LineChart series={series} markers={markers} logScale={logScale} xLabel="epoch" />
+            <LineChart
+              series={series}
+              markers={markers}
+              logScale={logScale}
+              xLabel="epoch"
+              label={`${group.name} のエポックごとの推移`}
+            />
           </Card>
         ))}
       </div>

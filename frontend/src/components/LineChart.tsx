@@ -8,10 +8,11 @@ import {
 } from 'echarts/components'
 import * as echarts from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
-import { useEffect, useRef } from 'react'
+import { RotateCcw } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
-import { formatMetric } from '../lib/format'
 import { cssVar } from '../lib/colors'
+import { formatMetric } from '../lib/format'
 import { useTheme } from '../lib/themeContext'
 
 echarts.use([
@@ -43,12 +44,28 @@ interface Props {
   logScale?: boolean
   height?: number
   xLabel?: string
+  /** 読み上げ用のグラフの説明 */
+  label: string
 }
 
-/** エポックごとの値の折れ線グラフ. 拡大と, 全系列を並べるツールチップ付き */
-export function LineChart({ series, markers = [], logScale = false, height = 260, xLabel }: Props) {
+// 毎回の描画で新しい配列にならないように, 既定値は共通の空の配列
+const NO_MARKERS: ChartMarker[] = []
+
+// 目印の線だけを持つ系列の名前 (凡例には出さない)
+const MARKER_SERIES = '__markers__'
+
+/** エポックごとの値の折れ線グラフ. Ctrl とホイールで拡大し, 全系列を並べるツールチップ付き */
+export function LineChart({
+  series,
+  markers = NO_MARKERS,
+  logScale = false,
+  height = 260,
+  xLabel,
+  label,
+}: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const chartRef = useRef<echarts.ECharts | null>(null)
+  const [zoomed, setZoomed] = useState(false)
   const { theme } = useTheme()
 
   // グラフの作成と, 大きさの変化への追従
@@ -56,6 +73,11 @@ export function LineChart({ series, markers = [], logScale = false, height = 260
     if (!ref.current) return
     const chart = echarts.init(ref.current, undefined, { renderer: 'canvas' })
     chartRef.current = chart
+    chart.on('datazoom', () => {
+      const option = chart.getOption() as { dataZoom?: { start?: number; end?: number }[] }
+      const zoom = option.dataZoom?.[0]
+      setZoomed((zoom?.start ?? 0) > 0 || (zoom?.end ?? 100) < 100)
+    })
     const observer = new ResizeObserver(() => chart.resize())
     observer.observe(ref.current)
     return () => {
@@ -65,7 +87,7 @@ export function LineChart({ series, markers = [], logScale = false, height = 260
     }
   }, [])
 
-  // データとテーマが変わったら描き直す
+  // データとテーマが変わったら描き直す. 拡大と凡例の選択は残す
   useEffect(() => {
     const chart = chartRef.current
     if (!chart) return
@@ -74,6 +96,8 @@ export function LineChart({ series, markers = [], logScale = false, height = 260
     const grid = cssVar('--border')
     const surface = cssVar('--surface')
     const usable = logScale && series.every((s) => s.points.every(([, y]) => y == null || y > 0))
+    const xs = series.flatMap((s) => s.points.map(([x]) => x))
+    const legend = series.length > 1
 
     chart.setOption(
       {
@@ -81,25 +105,26 @@ export function LineChart({ series, markers = [], logScale = false, height = 260
         grid: {
           left: 8,
           right: 20,
-          top: series.length > 1 ? 40 : 16,
+          top: legend ? 40 : 20,
           bottom: xLabel ? 36 : 24,
           containLabel: true,
         },
-        legend:
-          series.length > 1
-            ? {
-                type: 'scroll',
-                top: 0,
-                left: 0,
-                right: 0,
-                pageIconColor: ink2,
-                pageTextStyle: { color: ink3 },
-                icon: 'roundRect',
-                itemWidth: 12,
-                itemHeight: 4,
-                textStyle: { color: ink2, fontSize: 12 },
-              }
-            : undefined,
+        legend: legend
+          ? {
+              show: true,
+              type: 'scroll',
+              top: 0,
+              left: 0,
+              right: 0,
+              data: series.map((s) => s.name),
+              pageIconColor: ink2,
+              pageTextStyle: { color: ink3 },
+              icon: 'roundRect',
+              itemWidth: 12,
+              itemHeight: 4,
+              textStyle: { color: ink2, fontSize: 12 },
+            }
+          : { show: false },
         tooltip: {
           trigger: 'axis',
           axisPointer: { type: 'line', lineStyle: { color: ink3 } },
@@ -132,35 +157,69 @@ export function LineChart({ series, markers = [], logScale = false, height = 260
           },
           splitLine: { lineStyle: { color: grid, opacity: 0.6 } },
         },
-        dataZoom: [{ type: 'inside', filterMode: 'none' }],
-        series: series.map((s, index) => {
-          const color = cssVar(s.color)
-          return {
+        // ページのスクロールを妨げないように, 拡大は Ctrl とホイールかドラッグ
+        dataZoom: [
+          {
+            type: 'inside',
+            filterMode: 'none',
+            zoomOnMouseWheel: 'ctrl',
+            moveOnMouseWheel: false,
+          },
+        ],
+        series: [
+          ...series.map((s) => {
+            const color = cssVar(s.color)
+            return {
+              type: 'line',
+              name: s.name,
+              data: s.points,
+              showSymbol: s.points.length <= 1,
+              symbolSize: 8,
+              connectNulls: false,
+              lineStyle: { width: 2, color, type: s.dashed ? 'dashed' : 'solid' },
+              itemStyle: { color },
+              emphasis: { focus: 'series', lineStyle: { width: 2.5 } },
+            }
+          }),
+          // 凡例で系列を隠しても目印が消えないように, 目印は専用の系列に置く
+          {
             type: 'line',
-            name: s.name,
-            data: s.points,
-            showSymbol: s.points.length <= 1,
-            symbolSize: 8,
-            connectNulls: false,
-            lineStyle: { width: 2, color, type: s.dashed ? 'dashed' : 'solid' },
-            itemStyle: { color },
-            emphasis: { focus: 'series', lineStyle: { width: 2.5 } },
-            markLine:
-              index === 0 && markers.length > 0
-                ? {
-                    symbol: 'none',
-                    silent: true,
-                    lineStyle: { color: ink3, type: 'dashed', width: 1 },
-                    label: { color: ink2, fontSize: 11, formatter: '{b}' },
-                    data: markers.map((m) => ({ xAxis: m.x, name: m.label })),
-                  }
-                : undefined,
-          }
-        }),
+            name: MARKER_SERIES,
+            data: xs.length > 0 ? [[Math.min(...xs), null]] : [],
+            silent: true,
+            tooltip: { show: false },
+            markLine: {
+              symbol: 'none',
+              silent: true,
+              lineStyle: { color: ink3, type: 'dashed', width: 1 },
+              label: { color: ink2, fontSize: 11, formatter: '{b}', position: 'insideEndTop' },
+              data: markers.map((m) => ({ xAxis: m.x, name: m.label })),
+            },
+          },
+        ],
       },
-      true,
+      { replaceMerge: ['series'] },
     )
   }, [series, markers, logScale, xLabel, theme])
 
-  return <div ref={ref} style={{ height }} className="w-full" role="img" />
+  const reset = () => {
+    chartRef.current?.dispatchAction({ type: 'dataZoom', start: 0, end: 100 })
+    setZoomed(false)
+  }
+
+  return (
+    <div className="relative">
+      <div ref={ref} style={{ height }} className="w-full" role="img" aria-label={label} />
+      {zoomed && (
+        <button
+          type="button"
+          onClick={reset}
+          className="absolute right-1 bottom-1 inline-flex items-center gap-1 rounded-md border border-line bg-surface px-2 py-0.5 text-[11px] text-ink-2 hover:bg-surface-2"
+        >
+          <RotateCcw className="size-3" aria-hidden />
+          拡大を戻す
+        </button>
+      )}
+    </div>
+  )
 }

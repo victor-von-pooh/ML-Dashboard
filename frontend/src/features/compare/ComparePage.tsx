@@ -7,48 +7,84 @@ import { encodeRunId, type History, type RunDetail } from '../../api/client'
 import { useHistories, useProject, useRunDetails } from '../../api/hooks'
 import { LineChart, type ChartSeries } from '../../components/LineChart'
 import { Card, EmptyState, ErrorBox, PageHeader, Spinner, StatusBadge } from '../../components/ui'
-import { formatDateTime, formatDuration, formatMetric, formatValue } from '../../lib/format'
-import { diffConfigs, flattenConfig, groupMetrics, toPoints } from '../../lib/metrics'
 import { seriesVar } from '../../lib/colors'
+import { formatDateTime, formatDuration, formatMetric, formatValue } from '../../lib/format'
+import { MAX_COMPARE, diffConfigs, flattenConfig, groupMetrics, toPoints } from '../../lib/metrics'
 
-/** 実験の短い名前 (日付と時刻) */
+/** 実験の短い名前 (名前, 月日, 時刻) */
 function shortLabel(runId: string): string {
   const parts = runId.split('/')
   return parts.length >= 3 ? `${parts[0]} ${parts[1]?.slice(5)} ${parts[2]}` : runId
 }
 
+interface Slot {
+  id: string
+  color: string
+  run?: RunDetail
+  history?: History
+  error?: unknown
+}
+
 export function ComparePage() {
   const { projectId = '' } = useParams()
   const [params, setParams] = useSearchParams()
-  const runIds = params.getAll('run')
-  const project = useProject(projectId)
-  const histories = useHistories(projectId, runIds)
-  const details = useRunDetails(projectId, runIds)
   const [showTrain, setShowTrain] = useState(false)
+  const [logScale, setLogScale] = useState(false)
+  const project = useProject(projectId)
 
-  const loaded = details.every((query) => query.data) && histories.every((query) => query.data)
-  const error = [...details, ...histories].find((query) => query.error)?.error
+  // 同じ実験の重複を除き, 色の数までに制限
+  const runIds = useMemo(() => [...new Set(params.getAll('run'))].slice(0, MAX_COMPARE), [params])
+  const details = useRunDetails(projectId, runIds)
+  const histories = useHistories(projectId, runIds)
 
-  const runs = details.map((query) => query.data).filter((run): run is RunDetail => !!run)
-  const historyList = histories.map((query) => query.data).filter((h): h is History => !!h)
+  // 実験ごとに, 色と読み込んだ結果をまとめる (色は選んだ順で固定)
+  const slots: Slot[] = runIds.map((id, index) => ({
+    id,
+    color: seriesVar(index),
+    run: details[index]?.data,
+    history: histories[index]?.data,
+    error: details[index]?.error ?? histories[index]?.error ?? undefined,
+  }))
+  const loading = slots.some((slot) => !slot.error && (!slot.run || !slot.history))
+  const ready = slots.filter((slot): slot is Required<Omit<Slot, 'error'>> & Slot =>
+    Boolean(slot.run && slot.history),
+  )
+  const readyKey = ready.map((slot) => slot.id).join('|')
 
   // 全ての実験の列を, 指標の順にそろえて並べる
   // 検証用がある指標の学習用は, 指定した場合だけ表示
-  const allColumns = [...new Set(historyList.flatMap((history) => history.columns))]
-  const columns = groupMetrics(allColumns)
-    .flatMap((group) => group.keys)
-    .filter(
-      (key) =>
-        showTrain ||
-        !key.startsWith('train/') ||
-        !allColumns.includes(key.replace('train/', 'valid/')),
-    )
+  const charts = useMemo(() => {
+    const all = [...new Set(ready.flatMap((slot) => slot.history.columns))]
+    return groupMetrics(all)
+      .flatMap((group) => group.keys)
+      .filter(
+        (key) =>
+          showTrain || !key.startsWith('train/') || !all.includes(key.replace('train/', 'valid/')),
+      )
+      .map((column) => {
+        const having = ready.filter((slot) => slot.history.columns.includes(column))
+        const missing = ready.filter((slot) => !slot.history.columns.includes(column))
+        const series: ChartSeries[] = having.map((slot) => ({
+          name: shortLabel(slot.id),
+          color: slot.color,
+          points: toPoints(slot.history, column),
+        }))
+        return { column, series, missing: missing.map((slot) => shortLabel(slot.id)) }
+      })
+    // 読み込んだ実験の組と表示の設定が変わったときだけ作り直す
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readyKey, showTrain, loading])
 
-  // 実験ごとの色の変数名
-  const colors = runIds.map((_, index) => `var(${seriesVar(index)})`)
-
-  const configKeys = useMemo(() => diffConfigs(runs.map((run) => run.config)), [runs])
-  const flatConfigs = useMemo(() => runs.map((run) => flattenConfig(run.config)), [runs])
+  const configKeys = useMemo(
+    () => diffConfigs(ready.map((slot) => slot.run.config)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [readyKey, loading],
+  )
+  const flatConfigs = useMemo(
+    () => ready.map((slot) => flattenConfig(slot.run.config)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [readyKey, loading],
+  )
 
   const remove = (runId: string) => {
     const next = new URLSearchParams()
@@ -79,7 +115,10 @@ export function ComparePage() {
       <>
         {header}
         <EmptyState icon={GitCompareArrows} title="比べる実験を選んでください">
-          実験の一覧で 2 つ以上の実験にチェックを入れて「比較」を押します.
+          <Link to={`/projects/${projectId}`} className="text-accent-strong hover:underline">
+            実験の一覧
+          </Link>
+          で 2 つ以上の実験にチェックを入れて「比較」を押します.
         </EmptyState>
       </>
     )
@@ -88,115 +127,144 @@ export function ComparePage() {
   return (
     <>
       {header}
-      {error && <ErrorBox error={error} />}
-      {!loaded && !error && <Spinner />}
-
-      {loaded && (
-        <div className="space-y-6">
-          {/* 実験ごとの色の凡例と主な結果 */}
-          <Card title="実験" padded={false}>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] text-sm">
-                <thead className="text-left text-xs text-ink-3">
-                  <tr className="border-b border-line">
-                    <th className="px-4 py-2 font-medium">実験</th>
-                    <th className="px-4 py-2 font-medium">状態</th>
-                    <th className="px-4 py-2 text-right font-medium">ベスト</th>
-                    <th className="px-4 py-2 text-right font-medium">エポック</th>
-                    <th className="px-4 py-2 text-right font-medium">学習時間</th>
-                    <th className="w-10" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {runs.map((run, index) => (
-                    <tr key={run.id} className="border-b border-line last:border-b-0">
-                      <td className="px-4 py-2">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="h-1 w-4 shrink-0 rounded-full"
-                            style={{ background: colors[index] }}
-                            aria-hidden
-                          />
-                          <Link
-                            to={`/projects/${projectId}/runs/${encodeRunId(run.id)}`}
-                            className="font-medium hover:text-accent"
-                          >
-                            {shortLabel(run.id)}
-                          </Link>
-                        </div>
+      <div className="space-y-6">
+        {/* 実験ごとの色の凡例と主な結果. 読めなかった実験も外せるように行を残す */}
+        <Card title="実験" padded={false}>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-sm">
+              <thead className="text-left text-xs text-ink-3">
+                <tr className="border-b border-line">
+                  <th className="px-4 py-2 font-medium">実験</th>
+                  <th className="px-4 py-2 font-medium">状態</th>
+                  <th className="px-4 py-2 text-right font-medium">ベスト</th>
+                  <th className="px-4 py-2 text-right font-medium">エポック</th>
+                  <th className="px-4 py-2 text-right font-medium">学習時間</th>
+                  <th className="w-10">
+                    <span className="sr-only">比較から外す</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {slots.map((slot) => (
+                  <tr key={slot.id} className="border-b border-line last:border-b-0">
+                    <td className="px-4 py-2">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="h-1 w-4 shrink-0 rounded-full"
+                          style={{ background: `var(${slot.color})` }}
+                          aria-hidden
+                        />
+                        <Link
+                          to={`/projects/${projectId}/runs/${encodeRunId(slot.id)}`}
+                          className="font-medium hover:text-accent-strong"
+                        >
+                          {shortLabel(slot.id)}
+                        </Link>
+                      </div>
+                      {slot.run && (
                         <div className="pl-6 text-xs text-ink-3">
-                          {formatDateTime(run.started_at)}
+                          {formatDateTime(slot.run.started_at)}
                         </div>
+                      )}
+                    </td>
+                    {slot.error ? (
+                      <td colSpan={4} className="px-4 py-2">
+                        <ErrorBox error={slot.error} />
                       </td>
-                      <td className="px-4 py-2">
-                        <StatusBadge status={run.status} />
+                    ) : !slot.run ? (
+                      <td colSpan={4} className="px-4 py-2 text-xs text-ink-3">
+                        読み込み中
                       </td>
-                      <td className="tabular px-4 py-2 text-right">
-                        {run.best ? (
-                          <>
-                            {formatMetric(run.best.value)}
-                            <div className="text-[11px] text-ink-3">
-                              {run.best.monitor} @ {run.best.epoch}
-                            </div>
-                          </>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                      <td className="tabular px-4 py-2 text-right">{run.epochs}</td>
-                      <td className="tabular px-4 py-2 text-right text-ink-2">
-                        {formatDuration(run.duration_sec)}
-                      </td>
-                      <td className="px-2">
-                        {runIds.length > 2 && (
-                          <button
-                            type="button"
-                            onClick={() => remove(run.id)}
-                            className="rounded p-1 text-ink-3 hover:bg-surface-2 hover:text-ink"
-                            aria-label={`${run.id} を比較から外す`}
-                          >
-                            <X className="size-3.5" aria-hidden />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+                    ) : (
+                      <>
+                        <td className="px-4 py-2">
+                          <StatusBadge status={slot.run.status} />
+                        </td>
+                        <td className="tabular px-4 py-2 text-right">
+                          {slot.run.best ? (
+                            <>
+                              {formatMetric(slot.run.best.value)}
+                              <div className="text-[11px] text-ink-3">
+                                {slot.run.best.monitor} @ {slot.run.best.epoch}
+                              </div>
+                            </>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td className="tabular px-4 py-2 text-right">{slot.run.epochs}</td>
+                        <td className="tabular px-4 py-2 text-right text-ink-2">
+                          {formatDuration(slot.run.duration_sec)}
+                        </td>
+                      </>
+                    )}
+                    <td className="px-2">
+                      <button
+                        type="button"
+                        onClick={() => remove(slot.id)}
+                        className="rounded p-1 text-ink-3 hover:bg-surface-2 hover:text-ink"
+                        aria-label={`${slot.id} を比較から外す`}
+                      >
+                        <X className="size-3.5" aria-hidden />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
 
-          {/* 指標ごとに実験を重ねたグラフ */}
+        {loading && <Spinner />}
+
+        {/* 指標ごとに実験を重ねたグラフ */}
+        {!loading && ready.length > 0 && (
           <div>
-            <div className="mb-3 flex items-center justify-between">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-sm font-semibold">学習曲線</h2>
-              <label className="flex items-center gap-2 text-xs text-ink-2">
-                <input
-                  type="checkbox"
-                  checked={showTrain}
-                  onChange={(event) => setShowTrain(event.target.checked)}
-                  className="accent-[var(--accent)]"
-                />
-                検証用がある指標も学習用を表示する
-              </label>
+              <div className="flex flex-wrap items-center gap-4 text-xs text-ink-2">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={showTrain}
+                    onChange={(event) => setShowTrain(event.target.checked)}
+                    className="accent-[var(--accent)]"
+                  />
+                  検証用がある指標も学習用を表示する
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={logScale}
+                    onChange={(event) => setLogScale(event.target.checked)}
+                    className="accent-[var(--accent)]"
+                  />
+                  縦軸を対数にする
+                </label>
+              </div>
             </div>
             <div className="grid gap-4 lg:grid-cols-2">
-              {columns.map((column) => {
-                const series: ChartSeries[] = historyList.map((history, index) => ({
-                  name: shortLabel(runIds[index] ?? ''),
-                  color: seriesVar(index),
-                  points: toPoints(history, column),
-                }))
-                return (
-                  <Card key={column} title={<span className="font-mono">{column}</span>}>
-                    <LineChart series={series} xLabel="epoch" />
-                  </Card>
-                )
-              })}
+              {charts.map(({ column, series, missing }) => (
+                <Card key={column} title={<span className="font-mono">{column}</span>}>
+                  <LineChart
+                    series={series}
+                    logScale={logScale}
+                    xLabel="epoch"
+                    label={`${column} の実験ごとの推移`}
+                  />
+                  {missing.length > 0 && (
+                    <p className="mt-1 text-[11px] text-ink-3">
+                      この指標が無い実験: {missing.join(', ')}
+                    </p>
+                  )}
+                </Card>
+              ))}
             </div>
           </div>
+        )}
 
-          {/* config の違う項目 */}
+        {/* config の違う項目 */}
+        {!loading && ready.length > 1 && (
           <Card title={`config の違い (${configKeys.length})`} padded={false}>
             {configKeys.length === 0 ? (
               <p className="px-4 py-6 text-sm text-ink-3">全ての実験で config が同じです.</p>
@@ -206,15 +274,15 @@ export function ComparePage() {
                   <thead className="text-left text-xs text-ink-3">
                     <tr className="border-b border-line">
                       <th className="px-4 py-2 font-medium">項目</th>
-                      {runs.map((run, index) => (
-                        <th key={run.id} className="px-4 py-2 font-medium">
+                      {ready.map((slot) => (
+                        <th key={slot.id} className="px-4 py-2 font-medium">
                           <span className="flex items-center gap-1.5">
                             <span
                               className="h-1 w-3 rounded-full"
-                              style={{ background: colors[index] }}
+                              style={{ background: `var(${slot.color})` }}
                               aria-hidden
                             />
-                            {shortLabel(run.id)}
+                            {shortLabel(slot.id)}
                           </span>
                         </th>
                       ))}
@@ -226,7 +294,7 @@ export function ComparePage() {
                         <td className="px-4 py-1.5 font-mono text-xs text-ink-2">{key}</td>
                         {flatConfigs.map((config, index) => (
                           <td
-                            key={runs[index]?.id}
+                            key={ready[index]?.id}
                             className={clsx(
                               'px-4 py-1.5 font-mono text-xs break-all',
                               config[key] === undefined && 'text-ink-3',
@@ -242,8 +310,8 @@ export function ComparePage() {
               </div>
             )}
           </Card>
-        </div>
-      )}
+        )}
+      </div>
     </>
   )
 }

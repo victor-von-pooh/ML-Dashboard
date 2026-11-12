@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import { ArrowDown, ArrowUp, FlaskConical, GitCompareArrows, Search, Trophy } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { encodeRunId, type RunStatus, type RunSummary } from '../../api/client'
 import { useProject, useRuns } from '../../api/hooks'
@@ -15,7 +15,7 @@ import {
   StatusBadge,
 } from '../../components/ui'
 import { formatDateTime, formatDuration, formatMetric, formatRelative } from '../../lib/format'
-import { summarizeDiff } from '../../lib/metrics'
+import { MAX_COMPARE, summarizeDiff } from '../../lib/metrics'
 
 type SortKey = 'started' | 'best' | 'duration' | 'epochs'
 
@@ -27,9 +27,6 @@ const STATUS_FILTERS: { id: RunStatus | 'all'; label: string }[] = [
   { id: 'failed', label: '失敗' },
   { id: 'unknown', label: '未完了' },
 ]
-
-// 比べられる実験の数の上限 (グラフの系列の色の数)
-const MAX_COMPARE = 8
 
 /** 並べ替えに使う値 */
 function sortValue(run: RunSummary, key: SortKey): number {
@@ -46,11 +43,19 @@ function sortValue(run: RunSummary, key: SortKey): number {
   }
 }
 
-/** 同じ指標で比べたときに最も良い実験 */
-function findBestRun(runs: RunSummary[]): RunSummary | undefined {
-  const withBest = runs.filter((run) => run.best)
-  const monitor = withBest[0]?.best?.monitor
-  const comparable = withBest.filter((run) => run.best?.monitor === monitor)
+/** 欠けた値を常に末尾に置く比較 */
+function compareValues(x: number, y: number, desc: boolean): number {
+  if (Number.isNaN(x) && Number.isNaN(y)) return 0
+  if (Number.isNaN(x)) return 1
+  if (Number.isNaN(y)) return -1
+  return desc ? y - x : x - y
+}
+
+/** 最新の実験と同じ名前と指標の実験の中で最も良い実験 */
+function findBestRun(runs: RunSummary[], latest?: RunSummary): RunSummary | undefined {
+  const comparable = runs.filter(
+    (run) => run.best && run.name === latest?.name && run.best.monitor === latest?.best?.monitor,
+  )
   return comparable.reduce<RunSummary | undefined>((best, run) => {
     if (!best?.best || !run.best) return run
     const better =
@@ -75,7 +80,10 @@ function SortHeader({
   const active = sort.key === id
   const Icon = sort.desc ? ArrowDown : ArrowUp
   return (
-    <th className={clsx('px-3 py-2 font-medium', className)}>
+    <th
+      className={clsx('px-3 py-2 font-medium', className)}
+      aria-sort={active ? (sort.desc ? 'descending' : 'ascending') : 'none'}
+    >
       <button
         type="button"
         onClick={() => onSort(id)}
@@ -88,18 +96,39 @@ function SortHeader({
   )
 }
 
-export function RunsPage() {
+/** プロジェクトが変わったら状態を作り直すように, プロジェクトごとに描き分ける */
+export function ProjectRunsPage() {
   const { projectId = '' } = useParams()
+  return <RunsPage key={projectId} projectId={projectId} />
+}
+
+function RunsPage({ projectId }: { projectId: string }) {
   const project = useProject(projectId)
   const runs = useRuns(projectId)
   const navigate = useNavigate()
+  const [params, setParams] = useSearchParams()
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState<RunStatus | 'all'>('all')
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: 'started', desc: true })
-  const [selected, setSelected] = useState<string[]>([])
+
+  // 比較に選んだ実験は URL に残し, 比較から戻っても選んだままにする
+  const selected = params.getAll('sel')
+  const setSelected = (ids: string[]) => {
+    const next = new URLSearchParams()
+    for (const id of ids) next.append('sel', id)
+    setParams(next, { replace: true })
+  }
 
   const all = useMemo(() => runs.data ?? [], [runs.data])
-  const bestRun = useMemo(() => findBestRun(all), [all])
+  const latest = useMemo(
+    () =>
+      all.reduce<RunSummary | undefined>(
+        (newest, run) => (!newest || run.started_at > newest.started_at ? run : newest),
+        undefined,
+      ),
+    [all],
+  )
+  const bestRun = useMemo(() => findBestRun(all, latest), [all, latest])
 
   // 絞り込みと並べ替え
   const visible = useMemo(() => {
@@ -109,13 +138,9 @@ export function RunsPage() {
       const text = [run.id, ...summarizeDiff(run.diff)].join(' ').toLowerCase()
       return words.every((word) => text.includes(word))
     })
-    return [...filtered].sort((a, b) => {
-      const x = sortValue(a, sort.key)
-      const y = sortValue(b, sort.key)
-      if (Number.isNaN(x)) return 1
-      if (Number.isNaN(y)) return -1
-      return sort.desc ? y - x : x - y
-    })
+    return [...filtered].sort((a, b) =>
+      compareValues(sortValue(a, sort.key), sortValue(b, sort.key), sort.desc),
+    )
   }, [all, query, status, sort])
 
   const counts = useMemo(() => {
@@ -124,24 +149,38 @@ export function RunsPage() {
     return result
   }, [all])
 
+  if (project.error) {
+    return (
+      <>
+        <PageHeader breadcrumb={<Link to="/">プロジェクト</Link>} title={projectId} />
+        <ErrorBox error={project.error}>
+          <Link to="/" className="mt-1 inline-block text-accent-strong hover:underline">
+            プロジェクトの一覧に戻る
+          </Link>
+        </ErrorBox>
+      </>
+    )
+  }
+
   const totalTime = all.reduce((sum, run) => sum + (run.duration_sec ?? 0), 0)
+  const full = selected.length >= MAX_COMPARE
 
   const onSort = (key: SortKey) =>
     setSort((previous) => ({ key, desc: previous.key === key ? !previous.desc : true }))
 
   const toggle = (id: string) =>
-    setSelected((previous) =>
-      previous.includes(id)
-        ? previous.filter((item) => item !== id)
-        : previous.length < MAX_COMPARE
-          ? [...previous, id]
-          : previous,
+    setSelected(
+      selected.includes(id)
+        ? selected.filter((item) => item !== id)
+        : full
+          ? selected
+          : [...selected, id],
     )
 
   const compare = () => {
-    const params = new URLSearchParams()
-    for (const id of selected) params.append('run', id)
-    navigate(`/projects/${projectId}/compare?${params.toString()}`)
+    const next = new URLSearchParams()
+    for (const id of selected) next.append('run', id)
+    navigate(`/projects/${projectId}/compare?${next.toString()}`)
   }
 
   return (
@@ -151,31 +190,37 @@ export function RunsPage() {
         title={project.data?.name ?? projectId}
         subtitle={<span className="font-mono text-xs">{project.data?.path}</span>}
         actions={
-          <Button
-            variant="primary"
-            icon={GitCompareArrows}
-            disabled={selected.length < 2}
-            onClick={compare}
-            title={selected.length < 2 ? '2 つ以上の実験を選んでください' : undefined}
-          >
-            比較 {selected.length > 0 && `(${selected.length})`}
-          </Button>
+          <>
+            {selected.length > 0 && (
+              <Button variant="ghost" onClick={() => setSelected([])}>
+                選択を解除
+              </Button>
+            )}
+            <Button
+              variant="primary"
+              icon={GitCompareArrows}
+              disabled={selected.length < 2}
+              onClick={compare}
+              title={selected.length < 2 ? '2 つ以上の実験を選んでください' : undefined}
+            >
+              比較 {selected.length > 0 && `(${selected.length})`}
+            </Button>
+          </>
         }
       />
-      {project.error && <ErrorBox error={project.error} />}
 
       {all.length > 0 && (
         <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatTile label="実験" value={all.length} hint={`完了 ${counts.completed ?? 0}`} />
           <StatTile
-            label="ベストの実験"
+            label={bestRun?.best ? `ベスト (${bestRun.name})` : 'ベスト'}
             value={bestRun?.best ? formatMetric(bestRun.best.value) : '—'}
             hint={bestRun?.best ? `${bestRun.best.monitor} · ${bestRun.id}` : undefined}
           />
           <StatTile
             label="最新の実験"
-            value={all[0] ? formatRelative(all[0].started_at) : '—'}
-            hint={all[0]?.id}
+            value={latest ? formatRelative(latest.started_at) : '—'}
+            hint={latest?.id}
           />
           <StatTile label="学習時間の合計" value={formatDuration(totalTime)} />
         </div>
@@ -187,20 +232,22 @@ export function RunsPage() {
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            aria-label="実験を絞り込む"
             placeholder="名前や config の差分で絞り込む (例: lr=0.001)"
             className="h-9 w-full rounded-lg border border-line bg-surface pr-3 pl-8 text-sm outline-none focus:border-accent"
           />
         </div>
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap gap-1" role="group" aria-label="状態で絞り込む">
           {STATUS_FILTERS.filter((item) => item.id === 'all' || counts[item.id]).map((item) => (
             <button
               key={item.id}
               type="button"
               onClick={() => setStatus(item.id)}
+              aria-pressed={status === item.id}
               className={clsx(
                 'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
                 status === item.id
-                  ? 'border-accent bg-accent-soft text-accent'
+                  ? 'border-accent bg-accent-soft text-accent-strong'
                   : 'border-line text-ink-2 hover:bg-surface-2',
               )}
             >
@@ -209,12 +256,18 @@ export function RunsPage() {
           ))}
         </div>
       </div>
+      {full && (
+        <p className="mb-2 text-xs text-ink-3">
+          比較できるのは {MAX_COMPARE} つまでです. 他を選ぶには選択を外してください.
+        </p>
+      )}
 
       {runs.isPending && <Spinner />}
       {runs.error && <ErrorBox error={runs.error} />}
       {runs.data?.length === 0 && (
         <EmptyState icon={FlaskConical} title="実験がありません">
-          ML-Found で学習すると, 出力先 ({project.data?.output_dirs.join(", ")}) の実験がここに表示されます.
+          ML-Found で学習すると, 出力先 ({project.data?.output_dirs.join(', ')})
+          の実験がここに表示されます.
         </EmptyState>
       )}
 
@@ -253,95 +306,17 @@ export function RunsPage() {
               </tr>
             </thead>
             <tbody>
-              {visible.map((run) => {
-                const diff = summarizeDiff(run.diff)
-                const checked = selected.includes(run.id)
-                return (
-                  <tr
-                    key={run.id}
-                    className={clsx(
-                      'border-b border-line last:border-b-0 hover:bg-surface-2/60',
-                      checked && 'bg-accent-soft/60',
-                    )}
-                  >
-                    <td className="px-3 py-2.5">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        disabled={!checked && selected.length >= MAX_COMPARE}
-                        onChange={() => toggle(run.id)}
-                        aria-label={`${run.id} を比較に選ぶ`}
-                        className="size-4 accent-[var(--accent)]"
-                      />
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <StatusBadge status={run.status} />
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <Link
-                        to={`/projects/${projectId}/runs/${encodeRunId(run.id)}`}
-                        className="font-medium text-ink hover:text-accent"
-                      >
-                        {run.name}
-                      </Link>
-                      <div className="tabular text-xs text-ink-3">
-                        {formatDateTime(run.started_at)}
-                      </div>
-                    </td>
-                    <td className="max-w-80 px-3 py-2.5">
-                      <div className="flex flex-wrap gap-1">
-                        {diff.slice(0, 4).map((item) => (
-                          <span
-                            key={item}
-                            className="max-w-full truncate rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-ink-2"
-                            title={item}
-                          >
-                            {item}
-                          </span>
-                        ))}
-                        {diff.length > 4 && (
-                          <span className="text-[11px] text-ink-3" title={diff.slice(4).join('\n')}>
-                            +{diff.length - 4}
-                          </span>
-                        )}
-                        {diff.length === 0 && <span className="text-xs text-ink-3">なし</span>}
-                      </div>
-                    </td>
-                    <td className="tabular px-3 py-2.5 text-right">
-                      {run.epochs}
-                      {run.planned_epochs != null && (
-                        <span className="text-ink-3"> / {run.planned_epochs}</span>
-                      )}
-                      {run.early_stopped_epoch != null && (
-                        <div className="text-[11px] text-ink-3">Early Stopping</div>
-                      )}
-                    </td>
-                    <td className="tabular px-3 py-2.5 text-right">
-                      {run.best ? (
-                        <>
-                          <div className="flex items-center justify-end gap-1 font-medium">
-                            {run.id === bestRun?.id && (
-                              <Trophy
-                                className="size-3.5 text-warning"
-                                aria-label="プロジェクトのベスト"
-                              />
-                            )}
-                            {formatMetric(run.best.value)}
-                          </div>
-                          <div className="text-[11px] text-ink-3">
-                            {run.best.monitor} @ {run.best.epoch}
-                          </div>
-                        </>
-                      ) : (
-                        <span className="text-ink-3">—</span>
-                      )}
-                    </td>
-                    <td className="tabular px-3 py-2.5 text-right text-ink-2">
-                      {formatDuration(run.duration_sec)}
-                    </td>
-                  </tr>
-                )
-              })}
+              {visible.map((run) => (
+                <RunRow
+                  key={run.id}
+                  run={run}
+                  projectId={projectId}
+                  checked={selected.includes(run.id)}
+                  disabled={!selected.includes(run.id) && full}
+                  isBest={run.id === bestRun?.id}
+                  onToggle={() => toggle(run.id)}
+                />
+              ))}
             </tbody>
           </table>
         </div>
@@ -350,5 +325,109 @@ export function RunsPage() {
         <p className="py-10 text-center text-sm text-ink-3">条件に合う実験はありません.</p>
       )}
     </>
+  )
+}
+
+function RunRow({
+  run,
+  projectId,
+  checked,
+  disabled,
+  isBest,
+  onToggle,
+}: {
+  run: RunSummary
+  projectId: string
+  checked: boolean
+  disabled: boolean
+  isBest: boolean
+  onToggle: () => void
+}) {
+  const diff = summarizeDiff(run.diff)
+  const progress = run.progress
+  return (
+    <tr
+      className={clsx(
+        'border-b border-line last:border-b-0 hover:bg-surface-2/60',
+        checked && 'bg-accent-soft/60',
+      )}
+    >
+      <td className="px-3 py-2.5">
+        <input
+          type="checkbox"
+          checked={checked}
+          disabled={disabled}
+          onChange={onToggle}
+          aria-label={`${run.id} を比較に選ぶ`}
+          className="size-4 accent-[var(--accent)]"
+        />
+      </td>
+      <td className="px-3 py-2.5">
+        <StatusBadge status={run.status} />
+      </td>
+      <td className="px-3 py-2.5">
+        <Link
+          to={`/projects/${projectId}/runs/${encodeRunId(run.id)}`}
+          className="font-medium text-ink hover:text-accent-strong"
+        >
+          {run.name}
+        </Link>
+        <div className="tabular text-xs text-ink-3">{formatDateTime(run.started_at)}</div>
+        {run.error && (
+          <div className="max-w-72 truncate text-xs text-critical-text" title={run.error}>
+            {run.error}
+          </div>
+        )}
+      </td>
+      <td className="max-w-80 px-3 py-2.5">
+        <div className="flex flex-wrap gap-1">
+          {diff.slice(0, 4).map((item) => (
+            <span
+              key={item}
+              className="max-w-full truncate rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-ink-2"
+              title={item}
+            >
+              {item}
+            </span>
+          ))}
+          {diff.length > 4 && (
+            <span className="text-[11px] text-ink-3" title={diff.slice(4).join('\n')}>
+              +{diff.length - 4}
+            </span>
+          )}
+          {diff.length === 0 && <span className="text-xs text-ink-3">なし</span>}
+        </div>
+      </td>
+      <td className="tabular px-3 py-2.5 text-right">
+        {run.epochs}
+        {run.planned_epochs != null && <span className="text-ink-3"> / {run.planned_epochs}</span>}
+        {run.early_stopped_epoch != null && (
+          <div className="text-[11px] text-ink-3">Early Stopping</div>
+        )}
+        {progress && (
+          <div className="text-[11px] text-accent-strong">エポック {progress.epoch} を学習中</div>
+        )}
+      </td>
+      <td className="tabular px-3 py-2.5 text-right">
+        {run.best ? (
+          <>
+            <div className="flex items-center justify-end gap-1 font-medium">
+              {isBest && (
+                <Trophy className="size-3.5 text-warning" aria-label="同じ名前の実験のベスト" />
+              )}
+              {formatMetric(run.best.value)}
+            </div>
+            <div className="text-[11px] text-ink-3">
+              {run.best.monitor} @ {run.best.epoch}
+            </div>
+          </>
+        ) : (
+          <span className="text-ink-3">—</span>
+        )}
+      </td>
+      <td className="tabular px-3 py-2.5 text-right text-ink-2">
+        {formatDuration(run.duration_sec)}
+      </td>
+    </tr>
   )
 }

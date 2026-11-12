@@ -13,6 +13,8 @@ export type History = Schemas['History']
 export type HistoryRow = History['rows'][number]
 export type LogEntry = Schemas['LogEntry']
 export type RunFile = Schemas['RunFile']
+export type Progress = Schemas['Progress']
+type ProjectCreate = Schemas['ProjectCreate']
 
 /** API がエラーを返したときの例外 */
 export class ApiError extends Error {
@@ -67,7 +69,7 @@ export function runFileUrl(projectId: string, runId: string, path: string): stri
 export const api = {
   listProjects: () => request<ProjectInfo[]>('/api/projects'),
   getProject: (id: string) => request<ProjectDetail>(`/api/projects/${encodeURIComponent(id)}`),
-  addProject: (body: { path: string; name?: string | null; python?: string | null }) =>
+  addProject: (body: ProjectCreate) =>
     request<ProjectInfo>('/api/projects', { method: 'POST', body: JSON.stringify(body) }),
   removeProject: (id: string) =>
     request<void>(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
