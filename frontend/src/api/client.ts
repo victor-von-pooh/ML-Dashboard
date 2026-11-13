@@ -119,10 +119,11 @@ export const api = {
         .map(encodeURIComponent)
         .join('/')}`,
     ),
-  validateConfig: (projectId: string, text: string) =>
+  // script は元にする default の config を選ぶのに使う (train_hf.py なら configs/default/hf.yaml)
+  validateConfig: (projectId: string, text: string, script?: string) =>
     request<ValidateResult>(`/api/projects/${encodeURIComponent(projectId)}/validate`, {
       method: 'POST',
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, script: script || undefined }),
     }),
   createJob: (projectId: string, body: JobCreate) =>
     request<JobInfo>(`/api/projects/${encodeURIComponent(projectId)}/jobs`, {

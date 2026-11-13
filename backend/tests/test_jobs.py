@@ -348,3 +348,67 @@ def test_validate_custom_optimizer(
         json={"text": "optimizer:\n  name: my_optim_for_test.Mine\n"}
     ).json()
     assert result["ok"] is True, result["error"]
+
+
+def test_default_config_per_script(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    学習のスクリプトごとに default の config を選ぶことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # train_hf.py は hf.yaml, train_big.py は対応が無いので train.yaml
+    (project_dir / "configs" / "default" / "hf.yaml").write_text(
+        "experiment:\n  name: demo_hf\n  output_dir: outputs_hf\n"
+        "data:\n  n_train: 10\n"
+    )
+    (project_dir / "train_hf.py").write_text("print('hf')\n")
+    (project_dir / "train_big.py").write_text("print('big')\n")
+    project_id = register(client, project_dir)
+    url = f"/api/projects/{project_id}/validate"
+    text = "data:\n  n_train: 20\n"
+
+    hf = client.post(url, json={"text": text, "script": "train_hf.py"}).json()
+    assert hf["ok"] is True
+    assert hf["default_config"] == "configs/default/hf.yaml"
+    assert hf["diff"]["data.n_train"]["default"] == 10
+
+    # train.yaml には data.n_train が無いのでエラー
+    plain = client.post(url, json={"text": text, "script": "train.py"}).json()
+    assert plain["ok"] is False
+    assert "data" in plain["error"]
+    big = client.post(url, json={"text": "{}\n", "script": "train_big.py"})
+    assert big.json()["default_config"] == "configs/default/train.yaml"
+
+    # 一覧に無いスクリプトは受け付けない
+    missing = client.post(url, json={"text": "{}\n", "script": "other.py"})
+    assert missing.status_code == 400
+
+    # 起動の前の確認も同じ default の config を使用
+    created = client.post(
+        f"/api/projects/{project_id}/jobs",
+        json={"script": "train_hf.py", "config_text": text}
+    )
+    assert created.status_code == 201
+    wait_for(client, created.json()["id"], "status", "finished")
+    rejected = client.post(
+        f"/api/projects/{project_id}/jobs",
+        json={"script": "train.py", "config_text": text}
+    )
+    assert rejected.status_code == 400
+
+    # 別の default の config の出力先の実験も探す対象
+    output_dirs = client.get(f"/api/projects/{project_id}").json()
+    assert any(
+        path.endswith("outputs_hf") for path in output_dirs["output_dirs"]
+    )

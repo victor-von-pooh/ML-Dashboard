@@ -15,6 +15,9 @@ from omegaconf import OmegaConf
 # ML-Found のプロジェクトの目印になる default の config
 DEFAULT_CONFIG = Path("configs") / "default" / "train.yaml"
 
+# default の config を置くディレクトリ
+DEFAULT_DIR = Path("configs") / "default"
+
 # experiment の config を置くディレクトリ
 EXPERIMENT_DIR = Path("configs") / "experiment"
 
@@ -58,6 +61,33 @@ def is_project_dir(path: Path) -> bool:
     return is_project
 
 
+def read_submodules(path: Path) -> set[Path]:
+    """
+    git のリポジトリの .gitmodules から submodule のディレクトリを読む関数
+
+    Parameters
+    ----------
+    path: Path
+        リポジトリのディレクトリ
+
+    Returns
+    ----------
+    submodules: set[Path]
+        submodule のディレクトリ, .gitmodules が無ければ空
+    """
+    # 「path = <相対パス>」の行だけを読み, 読めない場合は無いものとして扱い
+    try:
+        text = (path / ".gitmodules").read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return set()
+    submodules = {
+        path / match.group(1).strip()
+        for match in re.finditer(r"^\s*path\s*=\s*(.+)$", text, re.MULTILINE)
+    }
+
+    return submodules
+
+
 def find_projects(root: Path, max_depth: int = 3) -> list[Path]:
     """
     ディレクトリの下から ML-Found のプロジェクトを探す関数
@@ -75,6 +105,7 @@ def find_projects(root: Path, max_depth: int = 3) -> list[Path]:
         見つけたプロジェクトのディレクトリ
     """
     # 幅優先で探し, プロジェクトの中と読めないディレクトリは対象外
+    # submodule (取り込んだ別のリポジトリ) の中の例などは, 探す対象外
     found = []
     queue = deque([(root, 0)])
     while queue:
@@ -84,12 +115,14 @@ def find_projects(root: Path, max_depth: int = 3) -> list[Path]:
             continue
         if depth >= max_depth:
             continue
+        submodules = read_submodules(path)
         try:
             children = sorted(
                 child for child in path.iterdir()
                 if child.is_dir() and not child.is_symlink()
                 and child.name not in SKIP_DIRS
                 and not child.name.startswith(".")
+                and child not in submodules
             )
         except OSError:
             continue
@@ -373,6 +406,44 @@ def read_output_dir(path: Path) -> Optional[str]:
     return output_dir
 
 
+def default_config_for(project_dir: Path, script: Optional[str]) -> Path:
+    """
+    学習のスクリプトが元にする default の config を選ぶ関数
+
+    1 つのプロジェクトに学習のスクリプトが複数あり, それぞれが別の default の
+    config を使う場合 (train_hf.py が configs/default/hf.yaml を使うなど) に,
+    スクリプトの名前から対応する config を選ぶ
+
+    Parameters
+    ----------
+    project_dir: Path
+        プロジェクトのディレクトリ
+    script: Optional[str]
+        学習のスクリプトの名前, None は train.py と同じ扱い
+
+    Returns
+    ----------
+    path: Path
+        default の config, 対応するものが無ければ configs/default/train.yaml
+    """
+    # train_hf.py なら hf.yaml, train_hf.yaml の順で探し, 無ければ train.yaml
+    path = project_dir / DEFAULT_CONFIG
+    if script is None:
+        return path
+    stem = Path(script).stem
+    names = []
+    if stem.startswith("train_"):
+        names.append(stem.removeprefix("train_"))
+    names.append(stem)
+    for name in names:
+        candidate = project_dir / DEFAULT_DIR / f"{name}.yaml"
+        if candidate.is_file():
+            path = candidate
+            break
+
+    return path
+
+
 def get_output_dirs(project_dir: Path) -> list[Path]:
     """
     プロジェクトの実験の出力先の候補を取得する関数
@@ -385,15 +456,23 @@ def get_output_dirs(project_dir: Path) -> list[Path]:
     Returns
     ----------
     output_dirs: list[Path]
-        default と各 experiment の config の experiment.output_dir
+        各 default と各 experiment の config の experiment.output_dir
     """
     if not is_project_dir(project_dir):
         raise ProjectError(
             f"プロジェクトのディレクトリが見つかりません: {project_dir}"
         )
 
-    # experiment の config で出力先を変えた実験も探せるように全てを集める
+    # 別の default の config や experiment の config で出力先を変えた実験も
+    # 探せるように全てを集める
     values = [read_output_dir(project_dir / DEFAULT_CONFIG) or "outputs"]
+    values.extend(
+        value for value in (
+            read_output_dir(path)
+            for path in sorted((project_dir / DEFAULT_DIR).glob("*.yaml"))
+        )
+        if value
+    )
     values.extend(
         value for value in (
             read_output_dir(project_dir / config)

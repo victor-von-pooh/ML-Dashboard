@@ -6,6 +6,7 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { useConfig, useCreateJob, useProject, useValidateConfig } from '../../api/hooks'
 import { Button, Card, ErrorBox, PageHeader, Spinner } from '../../components/ui'
 import { formatValue } from '../../lib/format'
+import { configForScript } from '../../lib/scripts'
 import { ConfigForm } from './ConfigForm'
 
 /** config とスクリプトを選び, 必要なら書き換えて学習を起動する画面 */
@@ -63,6 +64,22 @@ export function LaunchPage() {
     validate.reset()
   }
 
+  // スクリプトを替えたら, 対応する experiment の config があれば合わせて選択
+  // (書き換えた内容を捨てない場合は, config はそのまま)
+  const selectScript = (next: string) => {
+    setScript(next)
+    validate.reset()
+    const matched = configForScript(next, configs)
+    if (!matched || matched === configPath) return
+    if (
+      edited &&
+      !window.confirm('書き換えた内容を捨てて, スクリプトに合う config に切り替えますか?')
+    )
+      return
+    setChosenPath(matched)
+    setDraft(null)
+  }
+
   const editText = (value: string) => {
     setDraft({ path: configPath, text: value })
     validate.reset()
@@ -114,7 +131,7 @@ export function LaunchPage() {
                 <select
                   id={scriptId}
                   value={selectedScript}
-                  onChange={(event) => setScript(event.target.value)}
+                  onChange={(event) => selectScript(event.target.value)}
                   className="h-9 w-full rounded-lg border border-line bg-bg px-2 font-mono text-sm"
                 >
                   {scripts.map((item) => (
@@ -160,9 +177,10 @@ export function LaunchPage() {
           </Card>
 
           <ConfigForm
-            // config を選び直したら, フォームの状態 (選び直した名前など) も作り直す
-            key={configPath ?? 'none'}
+            // config かスクリプトを選び直したら, フォームの状態 (選び直した名前など) も作り直す
+            key={`${selectedScript}:${configPath ?? 'none'}`}
             projectId={projectId}
+            script={selectedScript}
             text={text}
             onChange={editText}
           />
@@ -171,7 +189,7 @@ export function LaunchPage() {
             <div className="space-y-3 text-sm">
               <Button
                 icon={ShieldCheck}
-                onClick={() => validate.mutate(text)}
+                onClick={() => validate.mutate({ text, script: selectedScript })}
                 disabled={validate.isPending || loadingConfig}
               >
                 ML-Found で config を確かめる
@@ -183,6 +201,11 @@ export function LaunchPage() {
                     <CheckCircle2 className="size-4" aria-hidden />
                     読み込めました. default との差分 {Object.keys(validate.data.diff).length} 項目
                   </p>
+                  {validate.data.default_config && (
+                    <p className="mb-2 text-xs text-ink-3">
+                      default: <span className="font-mono">{validate.data.default_config}</span>
+                    </p>
+                  )}
                   <ul className="space-y-0.5 font-mono text-xs text-ink-2">
                     {Object.entries(validate.data.diff).map(([key, value]) => (
                       <li key={key} className="break-all">

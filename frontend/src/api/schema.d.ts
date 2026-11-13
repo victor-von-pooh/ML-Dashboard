@@ -401,12 +401,12 @@ export interface paths {
          *     project_id: str
          *         プロジェクトの ID
          *     body: ValidateRequest
-         *         experiment の config の中身
+         *         experiment の config の中身と, 学習のスクリプト
          *
          *     Returns
          *     ----------
          *     result: ValidateResult
-         *         読み込めたかどうか, エラー, default との差分
+         *         読み込めたかどうか, エラー, 元にした default の config と差分
          */
         post: operations["validate_config"];
         delete?: never;
@@ -1069,6 +1069,8 @@ export interface components {
         ValidateRequest: {
             /** Text */
             text: string;
+            /** Script */
+            script?: string | null;
         };
         /** ValidateResult */
         ValidateResult: {
@@ -1094,6 +1096,8 @@ export interface components {
              * @default []
              */
             warnings: string[];
+            /** Default Config */
+            default_config?: string | null;
         };
         /** ValidationError */
         ValidationError: {

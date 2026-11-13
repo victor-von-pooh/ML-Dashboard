@@ -14,10 +14,10 @@ from ml_dashboard.api.routes import NOT_FOUND, get_project
 from ml_dashboard.core.jobs import Job, JobManager
 from ml_dashboard.core.models import Progress, RunSummary
 from ml_dashboard.core.projects import (
-    DEFAULT_CONFIG,
     EXPERIMENT_DIR,
     Project,
     ProjectError,
+    default_config_for,
     list_experiment_configs,
     list_scripts,
 )
@@ -75,6 +75,8 @@ class ConfigText(BaseModel):
 
 class ValidateRequest(BaseModel):
     text: str
+    # 学習のスクリプト, 元にする default の config の選択に使用
+    script: Optional[str] = None
 
 
 class ValidateResult(BaseModel):
@@ -85,12 +87,15 @@ class ValidateResult(BaseModel):
     config: dict[str, Any] = {}
     # 学習のスクリプトが補う可能性があるので, エラーにしない注意
     warnings: list[str] = []
+    # 元にした default の config (プロジェクトのディレクトリからの相対パス)
+    default_config: Optional[str] = None
 
 
 class CheckedConfig(BaseModel):
     diff: dict[str, dict[str, object]]
     config: dict[str, Any]
     warnings: list[str]
+    default_config: str
 
 
 class ParamSpec(BaseModel):
@@ -248,7 +253,7 @@ def check_param_names(cfg: Any) -> list[str]:
 
 
 def check_config(
-    project: Project, path: Path
+    project: Project, path: Path, script: Optional[str] = None
 ) -> CheckedConfig:
     """
     ML-Found で config を読み込み, 学習を始める前の確認をする関数
@@ -259,6 +264,8 @@ def check_config(
         プロジェクト
     path: Path
         experiment の config のパス
+    script: Optional[str] = None
+        学習のスクリプト, 元にする default の config の選択に使用
 
     Returns
     ----------
@@ -281,11 +288,10 @@ def check_config(
     # 自作の Optimizer (custom_optim.Lion など) を読めるように,
     # 学習のスクリプトと同じくプロジェクトのディレクトリから読み込む
     project_dir = Path(project.path)
+    default_path = default_config_for(project_dir, script)
     sys.path.insert(0, str(project_dir))
     try:
-        cfg, diff = load_config(
-            str(project_dir / DEFAULT_CONFIG), str(path)
-        )
+        cfg, diff = load_config(str(default_path), str(path))
         check_name(cfg.experiment.name)
         check_optim_config(cfg)
         warnings = check_param_names(cfg)
@@ -306,7 +312,8 @@ def check_config(
             {str(key): value for key, value in config.items()}
             if isinstance(config, dict) else {}
         ),
-        warnings=warnings
+        warnings=warnings,
+        default_config=default_path.relative_to(project_dir).as_posix()
     )
 
     return checked
@@ -337,7 +344,9 @@ def describe(error: Exception) -> str:
     return message
 
 
-def validate_text(project: Project, text: str) -> CheckedConfig:
+def validate_text(
+    project: Project, text: str, script: Optional[str] = None
+) -> CheckedConfig:
     """
     書き換えた config の中身を一時ファイルに書いて確かめる関数
 
@@ -347,6 +356,8 @@ def validate_text(project: Project, text: str) -> CheckedConfig:
         プロジェクト
     text: str
         experiment の config の中身
+    script: Optional[str] = None
+        学習のスクリプト, 元にする default の config の選択に使用
 
     Returns
     ----------
@@ -381,7 +392,7 @@ def validate_text(project: Project, text: str) -> CheckedConfig:
         path = Path(directory) / "experiment.yaml"
         path.write_text(text, encoding="utf-8")
         try:
-            checked = check_config(project, path)
+            checked = check_config(project, path, script)
         except Exception as error:
             message = str(error).replace(str(path), "experiment.yaml")
             raise ValueError(message) from error
@@ -481,25 +492,31 @@ def validate_config(
     project_id: str
         プロジェクトの ID
     body: ValidateRequest
-        experiment の config の中身
+        experiment の config の中身と, 学習のスクリプト
 
     Returns
     ----------
     result: ValidateResult
-        読み込めたかどうか, エラー, default との差分
+        読み込めたかどうか, エラー, 元にした default の config と差分
     """
     project = get_project(request, project_id)
+    if body.script is not None and body.script not in list_scripts(
+        Path(project.path)
+    ):
+        raise HTTPException(
+            400, f"学習のスクリプトが見つかりません: {body.script}"
+        )
 
     # 学習と同じ方法で読み込み, 失敗した場合は理由を返却
     try:
-        checked = validate_text(project, body.text)
+        checked = validate_text(project, body.text, body.script)
     except Exception as error:
         result = ValidateResult(ok=False, error=describe(error), diff={})
         return result
 
     result = ValidateResult(
         ok=True, error=None, diff=checked.diff, config=checked.config,
-        warnings=checked.warnings
+        warnings=checked.warnings, default_config=checked.default_config
     )
 
     return result
@@ -541,13 +558,13 @@ def create_job(
     config_path = None
     try:
         if body.config_text is not None:
-            validate_text(project, body.config_text)
+            validate_text(project, body.config_text, body.script)
         else:
             config_path = resolve_config(
                 project, body.config_path
                 or (EXPERIMENT_DIR / "train.yaml").as_posix()
             )
-            check_config(project, config_path)
+            check_config(project, config_path, body.script)
     except HTTPException:
         raise
     except Exception as error:
