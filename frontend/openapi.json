@@ -2397,6 +2397,14 @@
             "title": "Warnings",
             "default": []
           },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes",
+            "default": []
+          },
           "default_config": {
             "anyOf": [
               {

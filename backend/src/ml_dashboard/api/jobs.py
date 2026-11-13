@@ -87,6 +87,8 @@ class ValidateResult(BaseModel):
     config: dict[str, Any] = {}
     # 学習のスクリプトが補う可能性があるので, エラーにしない注意
     warnings: list[str] = []
+    # 学習を始めるときに ML-Found が補う値などのお知らせ
+    notes: list[str] = []
     # 元にした default の config (プロジェクトのディレクトリからの相対パス)
     default_config: Optional[str] = None
 
@@ -95,6 +97,7 @@ class CheckedConfig(BaseModel):
     diff: dict[str, dict[str, object]]
     config: dict[str, Any]
     warnings: list[str]
+    notes: list[str] = []
     default_config: str
     # 引数の値の誤り (読み込めた config をフォームで直せるように分けて返却)
     value_error: Optional[str] = None
@@ -304,7 +307,10 @@ def check_config(
         check_resume_path,
         check_trainer_config,
     )
-    from ml_found.training.optim import check_optim_config
+    from ml_found.training.optim import (
+        check_optim_config,
+        missing_data_size_params,
+    )
 
     # start_experiment が出力先を作る前に行う確認と同じものを実行
     # 自作の Optimizer (custom_optim.Lion など) を読めるように,
@@ -326,6 +332,15 @@ def check_config(
             warnings, value_error = [], str(error)
         check_trainer_config(cfg)
         check_resume_path(cfg, project_dir)
+
+        # データの量で決まる Scheduler の引数は, 学習を始めるときに
+        # ML-Found が補うのでお知らせ
+        missing = missing_data_size_params(cfg.scheduler)
+        notes = [
+            f"{cfg.scheduler.name} の {', '.join(missing)} は, 学習を始める"
+            "ときに ML-Found が trainer.epochs と学習用データのバッチ数から"
+            "補います"
+        ] if missing else []
     finally:
         sys.path.remove(str(project_dir))
     config = OmegaConf.to_container(cfg, resolve=True)
@@ -342,6 +357,7 @@ def check_config(
             if isinstance(config, dict) else {}
         ),
         warnings=warnings,
+        notes=notes,
         default_config=default_path.relative_to(project_dir).as_posix(),
         value_error=value_error
     )
@@ -570,7 +586,7 @@ def validate_config(
     result = ValidateResult(
         ok=checked.value_error is None, error=checked.value_error,
         diff=checked.diff, config=checked.config, warnings=checked.warnings,
-        default_config=checked.default_config
+        notes=checked.notes, default_config=checked.default_config
     )
 
     return result

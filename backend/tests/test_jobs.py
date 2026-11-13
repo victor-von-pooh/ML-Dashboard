@@ -479,3 +479,41 @@ def test_validate_param_ranges(client: TestClient, project_dir: Path) -> None:
     )
     assert factor["exclusive_maximum"] is True
     assert factor["exclusive_minimum"] is False
+
+
+def test_validate_notes_filled_scheduler(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    ML-Found が補う Scheduler の引数を, 注意ではなくお知らせで返すことを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    project_id = register(client, project_dir)
+    text = (
+        "scheduler:\n  name: OneCycleLR\n  interval: step\n  params:\n"
+        "    max_lr: 0.1\n"
+    )
+    result = client.post(
+        f"/api/projects/{project_id}/validate", json={"text": text}
+    ).json()
+    assert result["ok"] is True
+    assert result["warnings"] == []
+    assert "epochs, steps_per_epoch" in result["notes"][0]
+
+    # 総ステップ数を書いた場合はお知らせなし
+    text += "    total_steps: 10\n"
+    result = client.post(
+        f"/api/projects/{project_id}/validate", json={"text": text}
+    ).json()
+    assert result["notes"] == []
