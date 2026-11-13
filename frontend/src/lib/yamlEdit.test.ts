@@ -81,6 +81,12 @@ describe('checkParamValue', () => {
       '数で書いてください',
     )
     expect(checkParamValue({ kind: 'list' }, ['a', 0.9])).toBeNull()
+    expect(
+      checkParamValue({ kind: 'list', minimum: 0 }, ['${optimizer.params.lr}', 0.1]),
+    ).toBeNull()
+    expect(checkParamValue({ kind: 'float', minimum: 0 }, '???')).toBeNull()
+    expect(checkParamValue({ kind: 'float', minimum: 0 }, null)).toBeNull()
+    expect(checkParamValue({ kind: 'float', minimum: 0 }, '0.001')).toBe('数で書いてください')
   })
 
   it('端を含まない範囲は端の値もエラーにする', () => {

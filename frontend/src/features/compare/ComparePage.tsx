@@ -1,10 +1,11 @@
 import clsx from 'clsx'
 import { GitCompareArrows, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
 import { encodeRunId, type History, type RunDetail } from '../../api/client'
-import { useHistories, useProject, useRunDetails } from '../../api/hooks'
+import { keys, useHistories, useProject, useRunDetails } from '../../api/hooks'
 import { LineChart, type ChartSeries } from '../../components/LineChart'
 import { Card, EmptyState, ErrorBox, PageHeader, Spinner, StatusBadge } from '../../components/ui'
 import { seriesVar } from '../../lib/colors'
@@ -53,6 +54,19 @@ export function ComparePage() {
   // 学習中の実験は, 曲線と画像を一定の間隔で読み直す
   const liveIds = new Set(runIds.filter((_, index) => details[index]?.data?.status === 'running'))
   const histories = useHistories(projectId, runIds, liveIds)
+
+  // 学習が終わった実験は, 最後のエポックの記録を読むためにもう一度読み直す
+  const queryClient = useQueryClient()
+  const liveKey = [...liveIds].sort().join('\n')
+  const wasLive = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const now = new Set(liveKey ? liveKey.split('\n') : [])
+    for (const id of wasLive.current) {
+      if (!now.has(id))
+        void queryClient.invalidateQueries({ queryKey: keys.history(projectId, id) })
+    }
+    wasLive.current = now
+  }, [liveKey, projectId, queryClient])
 
   // 実験ごとに, 色と読み込んだ結果をまとめる (色は選んだ順で固定)
   const slots: Slot[] = runIds.map((id, index) => ({

@@ -231,6 +231,16 @@ def test_run_detail_history_log(
     detail = client.get(base).json()
     assert detail["seed"] == 42
     assert detail["final_weights"] is None
+    run_dir = project_dir / "outputs/demo/2026-11-08/10-00-00"
+    (run_dir / "run.json").write_text(
+        '{"status": "stopped", "final_weights": "partial"}'
+    )
+    assert client.get(base).json()["final_weights"] == "partial"
+    (run_dir / "run.json").write_text(
+        '{"status": "completed", "final_weights": "other"}'
+    )
+    assert client.get(base).json()["final_weights"] is None
+    (run_dir / "run.json").unlink()
     assert detail["device"] == "cpu"
     assert detail["parameter_count"] == 131
     assert detail["env"][0]["items"]["OS"] == "Darwin 27.2.0"

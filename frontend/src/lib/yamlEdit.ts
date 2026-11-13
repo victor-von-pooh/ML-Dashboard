@@ -99,9 +99,12 @@ export function checkParamValue(spec: RangeSpec, value: unknown): string | null 
   const numbers = Array.isArray(value) ? value : [value]
   const hasRange = spec.minimum != null || spec.maximum != null
   for (const item of numbers) {
-    // 範囲を持つ引数の配列の要素は, ML-Found と同じく数でなければ誤り
+    // 範囲を持つ引数は, ML-Found と同じく数でなければ誤り
+    // (補間と ??? は ML-Found が解決してから確かめるので対象外, 配列でない null は値なし)
     if (typeof item !== 'number') {
-      if (hasRange && Array.isArray(value)) return '数で書いてください'
+      const deferred = typeof item === 'string' && (item.startsWith('${') || item === '???')
+      const empty = item == null && !Array.isArray(value)
+      if (hasRange && spec.kind !== 'str' && !deferred && !empty) return '数で書いてください'
       continue
     }
     if (spec.kind === 'int' && !Number.isInteger(item)) return '整数にしてください'

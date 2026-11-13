@@ -100,7 +100,7 @@ class RunDetail(RunSummary):
     has_git_diff: bool
     # final_model.pt の重み (best, last, エポックの途中で止めて戻せなかった
     # partial), run.json が無い古い実験は None
-    final_weights: Optional[str] = None
+    final_weights: Optional[Literal["best", "last", "partial"]] = None
 
 
 class LrPoint(BaseModel):

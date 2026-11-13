@@ -148,7 +148,11 @@ export function RunDetailPage() {
         <StatTile
           label="学習時間"
           value={formatDuration(data.duration_sec)}
-          hint={data.final_weights ? FINAL_WEIGHTS[data.final_weights] : undefined}
+          hint={
+            data.final_weights && data.final_weights !== 'partial'
+              ? FINAL_WEIGHTS[data.final_weights]
+              : undefined
+          }
         />
         <StatTile
           label="パラメータ数"

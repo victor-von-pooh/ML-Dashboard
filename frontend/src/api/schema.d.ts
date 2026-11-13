@@ -990,7 +990,7 @@ export interface components {
             /** Has Git Diff */
             has_git_diff: boolean;
             /** Final Weights */
-            final_weights?: string | null;
+            final_weights?: ("best" | "last" | "partial") | null;
         };
         /** RunFile */
         RunFile: {

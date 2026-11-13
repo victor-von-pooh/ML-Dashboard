@@ -12,8 +12,10 @@ ML-Found が実験ごとに残すディレクトリ (`history.csv`, `config.yaml
     <td><img src="docs/images/analysis_dark.png" alt="ハイパーパラメータの分析 (ダークモード): 学習率と検証用の正解率の関係"></td>
   </tr>
   <tr>
-    <td><img src="docs/images/jobs.png" alt="ジョブ: 学習の進み具合と, 3 種類の止め方"></td>
-    <td><img src="docs/images/launch_form.png" alt="学習の起動: ML-Found の登録簿から作るフォームと, 範囲の外の値の誤り, ML-Found が補う値のお知らせ"></td>
+    <td colspan="2"><img src="docs/images/jobs.png" alt="ジョブ: 学習の進み具合と, 3 種類の止め方"></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><img src="docs/images/launch_form.png" width="50%" alt="学習の起動: ML-Found の登録簿から作るフォームと, 範囲の外の値の誤り, ML-Found が補う値のお知らせ"></td>
   </tr>
 </table>
 

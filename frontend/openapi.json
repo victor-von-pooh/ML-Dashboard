@@ -2016,7 +2016,12 @@
           "final_weights": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "enum": [
+                  "best",
+                  "last",
+                  "partial"
+                ]
               },
               {
                 "type": "null"
