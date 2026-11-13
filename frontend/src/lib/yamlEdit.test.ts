@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { checkParamValue, deleteYamlValue, formatInput, parseInput, setYamlValue } from './yamlEdit'
+import {
+  checkParamValue,
+  describeRange,
+  deleteYamlValue,
+  formatInput,
+  parseInput,
+  setYamlValue,
+} from './yamlEdit'
 
 describe('setYamlValue', () => {
   it('コメントを残して入れ子の項目を書き込む', () => {
@@ -57,11 +64,37 @@ describe('checkParamValue', () => {
     const momentum = { kind: 'float', minimum: 0, maximum: 1 }
     expect(checkParamValue(momentum, 0.9)).toBeNull()
     expect(checkParamValue(momentum, 1)).toBeNull()
-    expect(checkParamValue(momentum, -0.1)).toBe('0 以上にしてください')
-    expect(checkParamValue(momentum, 1.5)).toBe('1 以下にしてください')
+    expect(checkParamValue(momentum, -0.1)).toBe('0 以上 1 以下の値にしてください')
+    expect(checkParamValue(momentum, 1.5)).toBe('0 以上 1 以下の値にしてください')
     expect(checkParamValue({ kind: 'int', minimum: 1 }, 2.5)).toBe('整数にしてください')
-    expect(checkParamValue({ kind: 'float', minimum: 0 }, [0.1, -1])).toBe('0 以上にしてください')
+    expect(checkParamValue({ kind: 'float', minimum: 0 }, [0.1, -1])).toBe(
+      '0 以上の値にしてください',
+    )
     expect(checkParamValue({ kind: 'str', minimum: 0 }, 'min')).toBeNull()
     expect(checkParamValue({ kind: 'none' }, null)).toBeNull()
+  })
+
+  it('端を含まない範囲は端の値もエラーにする', () => {
+    const factor = { kind: 'float', minimum: 0, maximum: 1, exclusive_maximum: true }
+    expect(checkParamValue(factor, 0)).toBeNull()
+    expect(checkParamValue(factor, 0.999)).toBeNull()
+    expect(checkParamValue(factor, 1)).toBe('0 以上 1 未満の値にしてください')
+    const start = { kind: 'float', minimum: 0, maximum: 1, exclusive_minimum: true }
+    expect(checkParamValue(start, 0)).toBe('0 より大きく 1 以下の値にしてください')
+    expect(checkParamValue(start, 1)).toBeNull()
+  })
+})
+
+describe('describeRange', () => {
+  it('範囲の説明を作る', () => {
+    expect(describeRange({ kind: 'float', minimum: 0 })).toBe('0 以上')
+    expect(describeRange({ kind: 'float', maximum: 1, exclusive_maximum: true })).toBe('1 未満')
+    expect(describeRange({ kind: 'float', minimum: 0, exclusive_minimum: true })).toBe(
+      '0 より大きい',
+    )
+    expect(checkParamValue({ kind: 'float', minimum: 0, exclusive_minimum: true }, 0)).toBe(
+      '0 より大きい値にしてください',
+    )
+    expect(describeRange({ kind: 'float' })).toBe('')
   })
 })

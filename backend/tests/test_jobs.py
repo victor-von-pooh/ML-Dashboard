@@ -413,3 +413,40 @@ def test_default_config_per_script(
     assert any(
         path.endswith("outputs_hf") for path in output_dirs["output_dirs"]
     )
+
+
+def test_validate_param_ranges(client: TestClient, project_dir: Path) -> None:
+    """
+    範囲の外の引数が確認のエラーになり, 登録簿が端を含まない範囲を返すことを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    project_id = register(client, project_dir)
+    url = f"/api/projects/{project_id}/validate"
+    text = (
+        "scheduler:\n  name: ReduceLROnPlateau\n  params:\n    factor: 1.0\n"
+    )
+    result = client.post(url, json={"text": text}).json()
+    assert result["ok"] is False
+    assert "factor は 0.0 以上 1.0 未満" in result["error"]
+
+    registry = client.get("/api/registry").json()
+    plateau = next(
+        spec for spec in registry["schedulers"]
+        if spec["name"] == "ReduceLROnPlateau"
+    )
+    factor = next(
+        param for param in plateau["params"] if param["name"] == "factor"
+    )
+    assert factor["exclusive_maximum"] is True
+    assert factor["exclusive_minimum"] is False

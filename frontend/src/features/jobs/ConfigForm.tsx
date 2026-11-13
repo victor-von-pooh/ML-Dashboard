@@ -6,6 +6,7 @@ import { api, type ClassSpec, type ParamSpec } from '../../api/client'
 import { Card, ErrorBox, Spinner } from '../../components/ui'
 import {
   checkParamValue,
+  describeRange,
   deleteYamlValue,
   formatInput,
   parseInput,
@@ -74,12 +75,7 @@ function ParamField({
     onChange(parsed)
   }
 
-  const range = [
-    spec.minimum != null ? `${spec.minimum} 以上` : '',
-    spec.maximum != null ? `${spec.maximum} 以下` : '',
-  ]
-    .filter(Boolean)
-    .join(', ')
+  const range = describeRange(spec)
   // 誤りの間は, 同じ内容になりやすい範囲の説明を省略
   const help = [spec.description, error ? '' : range, error ?? ''].filter(Boolean).join(' · ')
 

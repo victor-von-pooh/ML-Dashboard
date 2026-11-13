@@ -107,6 +107,9 @@ class ParamSpec(BaseModel):
     description: str
     minimum: Optional[float]
     maximum: Optional[float]
+    # 範囲の端の値を含まないか (ML-Found の登録簿の指定)
+    exclusive_minimum: bool = False
+    exclusive_maximum: bool = False
 
 
 class ClassSpec(BaseModel):
