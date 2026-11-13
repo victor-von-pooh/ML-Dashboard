@@ -604,6 +604,15 @@ def test_validate_notes_filled_scheduler(
         "します"
     ]
 
+    # warmup の割合を書いた場合は, auto は残りで, 回数に直すこともお知らせ
+    result = client.post(
+        f"/api/projects/{project_id}/validate",
+        json={"text": text + "  warmup_ratio: 0.1\n"}
+    ).json()
+    assert result["ok"] is True
+    assert "warmup の後の残り" in result["notes"][0]
+    assert "0.1 倍" in result["notes"][1]
+
     # auto と書けない引数 (範囲を持たない eta_min) は値の誤り
     result = client.post(
         f"/api/projects/{project_id}/validate",

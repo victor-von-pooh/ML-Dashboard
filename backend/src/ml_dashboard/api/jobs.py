@@ -309,14 +309,32 @@ def describe_filled(cfg: Any, missing: list[str]) -> list[str]:
             else "学習用データのバッチ数"
         )
     }
+    # warmup がある場合, auto は warmup の後の残りのステップ数
+    warmup = cfg.scheduler.get("warmup_steps")
+    ratio = cfg.scheduler.get("warmup_ratio")
+    remaining = ""
+    if warmup:
+        remaining = f" - {warmup} (warmup の後の残り)"
+    elif ratio is not None:
+        remaining = " - warmup の回数 (warmup の後の残り)"
     for name in missing:
         if cfg.scheduler.params.get(name) == "auto":
-            sources[name] = f"{total} (学習全体のステップ数)"
+            sources[name] = (
+                f"{total}{remaining}" if remaining
+                else f"{total} (学習全体のステップ数)"
+            )
     notes = [
         f"{cfg.scheduler.name} の {name} は, 学習を始めるときに ML-Found が"
         f" {sources.get(name, name)} にします"
         for name in missing
     ]
+
+    # 割合で書いた warmup は, 学習を始めるときに回数に直すことをお知らせ
+    if ratio is not None and warmup is None:
+        notes.append(
+            f"warmup の回数は, 学習を始めるときに ML-Found が {total} の "
+            f"{ratio} 倍 (四捨五入) にします"
+        )
 
     return notes
 
