@@ -82,7 +82,7 @@ test('フォームで config を変え, 学習を起動して完了まで見届�
   const lr = page.getByLabel('lr', { exact: true })
   await lr.fill('-1')
   await lr.press('Enter')
-  await expect(page.getByText('0 以上にしてください')).toBeVisible()
+  await expect(page.getByText('0 以上の値にしてください')).toBeVisible()
   await expect(editor).not.toHaveValue(/lr: -1/)
   await lr.fill('0.05')
   await lr.press('Enter')

@@ -96,6 +96,8 @@ class CheckedConfig(BaseModel):
     config: dict[str, Any]
     warnings: list[str]
     default_config: str
+    # 引数の値の誤り (読み込めた config をフォームで直せるように分けて返却)
+    value_error: Optional[str] = None
 
 
 class ParamSpec(BaseModel):
@@ -107,6 +109,9 @@ class ParamSpec(BaseModel):
     description: str
     minimum: Optional[float]
     maximum: Optional[float]
+    # 範囲の端の値を含まないか (ML-Found の登録簿の指定)
+    exclusive_minimum: bool = False
+    exclusive_maximum: bool = False
 
 
 class ClassSpec(BaseModel):
@@ -222,7 +227,7 @@ def resolve_config(project: Project, relative: str) -> Path:
 
 def check_param_names(cfg: Any) -> list[str]:
     """
-    Optimizer と Scheduler の引数の名前を確かめ, 必須の不足は注意にする関数
+    Optimizer と Scheduler の引数の名前と値を確かめ, 必須の不足は注意にする関数
 
     Parameters
     ----------
@@ -236,7 +241,14 @@ def check_param_names(cfg: Any) -> list[str]:
         場合があるので, エラーにはしない)
     """
     import_ml_found()
-    from ml_found.training.registry import check_optim_params
+    from ml_found.training.optim import (
+        resolve_optimizer_class,
+        resolve_scheduler_class,
+    )
+    from ml_found.training.registry import (
+        check_optim_params,
+        check_param_values,
+    )
 
     # 名前の誤りはエラーのまま, 必須の引数の不足だけを注意として返却
     warnings = []
@@ -248,6 +260,16 @@ def check_param_names(cfg: Any) -> list[str]:
         warnings.append(
             f"{error} (学習のスクリプトが補う場合はそのまま起動できます)"
         )
+
+        # ML-Found は不足で止まり値の範囲を確かめないので, 範囲だけを確認
+        check_param_values(
+            resolve_optimizer_class(cfg.optimizer.name), cfg.optimizer.params
+        )
+        if cfg.scheduler.name is not None:
+            check_param_values(
+                resolve_scheduler_class(cfg.scheduler.name),
+                cfg.scheduler.params
+            )
 
     return warnings
 
@@ -294,7 +316,14 @@ def check_config(
         cfg, diff = load_config(str(default_path), str(path))
         check_name(cfg.experiment.name)
         check_optim_config(cfg)
-        warnings = check_param_names(cfg)
+        # 引数の値の誤り (範囲の外など) は, 残りの確認を済ませてから返却
+        value_error = None
+        try:
+            warnings = check_param_names(cfg)
+        except ValueError as error:
+            if "引数の値に誤りがあります" not in str(error):
+                raise
+            warnings, value_error = [], str(error)
         check_trainer_config(cfg)
         check_resume_path(cfg, project_dir)
     finally:
@@ -313,10 +342,28 @@ def check_config(
             if isinstance(config, dict) else {}
         ),
         warnings=warnings,
-        default_config=default_path.relative_to(project_dir).as_posix()
+        default_config=default_path.relative_to(project_dir).as_posix(),
+        value_error=value_error
     )
 
     return checked
+
+
+def require_valid(checked: CheckedConfig) -> None:
+    """
+    引数の値に誤りがあれば, 学習を始めないようにエラーにする関数
+
+    Parameters
+    ----------
+    checked: CheckedConfig
+        確かめた config
+
+    Returns
+    ----------
+    None
+    """
+    if checked.value_error is not None:
+        raise ValueError(checked.value_error)
 
 
 def describe(error: Exception) -> str:
@@ -519,9 +566,11 @@ def validate_config(
         )
         return result
 
+    # 値の誤りは, フォームで直せるように読み込めた config と一緒に返却
     result = ValidateResult(
-        ok=True, error=None, diff=checked.diff, config=checked.config,
-        warnings=checked.warnings, default_config=checked.default_config
+        ok=checked.value_error is None, error=checked.value_error,
+        diff=checked.diff, config=checked.config, warnings=checked.warnings,
+        default_config=checked.default_config
     )
 
     return result
@@ -563,7 +612,9 @@ def create_job(
     config_path = None
     try:
         if body.config_text is not None:
-            validate_text(project, body.config_text, body.script)
+            require_valid(
+                validate_text(project, body.config_text, body.script)
+            )
         else:
             # config を指定しない場合は, スクリプトに対応する experiment の
             # config (train_hf.py なら hf.yaml, 無ければ train.yaml)
@@ -571,7 +622,7 @@ def create_job(
                 project, body.config_path
                 or experiment_config_for(Path(project.path), body.script)
             )
-            check_config(project, config_path, body.script)
+            require_valid(check_config(project, config_path, body.script))
     except HTTPException:
         raise
     except Exception as error:

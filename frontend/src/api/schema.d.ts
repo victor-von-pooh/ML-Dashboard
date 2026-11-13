@@ -816,6 +816,16 @@ export interface components {
             minimum: number | null;
             /** Maximum */
             maximum: number | null;
+            /**
+             * Exclusive Minimum
+             * @default false
+             */
+            exclusive_minimum: boolean;
+            /**
+             * Exclusive Maximum
+             * @default false
+             */
+            exclusive_maximum: boolean;
         };
         /** Progress */
         Progress: {

@@ -6,6 +6,7 @@ import { api, type ClassSpec, type ParamSpec } from '../../api/client'
 import { Card, ErrorBox, Spinner } from '../../components/ui'
 import {
   checkParamValue,
+  describeRange,
   deleteYamlValue,
   formatInput,
   parseInput,
@@ -74,12 +75,7 @@ function ParamField({
     onChange(parsed)
   }
 
-  const range = [
-    spec.minimum != null ? `${spec.minimum} 以上` : '',
-    spec.maximum != null ? `${spec.maximum} 以下` : '',
-  ]
-    .filter(Boolean)
-    .join(', ')
+  const range = describeRange(spec)
   // 誤りの間は, 同じ内容になりやすい範囲の説明を省略
   const help = [spec.description, error ? '' : range, error ?? ''].filter(Boolean).join(' · ')
 
@@ -308,8 +304,12 @@ export function ConfigForm({
   })
 
   // 一時的に読めない config になっても, 最後に読めた値でフォームを出し続ける
+  // 引数の値の誤り (範囲の外など) は読めた config も返るので, フォームで直せる
   const [lastGood, setLastGood] = useState<Config | null>(null)
-  const current = resolved.data?.ok ? (resolved.data.config as Config) : null
+  const loaded = resolved.data?.config
+  const current =
+    resolved.data?.ok || (loaded && Object.keys(loaded).length > 0) ? (loaded as Config) : null
+  const valueError = current && resolved.data && !resolved.data.ok ? resolved.data.error : null
   if (current && current !== lastGood) setLastGood(current)
   const config = current ?? lastGood
   // 今の YAML が読めず, 前の値を出している状態 (フォームの値と YAML が合わない)
@@ -358,6 +358,7 @@ export function ConfigForm({
         </p>
       ) : (
         <div className="space-y-6">
+          {valueError && <ErrorBox error={valueError} live={false} />}
           {stale && (
             <>
               <ErrorBox error={resolved.data?.error} live={false} />

@@ -413,3 +413,69 @@ def test_default_config_per_script(
     assert any(
         path.endswith("outputs_hf") for path in output_dirs["output_dirs"]
     )
+
+
+def test_validate_param_ranges(client: TestClient, project_dir: Path) -> None:
+    """
+    範囲の外の引数が確認のエラーになり, 登録簿が端を含まない範囲を返すことを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    project_id = register(client, project_dir)
+    url = f"/api/projects/{project_id}/validate"
+    text = (
+        "scheduler:\n  name: ReduceLROnPlateau\n  params:\n    factor: 1.0\n"
+    )
+    result = client.post(url, json={"text": text}).json()
+    assert result["ok"] is False
+    assert "factor は 0.0 以上 1.0 未満" in result["error"]
+    # フォームで直せるように, 読み込めた config も返却
+    assert result["config"]["scheduler"]["params"]["factor"] == 1.0
+
+    # 起動もエラー
+    (project_dir / "train.py").write_text("print('train')\n")
+    launched = client.post(
+        f"/api/projects/{project_id}/jobs",
+        json={"script": "train.py", "config_text": text}
+    )
+    assert launched.status_code == 400
+    assert "factor" in launched.json()["detail"]
+
+    # 必須の引数の不足 (注意) があっても, 範囲の外の値はエラー
+    text = (
+        "scheduler:\n  name: OneCycleLR\n  params:\n    max_lr: 0.1\n"
+        "    pct_start: 1.5\n"
+    )
+    result = client.post(url, json={"text": text}).json()
+    assert result["ok"] is False
+    assert "pct_start は 0.0 以上 1.0 以下" in result["error"]
+
+    # 必須の引数の不足 (注意) があっても, 範囲の外の値はエラー
+    text = (
+        "scheduler:\n  name: OneCycleLR\n  params:\n    max_lr: 0.1\n"
+        "    pct_start: 1.5\n"
+    )
+    result = client.post(url, json={"text": text}).json()
+    assert result["ok"] is False
+    assert "pct_start は 0.0 以上 1.0 以下" in result["error"]
+
+    registry = client.get("/api/registry").json()
+    plateau = next(
+        spec for spec in registry["schedulers"]
+        if spec["name"] == "ReduceLROnPlateau"
+    )
+    factor = next(
+        param for param in plateau["params"] if param["name"] == "factor"
+    )
+    assert factor["exclusive_maximum"] is True
+    assert factor["exclusive_minimum"] is False

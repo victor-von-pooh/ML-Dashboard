@@ -1464,6 +1464,16 @@
               }
             ],
             "title": "Maximum"
+          },
+          "exclusive_minimum": {
+            "type": "boolean",
+            "title": "Exclusive Minimum",
+            "default": false
+          },
+          "exclusive_maximum": {
+            "type": "boolean",
+            "title": "Exclusive Maximum",
+            "default": false
           }
         },
         "type": "object",

@@ -68,18 +68,51 @@ export function formatInput(value: unknown): string {
   return JSON.stringify(value)
 }
 
+/** 範囲を持つ引数の仕様 (ML-Found の登録簿の一部) */
+interface RangeSpec {
+  kind: string
+  minimum?: number | null
+  maximum?: number | null
+  exclusive_minimum?: boolean
+  exclusive_maximum?: boolean
+}
+
+/**
+ * 引数の範囲の説明 (「0 以上 1 未満」「0 より大きく 1 以下」など). 範囲が無ければ空文字.
+ * ML-Found の範囲のエラーの文と同じ言い方
+ */
+export function describeRange(spec: RangeSpec): string {
+  const hasMaximum = spec.maximum != null
+  // 端を含まない下限は, 上限が続く場合だけ「より大きく」とつなげる
+  const lower = spec.exclusive_minimum ? (hasMaximum ? 'より大きく' : 'より大きい') : '以上'
+  return [
+    spec.minimum != null ? `${spec.minimum} ${lower}` : '',
+    hasMaximum ? `${spec.maximum} ${spec.exclusive_maximum ? '未満' : '以下'}` : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
 /** 引数の値の範囲と整数かどうか. 外れている場合は理由, 問題が無ければ null */
-export function checkParamValue(
-  spec: { kind: string; minimum?: number | null; maximum?: number | null },
-  value: unknown,
-): string | null {
+export function checkParamValue(spec: RangeSpec, value: unknown): string | null {
   // 数と, 数の配列 (min_lr などはグループごとに指定可能) の各要素を確かめる
   const numbers = Array.isArray(value) ? value : [value]
   for (const item of numbers) {
     if (typeof item !== 'number') continue
     if (spec.kind === 'int' && !Number.isInteger(item)) return '整数にしてください'
-    if (spec.minimum != null && item < spec.minimum) return `${spec.minimum} 以上にしてください`
-    if (spec.maximum != null && item > spec.maximum) return `${spec.maximum} 以下にしてください`
+    // 無限大と NaN は, 範囲を持つ引数では範囲の外 (ML-Found と同じ扱い)
+    const hasRange = spec.minimum != null || spec.maximum != null
+    const belowMinimum =
+      (hasRange && !Number.isFinite(item)) ||
+      (spec.minimum != null &&
+        (spec.exclusive_minimum ? item <= spec.minimum : item < spec.minimum))
+    const aboveMaximum =
+      spec.maximum != null && (spec.exclusive_maximum ? item >= spec.maximum : item > spec.maximum)
+    if (belowMinimum || aboveMaximum) {
+      const range = describeRange(spec)
+      // 「より大きい」で終わる場合は, そのまま「値」につなげる
+      return `${range}${range.endsWith('い') ? '' : 'の'}値にしてください`
+    }
   }
   return null
 }
