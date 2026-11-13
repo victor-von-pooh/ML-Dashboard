@@ -27,6 +27,14 @@ describe('groupMetrics', () => {
   })
 })
 
+describe('groupMetrics の train_eval', () => {
+  it('学習用データを評価し直した値も同じ指標にまとめる', () => {
+    expect(groupMetrics(['epoch', 'train/loss', 'train_eval/loss', 'valid/loss'])).toEqual([
+      { name: 'loss', keys: ['train/loss', 'train_eval/loss', 'valid/loss'] },
+    ])
+  })
+})
+
 describe('flattenConfig', () => {
   it('入れ子の辞書を点区切りの項目にし, 配列と空の辞書は値として残す', () => {
     expect(
