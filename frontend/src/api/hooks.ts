@@ -54,22 +54,25 @@ export function useHistory(projectId: string, runId: string, live = false) {
   })
 }
 
-/** 複数の実験の指標の推移をまとめて取得する */
-export function useHistories(projectId: string, runIds: string[]) {
+/** 複数の実験の指標の推移をまとめて取得する. live に含む (学習中の) 実験は一定の間隔で読み直す */
+export function useHistories(projectId: string, runIds: string[], live: Set<string> = new Set()) {
   return useQueries({
     queries: runIds.map((runId) => ({
       queryKey: keys.history(projectId, runId),
       queryFn: () => api.getHistory(projectId, runId),
+      refetchInterval: live.has(runId) ? LIVE_INTERVAL * 2 : (false as const),
     })),
   })
 }
 
-/** 複数の実験の詳細をまとめて取得する */
+/** 複数の実験の詳細をまとめて取得する. 学習中の実験は画像の一覧なども一定の間隔で読み直す */
 export function useRunDetails(projectId: string, runIds: string[]) {
   return useQueries({
     queries: runIds.map((runId) => ({
       queryKey: keys.run(projectId, runId),
       queryFn: () => api.getRun(projectId, runId),
+      refetchInterval: (query: { state: { data?: { status: string } } }) =>
+        query.state.data?.status === 'running' ? LIVE_INTERVAL : false,
     })),
   })
 }

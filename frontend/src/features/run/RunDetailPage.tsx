@@ -1,3 +1,4 @@
+import { TriangleAlert } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
@@ -28,6 +29,13 @@ type TabId = (typeof TAB_IDS)[number]
 /** URL の値を画面のタブに直す */
 function toTab(value: string | null): TabId {
   return TAB_IDS.find((id) => id === value) ?? 'charts'
+}
+
+/** final_model.pt の重みの説明 (ML-Found の run.json の final_weights) */
+const FINAL_WEIGHTS: Record<string, string> = {
+  best: 'final_model.pt はベストモデル',
+  last: 'final_model.pt は最後のエポック',
+  partial: 'final_model.pt は途中までの重み',
 }
 
 export function RunDetailPage() {
@@ -109,6 +117,13 @@ export function RunDetailPage() {
         }
       />
       {data.error && <ErrorBox error={data.error} live={false} />}
+      {data.final_weights === 'partial' && (
+        <p className="mb-4 flex items-start gap-1.5 text-sm text-warning-text">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+          エポックの途中で止め, 前のエポックの重みに戻せなかったので, final_model.pt
+          は途中までの重みです
+        </p>
+      )}
 
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <StatTile
@@ -130,7 +145,15 @@ export function RunDetailPage() {
             data.early_stopped_epoch ? `Early Stopping (${data.early_stopped_epoch})` : undefined
           }
         />
-        <StatTile label="学習時間" value={formatDuration(data.duration_sec)} />
+        <StatTile
+          label="学習時間"
+          value={formatDuration(data.duration_sec)}
+          hint={
+            data.final_weights && data.final_weights !== 'partial'
+              ? FINAL_WEIGHTS[data.final_weights]
+              : undefined
+          }
+        />
         <StatTile
           label="パラメータ数"
           value={data.parameter_count != null ? data.parameter_count.toLocaleString() : '—'}

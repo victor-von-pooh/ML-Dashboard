@@ -989,6 +989,8 @@ export interface components {
             files: components["schemas"]["RunFile"][];
             /** Has Git Diff */
             has_git_diff: boolean;
+            /** Final Weights */
+            final_weights?: ("best" | "last" | "partial") | null;
         };
         /** RunFile */
         RunFile: {

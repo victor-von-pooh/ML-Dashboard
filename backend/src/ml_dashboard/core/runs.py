@@ -43,6 +43,9 @@ IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 CHECKPOINT_SUFFIXES = {".pt", ".pth", ".ckpt", ".safetensors"}
 TEXT_SUFFIXES = {".yaml", ".yml", ".csv", ".log", ".patch", ".json", ".txt"}
 
+# run.json の final_weights の値 (final_model.pt の重み)
+FINAL_WEIGHTS = ("best", "last", "partial")
+
 # 更新ごとの学習率をグラフに渡す点の数の上限
 MAX_LR_STEPS = 5000
 
@@ -847,7 +850,12 @@ class RunData:
             env=parse_env(self.entries),
             packages=parse_packages(self.entries),
             files=list_files(self.run_dir),
-            has_git_diff=(self.run_dir / "git_diff.patch").is_file()
+            has_git_diff=(self.run_dir / "git_diff.patch").is_file(),
+            final_weights=(
+                self.status["final_weights"]
+                if self.status.get("final_weights") in FINAL_WEIGHTS
+                else None
+            )
         )
 
         return detail

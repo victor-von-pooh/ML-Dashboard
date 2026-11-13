@@ -97,11 +97,18 @@ export function describeRange(spec: RangeSpec): string {
 export function checkParamValue(spec: RangeSpec, value: unknown): string | null {
   // 数と, 数の配列 (min_lr などはグループごとに指定可能) の各要素を確かめる
   const numbers = Array.isArray(value) ? value : [value]
+  const hasRange = spec.minimum != null || spec.maximum != null
   for (const item of numbers) {
-    if (typeof item !== 'number') continue
+    // 範囲を持つ引数は, ML-Found と同じく数でなければ誤り
+    // (補間と ??? は ML-Found が解決してから確かめるので対象外, 配列でない null は値なし)
+    if (typeof item !== 'number') {
+      const deferred = typeof item === 'string' && (item.startsWith('${') || item === '???')
+      const empty = item == null && !Array.isArray(value)
+      if (hasRange && spec.kind !== 'str' && !deferred && !empty) return '数で書いてください'
+      continue
+    }
     if (spec.kind === 'int' && !Number.isInteger(item)) return '整数にしてください'
     // 無限大と NaN は, 範囲を持つ引数では範囲の外 (ML-Found と同じ扱い)
-    const hasRange = spec.minimum != null || spec.maximum != null
     const belowMinimum =
       (hasRange && !Number.isFinite(item)) ||
       (spec.minimum != null &&
