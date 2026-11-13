@@ -311,7 +311,7 @@ def describe_filled(cfg: Any, missing: list[str]) -> list[str]:
     }
     for name in missing:
         if cfg.scheduler.params.get(name) == "auto":
-            sources[name] = f"学習全体のステップ数 ({total})"
+            sources[name] = f"{total} (学習全体のステップ数)"
     notes = [
         f"{cfg.scheduler.name} の {name} は, 学習を始めるときに ML-Found が"
         f" {sources.get(name, name)} にします"

@@ -91,7 +91,7 @@ const STATUS: Record<RunStatus, { label: string; icon: LucideIcon; className: st
 const STATUS_HINT: Record<RunStatus, string> = {
   completed: '最後まで学習しました',
   running: '学習中です',
-  stopped: '中断の要求か Ctrl-C で止めました',
+  stopped: '中断の要求 (STOP, 登録した関数) か Ctrl-C で止めました',
   failed: 'エラーで止まりました',
   unknown: '途中で止まったか, 結果が残っていません',
 }
