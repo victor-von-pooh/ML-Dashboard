@@ -25,6 +25,7 @@ from ml_dashboard.core.models import (
     LogEntry,
     LrPoint,
     Mode,
+    ModelParam,
     ParamValue,
     Progress,
     RunDetail,
@@ -48,6 +49,9 @@ FINAL_WEIGHTS = ("best", "last", "partial")
 
 # 更新ごとの学習率をグラフに渡す点の数の上限
 MAX_LR_STEPS = 5000
+
+# 詳細の画面に返す model_summary.csv の行数の上限
+MAX_MODEL_SUMMARY_ROWS = 2000
 
 
 class RunNotFoundError(Exception):
@@ -326,6 +330,52 @@ def thin_indices(values: list[float], limit: int) -> list[int]:
 
 # 読み込んだ lr_steps.csv の点 (ファイルの更新時刻と大きさが同じ間は再利用)
 LR_CACHE: dict[str, tuple[tuple[int, int, int], list[LrPoint]]] = {}
+
+
+def read_model_summary(
+    path: Path, limit: int = MAX_MODEL_SUMMARY_ROWS
+) -> tuple[Optional[list[ModelParam]], Optional[int]]:
+    """
+    model_summary.csv (パラメータとバッファの一覧) を読み込む関数
+
+    Parameters
+    ----------
+    path: Path
+        model_summary.csv のパス
+    limit: int = MAX_MODEL_SUMMARY_ROWS
+        返す行数の上限, 超える場合は先頭から
+
+    Returns
+    ----------
+    rows: Optional[list[ModelParam]]
+        一覧, ファイルが無いか読めない場合は None
+    total: Optional[int]
+        ファイルの全体の行数
+    """
+    # 古い ML-Found の実験や書きかけのファイルは表示なし
+    if not path.is_file():
+        return None, None
+    rows: list[ModelParam] = []
+    total = 0
+    try:
+        with path.open(encoding="utf-8-sig", newline="") as file:
+            for record in csv.DictReader(file):
+                total += 1
+                if len(rows) >= limit:
+                    continue
+                rows.append(
+                    ModelParam(
+                        name=record["name"], kind=record["kind"],
+                        module=record["module"], shape=record["shape"],
+                        dtype=record["dtype"], numel=int(record["numel"]),
+                        requires_grad=record["requires_grad"] == "True",
+                        same_as=record.get("same_as") or ""
+                    )
+                )
+    except (OSError, KeyError, ValueError):
+        return None, None
+
+    return rows, total
 
 
 def read_lr_steps(path: Path, limit: int = MAX_LR_STEPS) -> list[LrPoint]:
@@ -846,6 +896,9 @@ class RunData:
             self.entries, "デバイス:"
         )
         params = parse_number(find_message(self.entries, "パラメータ数:"))
+        summary_rows, summary_total = read_model_summary(
+            self.run_dir / "model_summary.csv"
+        )
         detail = RunDetail(
             **self.summary().model_dump(),
             config=self.config,
@@ -863,7 +916,9 @@ class RunData:
                 self.status["final_weights"]
                 if self.status.get("final_weights") in FINAL_WEIGHTS
                 else None
-            )
+            ),
+            model_summary=summary_rows,
+            model_summary_rows=summary_total
         )
 
         return detail

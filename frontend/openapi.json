@@ -1451,6 +1451,54 @@
         ],
         "title": "LrPoint"
       },
+      "ModelParam": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "module": {
+            "type": "string",
+            "title": "Module"
+          },
+          "shape": {
+            "type": "string",
+            "title": "Shape"
+          },
+          "dtype": {
+            "type": "string",
+            "title": "Dtype"
+          },
+          "numel": {
+            "type": "integer",
+            "title": "Numel"
+          },
+          "requires_grad": {
+            "type": "boolean",
+            "title": "Requires Grad"
+          },
+          "same_as": {
+            "type": "string",
+            "title": "Same As",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "kind",
+          "module",
+          "shape",
+          "dtype",
+          "numel",
+          "requires_grad"
+        ],
+        "title": "ModelParam"
+      },
       "ParamSpec": {
         "properties": {
           "name": {
@@ -2028,6 +2076,31 @@
               }
             ],
             "title": "Final Weights"
+          },
+          "model_summary": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ModelParam"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Summary"
+          },
+          "model_summary_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Summary Rows"
           }
         },
         "type": "object",

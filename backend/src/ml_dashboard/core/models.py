@@ -86,6 +86,19 @@ class RunFile(BaseModel):
     kind: FileKind
 
 
+class ModelParam(BaseModel):
+    # ML-Found の model_summary.csv の 1 行 (パラメータかバッファ)
+    name: str
+    kind: str
+    module: str
+    shape: str
+    dtype: str
+    numel: int
+    requires_grad: bool
+    # 重みを共有している場合は, 最初の名前
+    same_as: str = ""
+
+
 class RunDetail(RunSummary):
     config: dict[str, Any]
     seed: Optional[int]
@@ -101,6 +114,10 @@ class RunDetail(RunSummary):
     # final_model.pt の重み (best, last, エポックの途中で止めて戻せなかった
     # partial), run.json が無い古い実験は None
     final_weights: Optional[Literal["best", "last", "partial"]] = None
+    # パラメータとバッファの一覧 (model_summary.csv, 多い場合は先頭だけ) と
+    # 全体の行数, ファイルが無い古い実験は None
+    model_summary: Optional[list[ModelParam]] = None
+    model_summary_rows: Optional[int] = None
 
 
 class LrPoint(BaseModel):
