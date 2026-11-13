@@ -742,7 +742,7 @@ export interface components {
              * Lr Steps
              * @default []
              */
-            lr_steps: components["schemas"]["LrStep"][];
+            lr_steps: components["schemas"]["LrPoint"][];
         };
         /** JobCreate */
         JobCreate: {
@@ -803,12 +803,10 @@ export interface components {
             /** Message */
             message: string;
         };
-        /** LrStep */
-        LrStep: {
-            /** Step */
-            step: number;
-            /** Epoch */
-            epoch: number;
+        /** LrPoint */
+        LrPoint: {
+            /** X */
+            x: number;
             /** Lr */
             lr: number | null;
         };

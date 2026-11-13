@@ -72,39 +72,3 @@ export function summarizeDiff(diff: Record<string, unknown>): string[] {
 export function toPoints(history: History, key: string): [number, number | null][] {
   return history.rows.map((row, index) => [row.epoch ?? index + 1, row[key] ?? null])
 }
-
-/**
- * 更新ごとの学習率を, エポックの軸の上の点にする.
- * エポック e の更新は e から e + 1 の間に等間隔に並べ, エポックの最初の更新を
- * エポックを始めた時点の学習率 (history の lr) と同じ位置にする
- */
-export function lrStepPoints(
-  steps: { step: number; epoch: number; lr?: number | null }[],
-): [number, number | null][] {
-  // エポックごとの最初の更新の番号と, 1 エポックの更新の数 (次のエポックの最初との差)
-  const firsts = new Map<number, number>()
-  for (const item of steps) {
-    if (!firsts.has(item.epoch)) firsts.set(item.epoch, item.step)
-  }
-  const epochs = [...firsts.keys()].sort((a, b) => a - b)
-  const counts = new Map<number, number>()
-  epochs.forEach((epoch, index) => {
-    const next = epochs[index + 1]
-    const first = firsts.get(epoch)!
-    if (next !== undefined) {
-      counts.set(epoch, firsts.get(next)! - first)
-    } else {
-      // 最後のエポックは, 前のエポックの数か, 記録の最後までの数
-      const last = Math.max(
-        ...steps.filter((item) => item.epoch === epoch).map((item) => item.step),
-      )
-      const previous = index > 0 ? counts.get(epochs[index - 1]!) : undefined
-      counts.set(epoch, Math.max(previous ?? 0, last - first + 1))
-    }
-  })
-  return steps.map((item) => {
-    const count = Math.max(counts.get(item.epoch) ?? 1, 1)
-    const offset = (item.step - firsts.get(item.epoch)!) / count
-    return [item.epoch + offset, item.lr ?? null]
-  })
-}

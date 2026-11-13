@@ -100,9 +100,9 @@ class RunDetail(RunSummary):
     has_git_diff: bool
 
 
-class LrStep(BaseModel):
-    step: int
-    epoch: int
+class LrPoint(BaseModel):
+    # エポックの軸の上の位置 (エポック e の更新を e から e + 1 の間に等間隔)
+    x: float
     lr: Optional[float]
 
 
@@ -110,7 +110,7 @@ class History(BaseModel):
     columns: list[str]
     rows: list[dict[str, Optional[float]]]
     # step ごとに学習率を変えた実験の, 更新ごとの学習率 (lr_steps.csv)
-    lr_steps: list[LrStep] = []
+    lr_steps: list[LrPoint] = []
 
 
 # 分析に使う config の値 (入れ子は . でつないだ項目, 配列は JSON の文字列)
