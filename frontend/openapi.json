@@ -2329,6 +2329,11 @@
             "type": "boolean",
             "title": "Force",
             "default": false
+          },
+          "now": {
+            "type": "boolean",
+            "title": "Now",
+            "default": false
           }
         },
         "type": "object",

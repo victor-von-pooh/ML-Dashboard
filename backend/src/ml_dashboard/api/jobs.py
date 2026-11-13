@@ -158,6 +158,8 @@ class JobCreate(BaseModel):
 
 class StopRequest(BaseModel):
     force: bool = False
+    # エポックの途中でも止める (ML-Found が途中のエポックを捨てて止める)
+    now: bool = False
 
 
 class JobInfo(BaseModel):
@@ -870,7 +872,7 @@ def stop_job(request: Request, job_id: str, body: StopRequest) -> JobInfo:
         更新したジョブ
     """
     projects = project_map(request)
-    job = get_jobs(request).stop(job_id, projects, body.force)
+    job = get_jobs(request).stop(job_id, projects, body.force, body.now)
     if job is None:
         raise HTTPException(404, f"ジョブが見つかりません: {job_id}")
     info = to_job_info(get_jobs(request), job, projects.get(job.project_id))

@@ -1086,6 +1086,11 @@ export interface components {
              * @default false
              */
             force: boolean;
+            /**
+             * Now
+             * @default false
+             */
+            now: boolean;
         };
         /** ValidateRequest */
         ValidateRequest: {
