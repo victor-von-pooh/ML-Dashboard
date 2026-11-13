@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { CheckCircle2, Play, RotateCcw, ShieldCheck, TriangleAlert } from 'lucide-react'
+import { CheckCircle2, Info, Play, RotateCcw, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { useEffect, useId, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
@@ -229,6 +229,12 @@ export function LaunchPage() {
                       </li>
                     ))}
                   </ul>
+                  {(validate.data.notes ?? []).map((note) => (
+                    <p key={note} className="mt-2 flex items-start gap-1.5 text-xs text-ink-3">
+                      <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                      {note}
+                    </p>
+                  ))}
                   {(validate.data.warnings ?? []).map((warning) => (
                     <p
                       key={warning}

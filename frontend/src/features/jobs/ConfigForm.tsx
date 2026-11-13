@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { ChevronDown, ChevronRight, TriangleAlert } from 'lucide-react'
+import { ChevronDown, ChevronRight, Info, TriangleAlert } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 
 import { api, type ClassSpec, type ParamSpec } from '../../api/client'
@@ -368,6 +368,12 @@ export function ConfigForm({
               </p>
             </>
           )}
+          {(resolved.data?.notes ?? []).map((note) => (
+            <p key={note} className="flex items-start gap-1.5 text-xs text-ink-3">
+              <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              {note}
+            </p>
+          ))}
           {resolved.data?.ok &&
             (resolved.data.warnings ?? []).map((warning) => (
               <p key={warning} className="flex items-start gap-1.5 text-xs text-warning-text">

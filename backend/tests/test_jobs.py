@@ -453,21 +453,11 @@ def test_validate_param_ranges(client: TestClient, project_dir: Path) -> None:
 
     # 必須の引数の不足 (注意) があっても, 範囲の外の値はエラー
     text = (
-        "scheduler:\n  name: OneCycleLR\n  params:\n    max_lr: 0.1\n"
-        "    pct_start: 1.5\n"
+        "scheduler:\n  name: StepLR\n  params:\n    gamma: -1\n"
     )
     result = client.post(url, json={"text": text}).json()
     assert result["ok"] is False
-    assert "pct_start は 0.0 以上 1.0 以下" in result["error"]
-
-    # 必須の引数の不足 (注意) があっても, 範囲の外の値はエラー
-    text = (
-        "scheduler:\n  name: OneCycleLR\n  params:\n    max_lr: 0.1\n"
-        "    pct_start: 1.5\n"
-    )
-    result = client.post(url, json={"text": text}).json()
-    assert result["ok"] is False
-    assert "pct_start は 0.0 以上 1.0 以下" in result["error"]
+    assert "gamma は 0.0 以上" in result["error"]
 
     registry = client.get("/api/registry").json()
     plateau = next(
@@ -479,3 +469,56 @@ def test_validate_param_ranges(client: TestClient, project_dir: Path) -> None:
     )
     assert factor["exclusive_maximum"] is True
     assert factor["exclusive_minimum"] is False
+
+
+def test_validate_notes_filled_scheduler(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    ML-Found が補う Scheduler の引数を, 注意ではなくお知らせで返すことを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    project_id = register(client, project_dir)
+    text = (
+        "scheduler:\n  name: OneCycleLR\n  interval: step\n  params:\n"
+        "    max_lr: 0.1\n"
+    )
+    result = client.post(
+        f"/api/projects/{project_id}/validate", json={"text": text}
+    ).json()
+    assert result["ok"] is True
+    assert result["warnings"] == []
+    assert "epochs は, 学習を始めるときに ML-Found が trainer.epochs" in (
+        result["notes"][0]
+    )
+    assert "学習用データのバッチ数" in result["notes"][1]
+
+    # OneCycleLR の epochs が trainer.epochs より少なければ誤り, 多ければ注意
+    for epochs, ok in ((1, False), (100_000, True)):
+        result = client.post(
+            f"/api/projects/{project_id}/validate",
+            json={"text": text + f"    epochs: {epochs}\n"}
+        ).json()
+        assert result["ok"] is ok
+        if not ok:
+            assert "trainer.epochs" in result["error"]
+        else:
+            assert "下がりきりません" in result["warnings"][0]
+
+    # 総ステップ数を書いた場合はお知らせなし
+    text += "    total_steps: 10\n"
+    result = client.post(
+        f"/api/projects/{project_id}/validate", json={"text": text}
+    ).json()
+    assert result["notes"] == []

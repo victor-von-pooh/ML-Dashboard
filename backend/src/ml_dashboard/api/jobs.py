@@ -87,6 +87,8 @@ class ValidateResult(BaseModel):
     config: dict[str, Any] = {}
     # 学習のスクリプトが補う可能性があるので, エラーにしない注意
     warnings: list[str] = []
+    # 学習を始めるときに ML-Found が補う値などのお知らせ
+    notes: list[str] = []
     # 元にした default の config (プロジェクトのディレクトリからの相対パス)
     default_config: Optional[str] = None
 
@@ -95,6 +97,7 @@ class CheckedConfig(BaseModel):
     diff: dict[str, dict[str, object]]
     config: dict[str, Any]
     warnings: list[str]
+    notes: list[str] = []
     default_config: str
     # 引数の値の誤り (読み込めた config をフォームで直せるように分けて返却)
     value_error: Optional[str] = None
@@ -274,6 +277,97 @@ def check_param_names(cfg: Any) -> list[str]:
     return warnings
 
 
+def describe_filled(cfg: Any, missing: list[str]) -> list[str]:
+    """
+    学習を始めるときに ML-Found が補う Scheduler の引数を, お知らせにする関数
+
+    Parameters
+    ----------
+    cfg: Any
+        学習に使う config
+    missing: list[str]
+        補う引数の名前
+
+    Returns
+    ----------
+    notes: list[str]
+        引数ごとに, 何から補うかのお知らせ
+    """
+    sources = {
+        "epochs": "trainer.epochs",
+        "steps_per_epoch": (
+            "1 (エポックごとに進めるため)"
+            if cfg.scheduler.interval == "epoch"
+            else "学習用データのバッチ数"
+        )
+    }
+    notes = [
+        f"{cfg.scheduler.name} の {name} は, 学習を始めるときに ML-Found が"
+        f" {sources.get(name, name)} にします"
+        for name in missing
+    ]
+
+    return notes
+
+
+def check_one_cycle_epochs(cfg: Any) -> tuple[Optional[str], Optional[str]]:
+    """
+    OneCycleLR のエポック数と trainer.epochs の食い違いを確かめる関数
+
+    総ステップ数を書いていない場合は, バッチ数が分からなくてもエポック数の
+    大小で結果が決まる. 足りないと ML-Found が学習の直前にエラーにし,
+    多いと学習率が下がりきらない
+
+    Parameters
+    ----------
+    cfg: Any
+        学習に使う config
+
+    Returns
+    ----------
+    error: Optional[str]
+        総ステップ数が足りない場合の誤り
+    warning: Optional[str]
+        総ステップ数が多い場合の注意
+    """
+    from ml_found.training.optim import resolve_scheduler_class
+    from torch import optim
+
+    # OneCycleLR で総ステップ数を書かず, 1 エポックの数が決まる場合だけ判定
+    name = cfg.scheduler.name
+    if name is None or not issubclass(
+        resolve_scheduler_class(name), optim.lr_scheduler.OneCycleLR
+    ):
+        return None, None
+    params = cfg.scheduler.params
+    if params.get("total_steps") is not None:
+        return None, None
+    epochs = params.get("epochs") or cfg.trainer.epochs
+    per_epoch = params.get("steps_per_epoch")
+    if cfg.scheduler.interval == "epoch":
+        planned, total = cfg.trainer.epochs, epochs * (per_epoch or 1)
+    elif per_epoch is None:
+        planned, total = cfg.trainer.epochs, epochs
+    else:
+        return None, None
+    if total == planned:
+        return None, None
+
+    message = (
+        f"{name} の epochs ({epochs}) が trainer.epochs ({cfg.trainer.epochs})"
+        " と違います"
+    )
+    if total < planned:
+        error = (
+            message + " (学習の途中で総ステップ数を超えるので, "
+            "学習を始める前にエラーになります)"
+        )
+        return error, None
+    warning = message + " (学習率は最後まで下がりきりません)"
+
+    return None, warning
+
+
 def check_config(
     project: Project, path: Path, script: Optional[str] = None
 ) -> CheckedConfig:
@@ -304,7 +398,10 @@ def check_config(
         check_resume_path,
         check_trainer_config,
     )
-    from ml_found.training.optim import check_optim_config
+    from ml_found.training.optim import (
+        check_optim_config,
+        missing_data_size_params,
+    )
 
     # start_experiment が出力先を作る前に行う確認と同じものを実行
     # 自作の Optimizer (custom_optim.Lion など) を読めるように,
@@ -326,6 +423,15 @@ def check_config(
             warnings, value_error = [], str(error)
         check_trainer_config(cfg)
         check_resume_path(cfg, project_dir)
+
+        # データの量で決まる Scheduler の引数は, 学習を始めるときに
+        # ML-Found が補うのでお知らせし, エポック数の食い違いを確認
+        notes = describe_filled(cfg, missing_data_size_params(cfg.scheduler))
+        mismatch, note = check_one_cycle_epochs(cfg)
+        if mismatch is not None and value_error is None:
+            value_error = mismatch
+        if note is not None:
+            warnings.append(note)
     finally:
         sys.path.remove(str(project_dir))
     config = OmegaConf.to_container(cfg, resolve=True)
@@ -342,6 +448,7 @@ def check_config(
             if isinstance(config, dict) else {}
         ),
         warnings=warnings,
+        notes=notes,
         default_config=default_path.relative_to(project_dir).as_posix(),
         value_error=value_error
     )
@@ -570,7 +677,7 @@ def validate_config(
     result = ValidateResult(
         ok=checked.value_error is None, error=checked.value_error,
         diff=checked.diff, config=checked.config, warnings=checked.warnings,
-        default_config=checked.default_config
+        notes=checked.notes, default_config=checked.default_config
     )
 
     return result

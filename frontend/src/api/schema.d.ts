@@ -1118,6 +1118,11 @@ export interface components {
              * @default []
              */
             warnings: string[];
+            /**
+             * Notes
+             * @default []
+             */
+            notes: string[];
             /** Default Config */
             default_config?: string | null;
         };
