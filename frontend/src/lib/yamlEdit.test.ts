@@ -72,6 +72,11 @@ describe('checkParamValue', () => {
     )
     expect(checkParamValue({ kind: 'str', minimum: 0 }, 'min')).toBeNull()
     expect(checkParamValue({ kind: 'none' }, null)).toBeNull()
+    expect(checkParamValue({ kind: 'float', minimum: 0 }, Infinity)).toBe(
+      '0 以上の値にしてください',
+    )
+    expect(checkParamValue({ kind: 'float', minimum: 0 }, NaN)).toBe('0 以上の値にしてください')
+    expect(checkParamValue({ kind: 'float' }, Infinity)).toBeNull()
   })
 
   it('端を含まない範囲は端の値もエラーにする', () => {

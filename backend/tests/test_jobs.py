@@ -439,6 +439,35 @@ def test_validate_param_ranges(client: TestClient, project_dir: Path) -> None:
     result = client.post(url, json={"text": text}).json()
     assert result["ok"] is False
     assert "factor は 0.0 以上 1.0 未満" in result["error"]
+    # フォームで直せるように, 読み込めた config も返却
+    assert result["config"]["scheduler"]["params"]["factor"] == 1.0
+
+    # 起動もエラー
+    (project_dir / "train.py").write_text("print('train')\n")
+    launched = client.post(
+        f"/api/projects/{project_id}/jobs",
+        json={"script": "train.py", "config_text": text}
+    )
+    assert launched.status_code == 400
+    assert "factor" in launched.json()["detail"]
+
+    # 必須の引数の不足 (注意) があっても, 範囲の外の値はエラー
+    text = (
+        "scheduler:\n  name: OneCycleLR\n  params:\n    max_lr: 0.1\n"
+        "    pct_start: 1.5\n"
+    )
+    result = client.post(url, json={"text": text}).json()
+    assert result["ok"] is False
+    assert "pct_start は 0.0 以上 1.0 以下" in result["error"]
+
+    # 必須の引数の不足 (注意) があっても, 範囲の外の値はエラー
+    text = (
+        "scheduler:\n  name: OneCycleLR\n  params:\n    max_lr: 0.1\n"
+        "    pct_start: 1.5\n"
+    )
+    result = client.post(url, json={"text": text}).json()
+    assert result["ok"] is False
+    assert "pct_start は 0.0 以上 1.0 以下" in result["error"]
 
     registry = client.get("/api/registry").json()
     plateau = next(

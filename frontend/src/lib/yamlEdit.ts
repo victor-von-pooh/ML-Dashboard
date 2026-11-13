@@ -100,8 +100,12 @@ export function checkParamValue(spec: RangeSpec, value: unknown): string | null 
   for (const item of numbers) {
     if (typeof item !== 'number') continue
     if (spec.kind === 'int' && !Number.isInteger(item)) return '整数にしてください'
+    // 無限大と NaN は, 範囲を持つ引数では範囲の外 (ML-Found と同じ扱い)
+    const hasRange = spec.minimum != null || spec.maximum != null
     const belowMinimum =
-      spec.minimum != null && (spec.exclusive_minimum ? item <= spec.minimum : item < spec.minimum)
+      (hasRange && !Number.isFinite(item)) ||
+      (spec.minimum != null &&
+        (spec.exclusive_minimum ? item <= spec.minimum : item < spec.minimum))
     const aboveMaximum =
       spec.maximum != null && (spec.exclusive_maximum ? item >= spec.maximum : item > spec.maximum)
     if (belowMinimum || aboveMaximum) {
