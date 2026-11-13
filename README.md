@@ -28,7 +28,7 @@ ML-Found が実験ごとに残すディレクトリ (`history.csv`, `config.yaml
 - **実験の詳細**
     - 学習曲線: 学習用と検証用 (ML-Found の `trainer.eval_train` で評価し直した学習用の値も) を重ねたグラフ. ベストのエポックと Early Stopping の位置を示す (ベストモデルを選ばない設定 `trainer.select_best: false` の実験は, ベストを出さない). 拡大と対数の縦軸に対応. step ごとに学習率を変えた実験 (ML-Found の `lr_steps.csv` がある実験) は, 学習率のグラフにエポックの中の変化も重ねる
     - config: default との差分と, config 全体の検索
-    - モデル: モデルの構造, Optimizer, Scheduler
+    - モデル: モデルの構造, Optimizer, Scheduler, パラメータの一覧 (名前, 層, 形, 要素数, 学習するか, 重みの共有)
     - 環境: git の情報, OS, PyTorch, パッケージの一覧, 学習時の未コミットの変更
     - ログ: `train.log` を警告とエラーで絞り込み, 検索する
     - 画像の推移: `samples/epoch_010.png` のように番号の付いた画像を, スライダーと再生でエポックの順に見る (生成モデルのサンプルなど)

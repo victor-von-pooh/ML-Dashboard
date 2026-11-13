@@ -2,10 +2,11 @@ import clsx from 'clsx'
 import { Download, ExternalLink, Search, X } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 
-import { runFileUrl, type LogEntry, type RunDetail } from '../../api/client'
+import { runFileUrl, type LogEntry, type ModelParam, type RunDetail } from '../../api/client'
 import { Card } from '../../components/ui'
 import { formatBytes, formatLogTime, formatValue } from '../../lib/format'
 import { flattenConfig } from '../../lib/metrics'
+import { countParams, filterParams } from '../../lib/modelSummary'
 
 /** 検索できる「項目名 = 値」の表 */
 function KeyValueTable({ rows, highlight }: { rows: [string, string][]; highlight?: Set<string> }) {
@@ -110,6 +111,63 @@ export function ConfigTab({ run }: { run: RunDetail }) {
   )
 }
 
+/** パラメータとバッファの一覧 (ML-Found の model_summary.csv) */
+function ParamTable({ rows, total }: { rows: ModelParam[]; total: number }) {
+  const [query, setQuery] = useState('')
+  const counts = useMemo(() => countParams(rows), [rows])
+  const shown = filterParams(rows, query)
+  return (
+    <Card
+      title={`パラメータの一覧 (${total})`}
+      padded={false}
+      className="lg:col-span-2"
+      actions={<SearchInput value={query} onChange={setQuery} placeholder="名前か層で探す" />}
+    >
+      <p className="tabular px-4 py-2 text-xs text-ink-2">
+        学習するパラメータ {counts.trainable.toLocaleString()} · 学習しないパラメータ{' '}
+        {counts.frozen.toLocaleString()} · バッファ {counts.buffer.toLocaleString()}
+        {total > rows.length && ` (先頭の ${rows.length} 行で数えた値)`}
+      </p>
+      <div className="max-h-[480px] overflow-auto">
+        <table className="w-full min-w-[640px] text-sm">
+          <thead className="sticky top-0 bg-surface text-left text-xs text-ink-3">
+            <tr className="border-b border-line">
+              <th className="px-4 py-2 font-medium">名前</th>
+              <th className="px-4 py-2 font-medium">層</th>
+              <th className="px-4 py-2 font-medium">形</th>
+              <th className="px-4 py-2 text-right font-medium">要素数</th>
+              <th className="px-4 py-2 font-medium">学習</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((row) => (
+              <tr key={row.name} className="border-b border-line last:border-b-0">
+                <td className="px-4 py-1.5 font-mono text-xs break-all">
+                  {row.name}
+                  {row.same_as && (
+                    <span className="block text-[11px] text-ink-3">{row.same_as} と共有</span>
+                  )}
+                </td>
+                <td className="px-4 py-1.5 text-xs text-ink-2">
+                  {row.module}
+                  {row.kind === 'buffer' && <span className="text-ink-3"> (バッファ)</span>}
+                </td>
+                <td className="px-4 py-1.5 font-mono text-xs">{row.shape || '-'}</td>
+                <td className="tabular px-4 py-1.5 text-right text-xs">
+                  {row.numel.toLocaleString()}
+                </td>
+                <td className="px-4 py-1.5 text-xs">
+                  {row.kind === 'buffer' ? '-' : row.requires_grad ? 'する' : 'しない'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  )
+}
+
 export function ModelTab({ run }: { run: RunDetail }) {
   const blocks: [string, string | null | undefined][] = [
     ['モデルの構造', run.model_structure],
@@ -129,6 +187,12 @@ export function ModelTab({ run }: { run: RunDetail }) {
           )}
         </Card>
       ))}
+      {run.model_summary && (
+        <ParamTable
+          rows={run.model_summary}
+          total={run.model_summary_rows ?? run.model_summary.length}
+        />
+      )}
     </div>
   )
 }

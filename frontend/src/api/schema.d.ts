@@ -810,6 +810,28 @@ export interface components {
             /** Lr */
             lr: number | null;
         };
+        /** ModelParam */
+        ModelParam: {
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /** Module */
+            module: string;
+            /** Shape */
+            shape: string;
+            /** Dtype */
+            dtype: string;
+            /** Numel */
+            numel: number;
+            /** Requires Grad */
+            requires_grad: boolean;
+            /**
+             * Same As
+             * @default
+             */
+            same_as: string;
+        };
         /** ParamSpec */
         ParamSpec: {
             /** Name */
@@ -991,6 +1013,10 @@ export interface components {
             has_git_diff: boolean;
             /** Final Weights */
             final_weights?: ("best" | "last" | "partial") | null;
+            /** Model Summary */
+            model_summary?: components["schemas"]["ModelParam"][] | null;
+            /** Model Summary Rows */
+            model_summary_rows?: number | null;
         };
         /** RunFile */
         RunFile: {
