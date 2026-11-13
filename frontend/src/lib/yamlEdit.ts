@@ -40,6 +40,8 @@ export function parseInput(kind: string, raw: string): unknown {
   // int と float は同じ規則で数として読み, 整数かどうかは checkParamValue で確認
   // (種類は ML-Found の登録簿が型の注釈から決めるので, weight_decay = 0 なども float)
   if (kind === 'int' || kind === 'float') {
+    // auto は ML-Found が学習を始めるときに補う値 (書ける引数は ML-Found が確認)
+    if (text === 'auto') return text
     return /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(text) ? Number(text) : undefined
   }
   if (kind === 'str') return text
@@ -100,9 +102,11 @@ export function checkParamValue(spec: RangeSpec, value: unknown): string | null 
   const hasRange = spec.minimum != null || spec.maximum != null
   for (const item of numbers) {
     // 範囲を持つ引数は, ML-Found と同じく数でなければ誤り
-    // (補間と ??? は ML-Found が解決してから確かめるので対象外, 配列でない null は値なし)
+    // (補間と ??? と auto は ML-Found が解決や補ってから確かめるので対象外,
+    // 配列でない null は値なし)
     if (typeof item !== 'number') {
-      const deferred = typeof item === 'string' && (item.startsWith('${') || item === '???')
+      const deferred =
+        typeof item === 'string' && (item.startsWith('${') || item === '???' || item === 'auto')
       const empty = item == null && !Array.isArray(value)
       if (hasRange && spec.kind !== 'str' && !deferred && !empty) return '数で書いてください'
       continue

@@ -588,3 +588,18 @@ def test_validate_notes_filled_scheduler(
         f"/api/projects/{project_id}/validate", json={"text": text}
     ).json()
     assert result["notes"] == []
+
+    # auto と書いた引数は, 学習全体のステップ数で補うお知らせ
+    text = (
+        "scheduler:\n  name: CosineAnnealingLR\n  interval: step\n"
+        "  params:\n    T_max: auto\n"
+    )
+    result = client.post(
+        f"/api/projects/{project_id}/validate", json={"text": text}
+    ).json()
+    assert result["ok"] is True
+    assert result["notes"] == [
+        "CosineAnnealingLR の T_max は, 学習を始めるときに ML-Found が"
+        " 学習全体のステップ数 (trainer.epochs × 学習用データのバッチ数) に"
+        "します"
+    ]

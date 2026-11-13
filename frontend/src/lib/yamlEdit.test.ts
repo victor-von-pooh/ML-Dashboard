@@ -55,6 +55,8 @@ describe('parseInput', () => {
     expect(parseInput('none', 'null')).toBeNull()
     expect(parseInput('str', ' min ')).toBe('min')
     expect(parseInput('float', '')).toBeUndefined()
+    expect(parseInput('int', 'auto')).toBe('auto')
+    expect(parseInput('required', 'auto')).toBe('auto')
     expect(formatInput([1, 2])).toBe('[1,2]')
   })
 })
@@ -71,6 +73,7 @@ describe('checkParamValue', () => {
       '0 以上の値にしてください',
     )
     expect(checkParamValue({ kind: 'str', minimum: 0 }, 'min')).toBeNull()
+    expect(checkParamValue({ kind: 'required', minimum: 1 }, 'auto')).toBeNull()
     expect(checkParamValue({ kind: 'none' }, null)).toBeNull()
     expect(checkParamValue({ kind: 'float', minimum: 0 }, Infinity)).toBe(
       '0 以上の値にしてください',
