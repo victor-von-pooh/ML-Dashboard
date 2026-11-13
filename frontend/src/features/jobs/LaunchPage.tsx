@@ -6,6 +6,7 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { useConfig, useCreateJob, useProject, useValidateConfig } from '../../api/hooks'
 import { Button, Card, ErrorBox, PageHeader, Spinner } from '../../components/ui'
 import { formatValue } from '../../lib/format'
+import { configForScript } from '../../lib/scripts'
 import { ConfigForm } from './ConfigForm'
 
 /** config とスクリプトを選び, 必要なら書き換えて学習を起動する画面 */
@@ -28,9 +29,11 @@ export function LaunchPage() {
   const scripts = project.data?.scripts ?? []
   const configs = project.data?.experiment_configs ?? []
   const selectedScript = script ?? (scripts.includes('train.py') ? 'train.py' : scripts[0]) ?? ''
-  // train.yaml が無い場合は, examples/ の外の最初の config を選択
+  // スクリプトに対応する config (train_hf.py なら hf.yaml), 次に train.yaml,
+  // どちらも無い場合は examples/ の外の最初の config を選択
   const configPath =
     chosenPath ??
+    configForScript(selectedScript, configs) ??
     configs.find((path) => path === 'configs/experiment/train.yaml') ??
     configs.find((path) => !path.includes('/examples/')) ??
     configs[0] ??
@@ -61,6 +64,27 @@ export function LaunchPage() {
     setChosenPath(path)
     setDraft(null)
     validate.reset()
+  }
+
+  // スクリプトを替えたら, 対応する experiment の config があれば合わせて選択
+  // 書き換えた内容を捨てない場合は, スクリプトも替えずにそのまま
+  const selectScript = (next: string) => {
+    const matched = configForScript(next, configs)
+    const switching = matched !== undefined && matched !== configPath
+    if (
+      switching &&
+      edited &&
+      !window.confirm(
+        `書き換えた内容を捨てて, ${next} と ${matched.replace('configs/experiment/', '')} に切り替えますか?`,
+      )
+    )
+      return
+    setScript(next)
+    validate.reset()
+    if (switching) {
+      setChosenPath(matched)
+      setDraft(null)
+    }
   }
 
   const editText = (value: string) => {
@@ -114,7 +138,7 @@ export function LaunchPage() {
                 <select
                   id={scriptId}
                   value={selectedScript}
-                  onChange={(event) => setScript(event.target.value)}
+                  onChange={(event) => selectScript(event.target.value)}
                   className="h-9 w-full rounded-lg border border-line bg-bg px-2 font-mono text-sm"
                 >
                   {scripts.map((item) => (
@@ -160,9 +184,10 @@ export function LaunchPage() {
           </Card>
 
           <ConfigForm
-            // config を選び直したら, フォームの状態 (選び直した名前など) も作り直す
-            key={configPath ?? 'none'}
+            // config かスクリプトを選び直したら, フォームの状態 (選び直した名前など) も作り直す
+            key={`${selectedScript}:${configPath ?? 'none'}`}
             projectId={projectId}
+            script={selectedScript}
             text={text}
             onChange={editText}
           />
@@ -171,18 +196,32 @@ export function LaunchPage() {
             <div className="space-y-3 text-sm">
               <Button
                 icon={ShieldCheck}
-                onClick={() => validate.mutate(text)}
+                onClick={() => validate.mutate({ text, script: selectedScript })}
                 disabled={validate.isPending || loadingConfig}
               >
                 ML-Found で config を確かめる
               </Button>
-              {validate.data?.ok === false && <ErrorBox error={validate.data.error} />}
+              {validate.data?.ok === false && (
+                <div className="space-y-1">
+                  <ErrorBox error={validate.data.error} />
+                  {validate.data.default_config && (
+                    <p className="text-xs text-ink-3">
+                      default: <span className="font-mono">{validate.data.default_config}</span>
+                    </p>
+                  )}
+                </div>
+              )}
               {validate.data?.ok && (
                 <div>
                   <p className="mb-2 flex items-center gap-1.5 text-good-text">
                     <CheckCircle2 className="size-4" aria-hidden />
                     読み込めました. default との差分 {Object.keys(validate.data.diff).length} 項目
                   </p>
+                  {validate.data.default_config && (
+                    <p className="mb-2 text-xs text-ink-3">
+                      default: <span className="font-mono">{validate.data.default_config}</span>
+                    </p>
+                  )}
                   <ul className="space-y-0.5 font-mono text-xs text-ink-2">
                     {Object.entries(validate.data.diff).map(([key, value]) => (
                       <li key={key} className="break-all">

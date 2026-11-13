@@ -112,7 +112,10 @@ export function useConfig(projectId: string, path: string | null) {
 }
 
 export function useValidateConfig(projectId: string) {
-  return useMutation({ mutationFn: (text: string) => api.validateConfig(projectId, text) })
+  return useMutation({
+    mutationFn: ({ text, script }: { text: string; script: string }) =>
+      api.validateConfig(projectId, text, script),
+  })
 }
 
 export function useCreateJob(projectId: string) {

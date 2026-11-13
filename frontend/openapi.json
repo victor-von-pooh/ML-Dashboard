@@ -620,7 +620,7 @@
     "/api/projects/{project_id}/validate": {
       "post": {
         "summary": "Validate Config",
-        "description": "書き換えた experiment の config を学習の前に確かめる関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\nbody: ValidateRequest\n    experiment の config の中身\n\nReturns\n----------\nresult: ValidateResult\n    読み込めたかどうか, エラー, default との差分",
+        "description": "書き換えた experiment の config を学習の前に確かめる関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\nbody: ValidateRequest\n    experiment の config の中身と, 学習のスクリプト\n\nReturns\n----------\nresult: ValidateResult\n    読み込めたかどうか, エラー, 元にした default の config と差分",
         "operationId": "validate_config",
         "parameters": [
           {
@@ -2296,6 +2296,17 @@
           "text": {
             "type": "string",
             "title": "Text"
+          },
+          "script": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Script"
           }
         },
         "type": "object",
@@ -2342,6 +2353,17 @@
             "type": "array",
             "title": "Warnings",
             "default": []
+          },
+          "default_config": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Config"
           }
         },
         "type": "object",

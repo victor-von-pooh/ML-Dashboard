@@ -282,10 +282,13 @@ function ClassSection({
  */
 export function ConfigForm({
   projectId,
+  script,
   text,
   onChange,
 }: {
   projectId: string
+  /** 学習のスクリプト (元にする default の config を選ぶのに使う) */
+  script: string
   text: string
   onChange: (text: string) => void
 }) {
@@ -299,8 +302,8 @@ export function ConfigForm({
 
   // default と合わせた今の config (フォームの初期値と, 書いていない項目の値)
   const resolved = useQuery({
-    queryKey: ['projects', projectId, 'resolve', debounced],
-    queryFn: () => api.validateConfig(projectId, debounced),
+    queryKey: ['projects', projectId, 'resolve', script, debounced],
+    queryFn: () => api.validateConfig(projectId, debounced, script),
     placeholderData: (previous) => previous,
   })
 

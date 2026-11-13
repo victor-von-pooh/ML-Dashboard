@@ -105,6 +105,45 @@ def test_scan(client: TestClient, project_dir: Path) -> None:
     assert found.json()[0]["registered"] is True
 
 
+def test_scan_skips_submodules(client: TestClient, tmp_path: Path) -> None:
+    """
+    submodule の中のプロジェクトを探さないことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # リポジトリの直下のタスクと, submodule の中の例を用意
+    root = tmp_path / "repo"
+    projects = (
+        root / "tasks" / "task_a", root / "lib" / "examples" / "b",
+        root / "vendor" / "deep" / "c"
+    )
+    for project in projects:
+        (project / "configs" / "default").mkdir(parents=True)
+        (project / "configs" / "default" / "train.yaml").write_text("{}\n")
+    (root / ".gitmodules").write_text(
+        '[submodule "lib"]\n\tpath = lib\n\turl = https://example.com/lib\n'
+        '[submodule "deep"]\n\tpath = vendor/deep\n'
+    )
+
+    found = client.post("/api/projects/scan", json={"path": str(root)})
+    assert [item["name"] for item in found.json()] == ["task_a"]
+
+    # submodule を直接指定した場合は探す対象
+    found = client.post(
+        "/api/projects/scan", json={"path": str(root / "lib")}
+    )
+    assert [item["name"] for item in found.json()] == ["b"]
+
+
 def test_project_detail(client: TestClient, project_dir: Path) -> None:
     """
     プロジェクトの詳細にスクリプトと config が含まれることを確かめる関数

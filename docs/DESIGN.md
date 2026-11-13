@@ -86,7 +86,7 @@ ML-Found の今の出力から, 次のように読み取る.
 ML-Found に追加する `run.json` (下の「ML-Found に加えるもの」) がある実験では, 状態, ベストのエポック, 環境の情報をそこから読む.
 無い古い実験でも, 上の表の情報で見られるようにする.
 
-プロジェクトの実験は, `configs/default/train.yaml` の `experiment.output_dir` の下を探して見つける.
+プロジェクトの実験は, `configs/default/` と `configs/experiment/` の config の `experiment.output_dir` の下を探して見つける.
 
 ## 学習の起動
 
@@ -95,6 +95,7 @@ ML-Found に追加する `run.json` (下の「ML-Found に加えるもの」) �
     - ダッシュボードとプロジェクトで Python の環境を分けられる
 - 画面で config を書き換えた場合は, ダッシュボードのデータの置き場に config を書き出して渡す. プロジェクトのファイルは変更しない
 - 起動の前に, ML-Found の `load_config` で config の誤りを確かめる
+- 1 つのプロジェクトに学習のスクリプトが複数あり, それぞれ別の default の config を使う場合は, スクリプトの本文に書かれた `configs/default/<名前>.yaml` (1 種類だけの場合) を使い, 無ければ名前で選ぶ (`train_<名前>.py` は `configs/default/<名前>.yaml`, 次に `train_<名前>.yaml`, どちらも無ければ `train.yaml`). 本文はパスの文字を探すだけで, 実行はしない. 実験の出力先も, 全ての default の config から集める
 - 中断は, ML-Found に追加する「中断の要求」で行い, 応答が無い場合だけプロセスを止める
 
 ## ML-Found に加えるもの
