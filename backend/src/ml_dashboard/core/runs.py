@@ -733,8 +733,16 @@ class RunData:
         Returns
         ----------
         best: Optional[BestValue]
-            run.json かログの値, 無ければ指標の推移から計算した値
+            run.json かログの値, 無ければ指標の推移から計算した値.
+            ベストモデルを選ばない設定 (select_best: false) の実験は None
         """
+        # GAN のように損失で良し悪しを決められない実験には, ベストを出さない
+        trainer = section(self.config, "trainer")
+        if self.status.get("select_best") is False or (
+            trainer.get("select_best") is False
+        ):
+            return None
+
         monitor, mode = get_monitor(self.config, self.history.columns)
         if isinstance(self.status.get("monitor"), str):
             monitor = self.status["monitor"]
