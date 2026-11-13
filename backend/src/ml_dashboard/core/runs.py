@@ -332,11 +332,24 @@ def thin_indices(values: list[float], limit: int) -> list[int]:
 LR_CACHE: dict[str, tuple[tuple[int, int, int], list[LrPoint]]] = {}
 
 
+# 読み込んだ model_summary.csv (ファイルの更新時刻と大きさが同じ間は再利用)
+SummaryResult = tuple[Optional[list[ModelParam]], Optional[int]]
+SUMMARY_CACHE: dict[str, tuple[tuple[int, int, int], SummaryResult]] = {}
+
+# model_summary.csv の必須の列
+SUMMARY_COLUMNS = (
+    "name", "kind", "module", "shape", "dtype", "numel", "requires_grad"
+)
+
+
 def read_model_summary(
     path: Path, limit: int = MAX_MODEL_SUMMARY_ROWS
 ) -> tuple[Optional[list[ModelParam]], Optional[int]]:
     """
     model_summary.csv (パラメータとバッファの一覧) を読み込む関数
+
+    学習の開始時に 1 回だけ書かれるので, 学習中に詳細を取り直しても
+    読み直さないように, 更新時刻と大きさが同じ間は前の結果を使う
 
     Parameters
     ----------
@@ -348,18 +361,29 @@ def read_model_summary(
     Returns
     ----------
     rows: Optional[list[ModelParam]]
-        一覧, ファイルが無いか読めない場合は None
+        一覧, ファイルが無いか空か読めない場合は None
     total: Optional[int]
         ファイルの全体の行数
     """
-    # 古い ML-Found の実験や書きかけのファイルは表示なし
-    if not path.is_file():
+    # 古い ML-Found の実験は表示なし, 同じファイルなら前の結果を使用
+    try:
+        stat = path.stat()
+    except OSError:
         return None, None
+    key = (stat.st_mtime_ns, stat.st_size, limit)
+    cached = SUMMARY_CACHE.get(str(path))
+    if cached is not None and cached[0] == key:
+        return cached[1]
+
+    # 必須の列が欠けた行 (書きかけや壊れたファイル) があれば表示なし
     rows: list[ModelParam] = []
     total = 0
+    result: SummaryResult
     try:
         with path.open(encoding="utf-8-sig", newline="") as file:
             for record in csv.DictReader(file):
+                if any(record.get(name) is None for name in SUMMARY_COLUMNS):
+                    raise ValueError("model_summary.csv の列が足りません")
                 total += 1
                 if len(rows) >= limit:
                     continue
@@ -372,10 +396,12 @@ def read_model_summary(
                         same_as=record.get("same_as") or ""
                     )
                 )
-    except (OSError, KeyError, ValueError):
-        return None, None
+        result = (rows, total) if total > 0 else (None, None)
+    except (OSError, ValueError, TypeError, csv.Error):
+        result = (None, None)
+    SUMMARY_CACHE[str(path)] = (key, result)
 
-    return rows, total
+    return result
 
 
 def read_lr_steps(path: Path, limit: int = MAX_LR_STEPS) -> list[LrPoint]:

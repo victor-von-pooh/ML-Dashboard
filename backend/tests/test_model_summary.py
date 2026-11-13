@@ -41,6 +41,14 @@ def test_read_model_summary(tmp_path: Path) -> None:
     assert rows is not None and len(rows) == 1
     assert total == 3
 
-    # 列の足りない壊れたファイルは None
-    path.write_text("name,kind\nx,parameter\n", encoding="utf-8")
-    assert read_model_summary(path) == (None, None)
+    # 列の足りない壊れたファイル, 途中で切れた行, 空のファイルは None
+    header = "name,kind,module,shape,dtype,numel,requires_grad,same_as\n"
+    for text in (
+        "name,kind\nx,parameter\n",
+        header + "a,parameter,Linear\n",
+        header + "a,parameter,Linear,4,float32,4\n",
+        header + '"a,parameter\n',
+        header,
+    ):
+        path.write_text(text, encoding="utf-8")
+        assert read_model_summary(path) == (None, None)
