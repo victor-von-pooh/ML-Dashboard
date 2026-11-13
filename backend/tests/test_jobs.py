@@ -505,6 +505,17 @@ def test_validate_param_ranges(client: TestClient, project_dir: Path) -> None:
     assert result["ok"] is False
     assert "gamma は 0.0 以上" in result["error"]
 
+    # 範囲を持たない引数の組み合わせの誤りも, 作ってみて確認のエラー
+    text = (
+        "optimizer:\n  name: SGD\n  params:\n    lr: 0.1\n"
+        "    nesterov: true\n"
+    )
+    result = client.post(url, json={"text": text}).json()
+    assert result["ok"] is False
+    assert "SGD を作れません: ValueError: Nesterov" in result["error"]
+    assert result["error"].count("ValueError") == 1
+    assert result["config"]["optimizer"]["params"]["nesterov"] is True
+
     registry = client.get("/api/registry").json()
     plateau = next(
         spec for spec in registry["schedulers"]
