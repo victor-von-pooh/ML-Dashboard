@@ -295,6 +295,12 @@ def describe_filled(cfg: Any, missing: list[str]) -> list[str]:
     notes: list[str]
         引数ごとに, 何から補うかのお知らせ
     """
+    # auto と書いた引数は学習全体のステップ数, OneCycleLR の引数は個別に
+    total = (
+        "trainer.epochs"
+        if cfg.scheduler.interval == "epoch"
+        else "trainer.epochs × 学習用データのバッチ数"
+    )
     sources = {
         "epochs": "trainer.epochs",
         "steps_per_epoch": (
@@ -303,6 +309,9 @@ def describe_filled(cfg: Any, missing: list[str]) -> list[str]:
             else "学習用データのバッチ数"
         )
     }
+    for name in missing:
+        if cfg.scheduler.params.get(name) == "auto":
+            sources[name] = f"{total} (学習全体のステップ数)"
     notes = [
         f"{cfg.scheduler.name} の {name} は, 学習を始めるときに ML-Found が"
         f" {sources.get(name, name)} にします"

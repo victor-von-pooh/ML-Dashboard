@@ -588,3 +588,26 @@ def test_validate_notes_filled_scheduler(
         f"/api/projects/{project_id}/validate", json={"text": text}
     ).json()
     assert result["notes"] == []
+
+    # auto と書いた引数は, 学習全体のステップ数で補うお知らせ
+    text = (
+        "scheduler:\n  name: CosineAnnealingLR\n  interval: step\n"
+        "  params:\n    T_max: auto\n"
+    )
+    result = client.post(
+        f"/api/projects/{project_id}/validate", json={"text": text}
+    ).json()
+    assert result["ok"] is True
+    assert result["notes"] == [
+        "CosineAnnealingLR の T_max は, 学習を始めるときに ML-Found が"
+        " trainer.epochs × 学習用データのバッチ数 (学習全体のステップ数) に"
+        "します"
+    ]
+
+    # auto と書けない引数 (範囲を持たない eta_min) は値の誤り
+    result = client.post(
+        f"/api/projects/{project_id}/validate",
+        json={"text": text + "    eta_min: auto\n"}
+    ).json()
+    assert result["ok"] is False
+    assert "eta_min には auto と書けません" in result["error"]
