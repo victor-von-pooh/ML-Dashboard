@@ -394,6 +394,7 @@ def check_config(
     # ダッシュボードの submodule の ML-Found で確かめるので, プロジェクトの
     # ML-Found の版が違う場合は, 学習を始めてからのエラーの可能性あり
     import_ml_found()
+    import torch
     from ml_found.config import load_config
     from ml_found.experiment.setup import (
         check_name,
@@ -403,7 +404,9 @@ def check_config(
     from ml_found.training.optim import (
         check_optim_config,
         missing_data_size_params,
+        try_build_optim,
     )
+    from ml_found.utils.device import get_device
 
     # start_experiment が出力先を作る前に行う確認と同じものを実行
     # 自作の Optimizer (custom_optim.Lion など) を読めるように,
@@ -425,6 +428,23 @@ def check_config(
             warnings, value_error = [], str(error)
         check_trainer_config(cfg)
         check_resume_path(cfg, project_dir)
+
+        # デバイスは start_experiment と同じく必ず確認
+        try:
+            get_device(cfg.experiment.device)
+        except ValueError as error:
+            if value_error is None:
+                value_error = f"experiment.device の誤り: {error}"
+
+        # 範囲を持たない引数の誤りも, 仮のパラメータで作ってみて確認
+        # ダッシュボードのサーバーが GPU のメモリを持ち続けないように cpu で
+        # 作成. 必須の引数が足りない場合 (スクリプトが補う) と, 値の誤りが
+        # 既にある場合は作れないので対象外
+        if not warnings and value_error is None:
+            try:
+                try_build_optim(cfg, torch.device("cpu"))
+            except ValueError as error:
+                value_error = str(error)
 
         # データの量で決まる Scheduler の引数は, 学習を始めるときに
         # ML-Found が補うのでお知らせし, エポック数の食い違いを確認
@@ -489,7 +509,10 @@ def describe(error: Exception) -> str:
     message: str
         元のエラーの種類と内容, 文に変えたエラーは内容だけ
     """
+    # 文の中に元のエラーの種類が既に入っている場合は付けない
     cause = error.__cause__ if isinstance(error.__cause__, Exception) else None
+    if cause is not None and f"{type(cause).__name__}:" in str(error):
+        cause = None
     if type(error) is ValueError and cause is not None:
         message = f"{type(cause).__name__}: {error}"
     elif type(error) is ValueError:
