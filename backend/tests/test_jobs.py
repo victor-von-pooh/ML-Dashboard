@@ -188,16 +188,21 @@ def test_stop_within_epoch(client: TestClient, project_dir: Path) -> None:
         f"/api/projects/{project_id}/jobs", json={"script": "train.py"}
     )
     job_id = created.json()["id"]
-    wait_for(client, job_id, "run_id", ...)
+    run_id = wait_for(client, job_id, "run_id", ...)["run_id"]
 
+    # エポックの区切りで止める要求の後でも, 途中で止める要求に切り替えられる
+    # (偽の学習が先に止まっても, STOP の中身は now に変わる)
+    client.post(f"/api/jobs/{job_id}/stop", json={"force": False})
     stopped = client.post(
         f"/api/jobs/{job_id}/stop", json={"force": False, "now": True}
     )
     assert stopped.json()["stop_requested"] is True
+    stop_file = project_dir / "outputs" / run_id / "STOP"
+    assert stop_file.read_text(encoding="utf-8") == "now\n"
     job = wait_for(client, job_id, "status", "finished")
     assert job["run"]["status"] == "stopped"
     output = client.get(f"/api/jobs/{job_id}/output").json()["text"]
-    assert "done stopped now" in output
+    assert "done stopped" in output
 
 
 def test_force_stop(client: TestClient, project_dir: Path) -> None:

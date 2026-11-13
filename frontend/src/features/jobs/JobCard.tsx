@@ -129,14 +129,14 @@ export function JobCard({ job, detail = false }: { job: JobInfo; detail?: boolea
                 onClick={() => {
                   if (
                     window.confirm(
-                      'エポックの途中で学習を止めますか?\n途中のエポックは捨て, 最後に終えたエポックの状態に戻します.',
+                      'エポックの途中で学習を止めますか?\n途中のエポックは捨て, 最後に終えたエポックの状態に戻します (設定によっては途中までの重みが残ります).',
                     )
                   ) {
                     stop.mutate({ jobId: job.id, force: false, now: true })
                   }
                 }}
               >
-                途中で止める
+                エポックの途中で止める
               </Button>
               <Button
                 variant="danger"
@@ -167,9 +167,10 @@ export function JobCard({ job, detail = false }: { job: JobInfo; detail?: boolea
       {running && (
         <p className="mt-2 text-xs text-ink-3">
           「エポックの区切りで止める」は今のエポックを終えて結果を保存してから止めます.
-          「途中で止める」は 1 秒ほどで止め,
-          途中のエポックを捨てて最後に終えたエポックの状態に戻します (ML-Found が対応している場合).
-          「すぐに止める」はプロセスに割り込むので, 今のエポックの結果を残しません.
+          「エポックの途中で止める」は次のバッチを終えたところで (多くは数秒以内に) 止め,
+          途中のエポックを捨てて最後に終えたエポックの状態に戻します. 対応していない版の ML-Found
+          ではエポックの区切りで止めます. 「すぐに止める」はプロセスに割り込むので,
+          今のエポックの結果を残しません.
         </p>
       )}
       {running && job.progress && (
