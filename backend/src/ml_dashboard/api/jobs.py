@@ -277,6 +277,97 @@ def check_param_names(cfg: Any) -> list[str]:
     return warnings
 
 
+def describe_filled(cfg: Any, missing: list[str]) -> list[str]:
+    """
+    学習を始めるときに ML-Found が補う Scheduler の引数を, お知らせにする関数
+
+    Parameters
+    ----------
+    cfg: Any
+        学習に使う config
+    missing: list[str]
+        補う引数の名前
+
+    Returns
+    ----------
+    notes: list[str]
+        引数ごとに, 何から補うかのお知らせ
+    """
+    sources = {
+        "epochs": "trainer.epochs",
+        "steps_per_epoch": (
+            "1 (エポックごとに進めるため)"
+            if cfg.scheduler.interval == "epoch"
+            else "学習用データのバッチ数"
+        )
+    }
+    notes = [
+        f"{cfg.scheduler.name} の {name} は, 学習を始めるときに ML-Found が"
+        f" {sources.get(name, name)} にします"
+        for name in missing
+    ]
+
+    return notes
+
+
+def check_one_cycle_epochs(cfg: Any) -> tuple[Optional[str], Optional[str]]:
+    """
+    OneCycleLR のエポック数と trainer.epochs の食い違いを確かめる関数
+
+    総ステップ数を書いていない場合は, バッチ数が分からなくてもエポック数の
+    大小で結果が決まる. 足りないと ML-Found が学習の直前にエラーにし,
+    多いと学習率が下がりきらない
+
+    Parameters
+    ----------
+    cfg: Any
+        学習に使う config
+
+    Returns
+    ----------
+    error: Optional[str]
+        総ステップ数が足りない場合の誤り
+    warning: Optional[str]
+        総ステップ数が多い場合の注意
+    """
+    from ml_found.training.optim import resolve_scheduler_class
+    from torch import optim
+
+    # OneCycleLR で総ステップ数を書かず, 1 エポックの数が決まる場合だけ判定
+    name = cfg.scheduler.name
+    if name is None or not issubclass(
+        resolve_scheduler_class(name), optim.lr_scheduler.OneCycleLR
+    ):
+        return None, None
+    params = cfg.scheduler.params
+    if params.get("total_steps") is not None:
+        return None, None
+    epochs = params.get("epochs") or cfg.trainer.epochs
+    per_epoch = params.get("steps_per_epoch")
+    if cfg.scheduler.interval == "epoch":
+        planned, total = cfg.trainer.epochs, epochs * (per_epoch or 1)
+    elif per_epoch is None:
+        planned, total = cfg.trainer.epochs, epochs
+    else:
+        return None, None
+    if total == planned:
+        return None, None
+
+    message = (
+        f"{name} の epochs ({epochs}) が trainer.epochs ({cfg.trainer.epochs})"
+        " と違います"
+    )
+    if total < planned:
+        error = (
+            message + " (学習の途中で総ステップ数を超えるので, "
+            "学習を始める前にエラーになります)"
+        )
+        return error, None
+    warning = message + " (学習率は最後まで下がりきりません)"
+
+    return None, warning
+
+
 def check_config(
     project: Project, path: Path, script: Optional[str] = None
 ) -> CheckedConfig:
@@ -334,13 +425,13 @@ def check_config(
         check_resume_path(cfg, project_dir)
 
         # データの量で決まる Scheduler の引数は, 学習を始めるときに
-        # ML-Found が補うのでお知らせ
-        missing = missing_data_size_params(cfg.scheduler)
-        notes = [
-            f"{cfg.scheduler.name} の {', '.join(missing)} は, 学習を始める"
-            "ときに ML-Found が trainer.epochs と学習用データのバッチ数から"
-            "補います"
-        ] if missing else []
+        # ML-Found が補うのでお知らせし, エポック数の食い違いを確認
+        notes = describe_filled(cfg, missing_data_size_params(cfg.scheduler))
+        mismatch, note = check_one_cycle_epochs(cfg)
+        if mismatch is not None and value_error is None:
+            value_error = mismatch
+        if note is not None:
+            warnings.append(note)
     finally:
         sys.path.remove(str(project_dir))
     config = OmegaConf.to_container(cfg, resolve=True)
