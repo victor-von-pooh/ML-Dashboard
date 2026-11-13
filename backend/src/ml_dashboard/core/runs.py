@@ -847,7 +847,11 @@ class RunData:
             env=parse_env(self.entries),
             packages=parse_packages(self.entries),
             files=list_files(self.run_dir),
-            has_git_diff=(self.run_dir / "git_diff.patch").is_file()
+            has_git_diff=(self.run_dir / "git_diff.patch").is_file(),
+            final_weights=(
+                str(self.status["final_weights"])
+                if self.status.get("final_weights") else None
+            )
         )
 
         return detail

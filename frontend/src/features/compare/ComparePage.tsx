@@ -50,7 +50,9 @@ export function ComparePage() {
   for (const id of runIds) backParams.append('sel', id)
   const backUrl = `/projects/${projectId}?${backParams.toString()}`
   const details = useRunDetails(projectId, runIds)
-  const histories = useHistories(projectId, runIds)
+  // 学習中の実験は, 曲線と画像を一定の間隔で読み直す
+  const liveIds = new Set(runIds.filter((_, index) => details[index]?.data?.status === 'running'))
+  const histories = useHistories(projectId, runIds, liveIds)
 
   // 実験ごとに, 色と読み込んだ結果をまとめる (色は選んだ順で固定)
   const slots: Slot[] = runIds.map((id, index) => ({

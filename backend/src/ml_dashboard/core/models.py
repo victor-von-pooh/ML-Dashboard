@@ -98,6 +98,9 @@ class RunDetail(RunSummary):
     packages: dict[str, str]
     files: list[RunFile]
     has_git_diff: bool
+    # final_model.pt の重み (best, last, エポックの途中で止めて戻せなかった
+    # partial), run.json が無い古い実験は None
+    final_weights: Optional[str] = None
 
 
 class LrPoint(BaseModel):

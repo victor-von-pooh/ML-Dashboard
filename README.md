@@ -11,9 +11,13 @@ ML-Found が実験ごとに残すディレクトリ (`history.csv`, `config.yaml
     <td><img src="docs/images/run_images.png" alt="実験の詳細: エポックごとの決定境界の画像の推移"></td>
     <td><img src="docs/images/analysis_dark.png" alt="ハイパーパラメータの分析 (ダークモード): 学習率と検証用の正解率の関係"></td>
   </tr>
+  <tr>
+    <td><img src="docs/images/jobs.png" alt="ジョブ: 学習の進み具合と, 3 種類の止め方"></td>
+    <td><img src="docs/images/launch_form.png" alt="学習の起動: ML-Found の登録簿から作るフォームと, 範囲の外の値の誤り, ML-Found が補う値のお知らせ"></td>
+  </tr>
 </table>
 
-画面の例は `demo/` のプロジェクト (2 本の渦巻きを分ける小さなモデル) の実験. 比較と画像の推移は `make demo` の実験で, 分析の画面はそれに加えて学習率と隠れ層の大きさを変えて `spiral` を何回か学習したもの.
+画面の例は `demo/` のプロジェクト (2 本の渦巻きを分ける小さなモデル) の実験と, その学習の起動. 比較と画像の推移は `make demo` の実験で, 分析の画面はそれに加えて学習率と隠れ層の大きさを変えて `spiral` を何回か学習したもの.
 
 ## できること
 

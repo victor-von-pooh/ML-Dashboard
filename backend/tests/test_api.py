@@ -230,6 +230,7 @@ def test_run_detail_history_log(
 
     detail = client.get(base).json()
     assert detail["seed"] == 42
+    assert detail["final_weights"] is None
     assert detail["device"] == "cpu"
     assert detail["parameter_count"] == 131
     assert detail["env"][0]["items"]["OS"] == "Darwin 27.2.0"

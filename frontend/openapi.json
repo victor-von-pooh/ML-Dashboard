@@ -2012,6 +2012,17 @@
           "has_git_diff": {
             "type": "boolean",
             "title": "Has Git Diff"
+          },
+          "final_weights": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Weights"
           }
         },
         "type": "object",
