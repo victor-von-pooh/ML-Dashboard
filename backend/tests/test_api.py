@@ -236,6 +236,13 @@ def test_run_detail_history_log(
         '{"status": "stopped", "final_weights": "partial"}'
     )
     assert client.get(base).json()["final_weights"] == "partial"
+
+    # ベストモデルを選ばない設定の実験は, 指標の推移からもベストを求めない
+    assert client.get(base).json()["best"] is not None
+    (run_dir / "run.json").write_text(
+        '{"status": "completed", "select_best": false}'
+    )
+    assert client.get(base).json()["best"] is None
     (run_dir / "run.json").write_text(
         '{"status": "completed", "final_weights": "other"}'
     )
