@@ -394,6 +394,7 @@ def check_config(
     # ダッシュボードの submodule の ML-Found で確かめるので, プロジェクトの
     # ML-Found の版が違う場合は, 学習を始めてからのエラーの可能性あり
     import_ml_found()
+    import torch
     from ml_found.config import load_config
     from ml_found.experiment.setup import (
         check_name,
@@ -428,12 +429,20 @@ def check_config(
         check_trainer_config(cfg)
         check_resume_path(cfg, project_dir)
 
+        # デバイスは start_experiment と同じく必ず確認
+        try:
+            get_device(cfg.experiment.device)
+        except ValueError as error:
+            if value_error is None:
+                value_error = f"experiment.device の誤り: {error}"
+
         # 範囲を持たない引数の誤りも, 仮のパラメータで作ってみて確認
-        # 必須の引数が足りない場合 (スクリプトが補う) と, 値の誤りが既に
-        # ある場合は作れないので対象外
+        # ダッシュボードのサーバーが GPU のメモリを持ち続けないように cpu で
+        # 作成. 必須の引数が足りない場合 (スクリプトが補う) と, 値の誤りが
+        # 既にある場合は作れないので対象外
         if not warnings and value_error is None:
             try:
-                try_build_optim(cfg, get_device(cfg.experiment.device))
+                try_build_optim(cfg, torch.device("cpu"))
             except ValueError as error:
                 value_error = str(error)
 

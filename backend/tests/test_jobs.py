@@ -516,6 +516,15 @@ def test_validate_param_ranges(client: TestClient, project_dir: Path) -> None:
     assert result["error"].count("ValueError") == 1
     assert result["config"]["optimizer"]["params"]["nesterov"] is True
 
+    # 使えないデバイスは, 必須の引数の不足 (注意) があっても値の誤り
+    text = (
+        "experiment:\n  device: gpu\n"
+        "scheduler:\n  name: StepLR\n  params:\n    gamma: 0.5\n"
+    )
+    result = client.post(url, json={"text": text}).json()
+    assert result["ok"] is False
+    assert "experiment.device の誤り" in result["error"]
+
     registry = client.get("/api/registry").json()
     plateau = next(
         spec for spec in registry["schedulers"]
