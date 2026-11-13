@@ -97,7 +97,7 @@ export function RunDetailPage() {
 
   const monitor = data.best?.monitor
   const others = Object.entries(data.final_metrics).filter(
-    ([key]) => key.startsWith('valid/') && key !== monitor,
+    ([key]) => (key.startsWith('valid/') || key.startsWith('train_eval/')) && key !== monitor,
   )
 
   return (

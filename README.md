@@ -26,7 +26,7 @@ ML-Found が実験ごとに残すディレクトリ (`history.csv`, `config.yaml
 - **プロジェクト**: ML-Found を使っているディレクトリ (`configs/default/train.yaml` を持つもの) を登録する. 親のディレクトリを指定すると, 3 階層下までのプロジェクトをまとめて探して登録できる (隠しディレクトリ, `outputs`, `data`, `node_modules` など, git の submodule の中は探さない. submodule の中のプロジェクトは, そのディレクトリを直接指定すれば探せる)
 - **実験の一覧**: 状態, default との差分, エポック数, ベストの指標, 学習時間を表で見る. config の差分の文字で絞り込み, 並べ替える
 - **実験の詳細**
-    - 学習曲線: 学習用と検証用を重ねたグラフ. ベストのエポックと Early Stopping の位置を示す (ベストモデルを選ばない設定 `trainer.select_best: false` の実験は, ベストを出さない). 拡大と対数の縦軸に対応. step ごとに学習率を変えた実験 (ML-Found の `lr_steps.csv` がある実験) は, 学習率のグラフにエポックの中の変化も重ねる
+    - 学習曲線: 学習用と検証用 (ML-Found の `trainer.eval_train` で評価し直した学習用の値も) を重ねたグラフ. ベストのエポックと Early Stopping の位置を示す (ベストモデルを選ばない設定 `trainer.select_best: false` の実験は, ベストを出さない). 拡大と対数の縦軸に対応. step ごとに学習率を変えた実験 (ML-Found の `lr_steps.csv` がある実験) は, 学習率のグラフにエポックの中の変化も重ねる
     - config: default との差分と, config 全体の検索
     - モデル: モデルの構造, Optimizer, Scheduler
     - 環境: git の情報, OS, PyTorch, パッケージの一覧, 学習時の未コミットの変更
