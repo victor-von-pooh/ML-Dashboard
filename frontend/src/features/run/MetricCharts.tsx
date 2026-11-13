@@ -39,13 +39,30 @@ export function MetricCharts({
     () =>
       groups.map((group) => ({
         group,
-        series: group.keys.map<ChartSeries>((key, position) => ({
-          name: key,
-          color: seriesVar(colorIndex(key, position)),
-          points: toPoints(history, key),
-        })),
+        series: [
+          ...group.keys.map<ChartSeries>((key, position) => ({
+            name: key,
+            color: seriesVar(colorIndex(key, position)),
+            points: toPoints(history, key),
+          })),
+          // step ごとに学習率を変えた実験は, エポックの中の変化も点線で重ねる
+          // (位置はバックエンドがエポックの軸の上に計算済み. 対数の軸では 0 以下を欠損)
+          ...(group.name === 'lr' && history.lr_steps.length > 0
+            ? [
+                {
+                  name: 'lr (更新ごと)',
+                  color: seriesVar(2),
+                  dashed: true,
+                  points: history.lr_steps.map<[number, number | null]>(({ x, lr }) => [
+                    x,
+                    logScale && lr != null && lr <= 0 ? null : lr,
+                  ]),
+                },
+              ]
+            : []),
+        ],
       })),
-    [groups, history],
+    [groups, history, logScale],
   )
 
   if (history.rows.length === 0) {
@@ -87,7 +104,11 @@ export function MetricCharts({
               markers={markers}
               logScale={logScale}
               xLabel="epoch"
-              label={`${group.name} のエポックごとの推移`}
+              label={
+                group.name === 'lr' && history.lr_steps.length > 0
+                  ? 'lr のエポックごとの推移と, 更新ごとの推移'
+                  : `${group.name} のエポックごとの推移`
+              }
             />
           </Card>
         ))}

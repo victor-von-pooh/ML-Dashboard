@@ -738,6 +738,11 @@ export interface components {
             rows: {
                 [key: string]: number | null;
             }[];
+            /**
+             * Lr Steps
+             * @default []
+             */
+            lr_steps: components["schemas"]["LrPoint"][];
         };
         /** JobCreate */
         JobCreate: {
@@ -797,6 +802,13 @@ export interface components {
             level: string | null;
             /** Message */
             message: string;
+        };
+        /** LrPoint */
+        LrPoint: {
+            /** X */
+            x: number;
+            /** Lr */
+            lr: number | null;
         };
         /** ParamSpec */
         ParamSpec: {

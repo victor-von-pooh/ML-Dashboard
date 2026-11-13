@@ -23,6 +23,7 @@ from ml_dashboard.core.models import (
     FileKind,
     History,
     LogEntry,
+    LrPoint,
     Mode,
     ParamValue,
     Progress,
@@ -41,6 +42,10 @@ TIME_PATTERN = re.compile(r"^(\d{2})-(\d{2})-(\d{2})(?:_(\d+))?$")
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 CHECKPOINT_SUFFIXES = {".pt", ".pth", ".ckpt", ".safetensors"}
 TEXT_SUFFIXES = {".yaml", ".yml", ".csv", ".log", ".patch", ".json", ".txt"}
+
+# 更新ごとの学習率をグラフに渡す点の数の上限
+MAX_LR_STEPS = 5000
+
 
 class RunNotFoundError(Exception):
     pass
@@ -276,6 +281,116 @@ def read_history_csv(path: Path) -> History:
     return history
 
 
+def thin_indices(values: list[float], limit: int) -> list[int]:
+    """
+    折れ線を間引くときに残す点の番号を選ぶ関数
+
+    等しい幅の区間ごとに最小と最大の点を残すので, 周期の短い変化の山と谷も
+    消えない. 最初と最後の点も残す
+
+    Parameters
+    ----------
+    values: list[float]
+        点の値, NaN は比べる対象外
+    limit: int
+        残す点の数の上限
+
+    Returns
+    ----------
+    indices: list[int]
+        残す点の番号 (小さい順)
+    """
+    count = len(values)
+    if count <= limit:
+        return list(range(count))
+
+    # 最初と最後の 2 点を除いた数を, 区間ごとの 2 点で割り振り
+    buckets = max((limit - 2) // 2, 1)
+    chosen = {0, count - 1}
+    for bucket in range(buckets):
+        low = bucket * count // buckets
+        high = max((bucket + 1) * count // buckets, low + 1)
+        span = [
+            index for index in range(low, high)
+            if not math.isnan(values[index])
+        ] or [low]
+        chosen.add(min(span, key=lambda index: values[index]))
+        chosen.add(max(span, key=lambda index: values[index]))
+    indices = sorted(chosen)
+
+    return indices
+
+
+# 読み込んだ lr_steps.csv の点 (ファイルの更新時刻と大きさが同じ間は再利用)
+LR_CACHE: dict[str, tuple[tuple[int, int, int], list[LrPoint]]] = {}
+
+
+def read_lr_steps(path: Path, limit: int = MAX_LR_STEPS) -> list[LrPoint]:
+    """
+    lr_steps.csv (更新ごとの学習率) を, エポックの軸の上の点にして読み込む関数
+
+    エポック e の更新は, そのエポックの記録の数で e から e + 1 の間に等間隔に
+    並べるので, エポックの最初の更新はエポックを始めた時点の学習率と同じ位置
+
+    Parameters
+    ----------
+    path: Path
+        lr_steps.csv のパス
+    limit: int = MAX_LR_STEPS
+        返す点の数の上限, 超える場合は区間ごとの最小と最大を残して間引く
+
+    Returns
+    ----------
+    points: list[LrPoint]
+        エポックの軸の上の位置と学習率, エポックの読めない行は除外
+    """
+    stat = path.stat()
+    key = (stat.st_mtime_ns, stat.st_size, limit)
+    cached = LR_CACHE.get(str(path))
+    if cached is not None and cached[0] == key:
+        return cached[1]
+
+    # 大きなファイルでも軽く済むように, 1 行ずつ数だけを読み込み
+    epochs: list[int] = []
+    lrs: list[float] = []
+    with path.open(encoding="utf-8-sig", errors="replace", newline="") as f:
+        reader = csv.reader(f)
+        header = next(reader, [])
+        if "epoch" not in header or "lr" not in header:
+            return []
+        epoch_column, lr_column = header.index("epoch"), header.index("lr")
+        for row in reader:
+            if len(row) <= max(epoch_column, lr_column):
+                continue
+            epoch = to_float(row[epoch_column])
+            if epoch is None:
+                continue
+            lr = to_float(row[lr_column])
+            epochs.append(int(epoch))
+            lrs.append(math.nan if lr is None else lr)
+
+    # エポックごとの記録の数で位置を決め, 間引いてから返却
+    counts: dict[int, int] = {}
+    for epoch in epochs:
+        counts[epoch] = counts.get(epoch, 0) + 1
+    seen: dict[int, int] = {}
+    positions = []
+    for epoch in epochs:
+        index = seen.get(epoch, 0)
+        seen[epoch] = index + 1
+        positions.append(epoch + index / counts[epoch])
+    points = [
+        LrPoint(
+            x=positions[index],
+            lr=None if math.isnan(lrs[index]) else lrs[index]
+        )
+        for index in thin_indices(lrs, limit)
+    ]
+    LR_CACHE[str(path)] = (key, points)
+
+    return points
+
+
 def read_history(run_dir: Path, entries: list[LogEntry]) -> History:
     """
     実験の指標の推移を読み込む関数
@@ -296,6 +411,9 @@ def read_history(run_dir: Path, entries: list[LogEntry]) -> History:
     path = run_dir / "history.csv"
     if path.is_file():
         history = read_history_csv(path)
+        lr_path = run_dir / "lr_steps.csv"
+        if lr_path.is_file():
+            history.lr_steps = read_lr_steps(lr_path)
         return history
 
     # 学習中や失敗した実験は, ログのエポックごとの指標から作り直し

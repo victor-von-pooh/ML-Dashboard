@@ -241,6 +241,20 @@ def test_run_detail_history_log(
     history = client.get(f"{base}/history").json()
     assert history["columns"][0] == "epoch"
     assert history["rows"][2]["lr"] is None
+    assert history["lr_steps"] == []
+
+    # step ごとに学習率を変えた実験は, 更新ごとの学習率も返却
+    # (エポックの読めない行は除外)
+    run_dir = project_dir / "outputs/demo/2026-11-08/10-00-00"
+    (run_dir / "lr_steps.csv").write_text(
+        "step,epoch,lr\n1,1,0.1\n2,1,0.05\n3,x,0.1\n4,2,nan\n"
+    )
+    history = client.get(f"{base}/history").json()
+    assert history["lr_steps"] == [
+        {"x": 1.0, "lr": 0.1},
+        {"x": 1.5, "lr": 0.05},
+        {"x": 2.0, "lr": None},
+    ]
 
     log = client.get(f"{base}/log").json()
     assert log[2]["message"].startswith("OS の情報:")

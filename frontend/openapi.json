@@ -1185,6 +1185,14 @@
             },
             "type": "array",
             "title": "Rows"
+          },
+          "lr_steps": {
+            "items": {
+              "$ref": "#/components/schemas/LrPoint"
+            },
+            "type": "array",
+            "title": "Lr Steps",
+            "default": []
           }
         },
         "type": "object",
@@ -1417,6 +1425,31 @@
           "message"
         ],
         "title": "LogEntry"
+      },
+      "LrPoint": {
+        "properties": {
+          "x": {
+            "type": "number",
+            "title": "X"
+          },
+          "lr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lr"
+          }
+        },
+        "type": "object",
+        "required": [
+          "x",
+          "lr"
+        ],
+        "title": "LrPoint"
       },
       "ParamSpec": {
         "properties": {
