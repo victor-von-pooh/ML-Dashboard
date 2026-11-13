@@ -1,4 +1,3 @@
-import argparse
 import math
 from pathlib import Path
 import struct
@@ -9,7 +8,9 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from ml_found import Experiment, Trainer, load_config, start_experiment
+from ml_found import (
+    Experiment, Trainer, load_project_config, start_experiment
+)
 
 # 決定境界の画像の大きさ (ピクセル) と, 描く範囲
 IMAGE_SIZE = 128
@@ -17,30 +18,6 @@ EXTENT = 1.3
 
 # クラスごとの色 (RGB), 背景は白と混ぜて薄く表示
 CLASS_COLORS = ((37, 99, 235), (234, 88, 12))
-
-
-def parse_args() -> argparse.Namespace:
-    """
-    コマンドライン引数を読み込む関数
-
-    Parameters
-    ----------
-    None
-
-    Returns
-    ----------
-    args: argparse.Namespace
-        コマンドライン引数, experiment の config のパスを持つ
-    """
-    # ML-Dashboard から起動した場合も同じ引数で config を切り替え
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--experiment", default="configs/experiment/train.yaml",
-        help="experiment の config のパス, 相対パスはデモのディレクトリから"
-    )
-    args = parser.parse_args()
-
-    return args
 
 
 def make_spiral(
@@ -283,15 +260,10 @@ class SpiralTrainer(Trainer):
         return {}
 
 
-# config を読み込んで実験を開始
-args = parse_args()
+# コマンドライン引数 (--experiment と「項目=値」の上書き) から config を
+# 読み込んで実験を開始 (ML-Dashboard から起動した場合も同じ引数)
 project_dir = Path(__file__).resolve().parent
-experiment_path = Path(args.experiment)
-if not experiment_path.is_absolute():
-    experiment_path = project_dir / experiment_path
-cfg, diff = load_config(
-    str(project_dir / "configs/default/train.yaml"), str(experiment_path)
-)
+cfg, diff = load_project_config(str(project_dir))
 experiment = start_experiment(cfg, diff, str(project_dir))
 
 # データとモデルを用意して学習
