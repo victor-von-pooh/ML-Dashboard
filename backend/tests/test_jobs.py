@@ -182,7 +182,14 @@ def test_stop_within_epoch(client: TestClient, project_dir: Path) -> None:
     ----------
     None
     """
-    (project_dir / "train.py").write_text(FAKE_TRAIN)
+    # 中身が now になるまで止まらない偽の学習 (区切りの要求では止まらない)
+    (project_dir / "train.py").write_text(
+        FAKE_TRAIN.replace(
+            'if (run / "STOP").exists():',
+            'if (run / "STOP").exists() and '
+            '(run / "STOP").read_text().strip() == "now":'
+        )
+    )
     project_id = register(client, project_dir)
     created = client.post(
         f"/api/projects/{project_id}/jobs", json={"script": "train.py"}
@@ -191,7 +198,6 @@ def test_stop_within_epoch(client: TestClient, project_dir: Path) -> None:
     run_id = wait_for(client, job_id, "run_id", ...)["run_id"]
 
     # エポックの区切りで止める要求の後でも, 途中で止める要求に切り替えられる
-    # (偽の学習が先に止まっても, STOP の中身は now に変わる)
     client.post(f"/api/jobs/{job_id}/stop", json={"force": False})
     stopped = client.post(
         f"/api/jobs/{job_id}/stop", json={"force": False, "now": True}
@@ -202,7 +208,7 @@ def test_stop_within_epoch(client: TestClient, project_dir: Path) -> None:
     job = wait_for(client, job_id, "status", "finished")
     assert job["run"]["status"] == "stopped"
     output = client.get(f"/api/jobs/{job_id}/output").json()["text"]
-    assert "done stopped" in output
+    assert "done stopped now" in output
 
 
 def test_force_stop(client: TestClient, project_dir: Path) -> None:
