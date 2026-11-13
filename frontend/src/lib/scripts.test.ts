@@ -25,5 +25,9 @@ describe('configForScript', () => {
   it('対応が無ければ undefined (examples の中は探さない)', () => {
     expect(configForScript('train_pinn.py', configs)).toBeUndefined()
     expect(configForScript('train_smoke.py', configs)).toBeUndefined()
+    expect(
+      configForScript('trainer.py', [...configs, 'configs/experiment/trainer.yaml']),
+    ).toBeUndefined()
+    expect(configForScript('train_.py', [...configs, 'configs/experiment/.yaml'])).toBeUndefined()
   })
 })

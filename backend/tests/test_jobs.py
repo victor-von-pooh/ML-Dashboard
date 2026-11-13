@@ -387,6 +387,7 @@ def test_default_config_per_script(
     plain = client.post(url, json={"text": text, "script": "train.py"}).json()
     assert plain["ok"] is False
     assert "data" in plain["error"]
+    assert plain["default_config"] == "configs/default/train.yaml"
     big = client.post(url, json={"text": "{}\n", "script": "train_big.py"})
     assert big.json()["default_config"] == "configs/default/train.yaml"
 

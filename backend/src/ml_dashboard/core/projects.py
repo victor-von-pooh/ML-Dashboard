@@ -80,9 +80,10 @@ def read_submodules(path: Path) -> set[Path]:
         text = (path / ".gitmodules").read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return set()
+    pattern = r"^[ \t]*path[ \t]*=[ \t]*(.+?)[ \t\r]*$"
     submodules = {
-        path / match.group(1).strip()
-        for match in re.finditer(r"^\s*path\s*=\s*(.+)$", text, re.MULTILINE)
+        path / match.group(1).strip('"')
+        for match in re.finditer(pattern, text, re.MULTILINE)
     }
 
     return submodules
@@ -106,7 +107,10 @@ def find_projects(root: Path, max_depth: int = 3) -> list[Path]:
     """
     # 幅優先で探し, プロジェクトの中と読めないディレクトリは対象外
     # submodule (取り込んだ別のリポジトリ) の中の例などは, 探す対象外
+    # vendor/lib のように深い場所の submodule も除けるように, 見つけた
+    # submodule を下の階層へ引き継ぎ
     found = []
+    submodules: set[Path] = set()
     queue = deque([(root, 0)])
     while queue:
         path, depth = queue.popleft()
@@ -115,7 +119,7 @@ def find_projects(root: Path, max_depth: int = 3) -> list[Path]:
             continue
         if depth >= max_depth:
             continue
-        submodules = read_submodules(path)
+        submodules |= read_submodules(path)
         try:
             children = sorted(
                 child for child in path.iterdir()
@@ -406,13 +410,67 @@ def read_output_dir(path: Path) -> Optional[str]:
     return output_dir
 
 
+def script_config_names(script: str) -> list[str]:
+    """
+    学習のスクリプトの名前から, 対応する config の名前の候補を作る関数
+
+    Parameters
+    ----------
+    script: str
+        学習のスクリプトの名前
+
+    Returns
+    ----------
+    names: list[str]
+        拡張子の無い config の名前, train_hf.py なら hf と train_hf の順
+    """
+    # train_ で始まる名前だけを対応させ, train.py などは train.yaml のまま
+    stem = Path(script).stem
+    names = []
+    rest = stem.removeprefix("train_")
+    if stem.startswith("train_") and rest:
+        names = [rest, stem]
+
+    return names
+
+
+def read_default_reference(project_dir: Path, script: str) -> Optional[Path]:
+    """
+    学習のスクリプトの本文から, 読み込む default の config を探す関数
+
+    Parameters
+    ----------
+    project_dir: Path
+        プロジェクトのディレクトリ
+    script: str
+        学習のスクリプトの名前
+
+    Returns
+    ----------
+    path: Optional[Path]
+        本文に configs/default/<名前>.yaml が 1 種類だけ書かれ, その
+        ファイルがあればそのパス, 無いか複数ある場合は None
+    """
+    # 読めないスクリプトは, 書かれていないものとして扱い
+    try:
+        text = (project_dir / script).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    names: set[str] = set(
+        re.findall(r"configs/default/([\w.-]+\.ya?ml)", text)
+    )
+    if len(names) != 1:
+        return None
+    path = project_dir / DEFAULT_DIR / names.pop()
+    if not path.is_file():
+        return None
+
+    return path
+
+
 def default_config_for(project_dir: Path, script: Optional[str]) -> Path:
     """
     学習のスクリプトが元にする default の config を選ぶ関数
-
-    1 つのプロジェクトに学習のスクリプトが複数あり, それぞれが別の default の
-    config を使う場合 (train_hf.py が configs/default/hf.yaml を使うなど) に,
-    スクリプトの名前から対応する config を選ぶ
 
     Parameters
     ----------
@@ -426,22 +484,49 @@ def default_config_for(project_dir: Path, script: Optional[str]) -> Path:
     path: Path
         default の config, 対応するものが無ければ configs/default/train.yaml
     """
-    # train_hf.py なら hf.yaml, train_hf.yaml の順で探し, 無ければ train.yaml
+    # スクリプトの本文に書かれた config, 次に名前 (train_hf.py なら hf.yaml,
+    # train_hf.yaml) の順で探し, 無ければ train.yaml
     path = project_dir / DEFAULT_CONFIG
     if script is None:
         return path
-    stem = Path(script).stem
-    names = []
-    if stem.startswith("train_"):
-        names.append(stem.removeprefix("train_"))
-    names.append(stem)
-    for name in names:
+    referenced = read_default_reference(project_dir, script)
+    if referenced is not None:
+        return referenced
+    for name in script_config_names(script):
         candidate = project_dir / DEFAULT_DIR / f"{name}.yaml"
         if candidate.is_file():
             path = candidate
             break
 
     return path
+
+
+def experiment_config_for(project_dir: Path, script: str) -> str:
+    """
+    学習のスクリプトの既定の experiment の config を選ぶ関数
+
+    Parameters
+    ----------
+    project_dir: Path
+        プロジェクトのディレクトリ
+    script: str
+        学習のスクリプトの名前
+
+    Returns
+    ----------
+    relative: str
+        プロジェクトのディレクトリからの相対パス, train_hf.py なら
+        configs/experiment/hf.yaml, 対応するものが無ければ train.yaml
+    """
+    # 画面がスクリプトを選んだときと同じ規則で選択
+    configs = list_experiment_configs(project_dir)
+    for name in script_config_names(script):
+        candidate = (EXPERIMENT_DIR / f"{name}.yaml").as_posix()
+        if candidate in configs:
+            return candidate
+    relative = (EXPERIMENT_DIR / "train.yaml").as_posix()
+
+    return relative
 
 
 def get_output_dirs(project_dir: Path) -> list[Path]:
@@ -464,7 +549,7 @@ def get_output_dirs(project_dir: Path) -> list[Path]:
         )
 
     # 別の default の config や experiment の config で出力先を変えた実験も
-    # 探せるように全てを集める
+    # 探せるように, 全ての config の出力先の収集
     values = [read_output_dir(project_dir / DEFAULT_CONFIG) or "outputs"]
     values.extend(
         value for value in (

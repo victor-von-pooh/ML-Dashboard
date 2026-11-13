@@ -29,9 +29,11 @@ export function LaunchPage() {
   const scripts = project.data?.scripts ?? []
   const configs = project.data?.experiment_configs ?? []
   const selectedScript = script ?? (scripts.includes('train.py') ? 'train.py' : scripts[0]) ?? ''
-  // train.yaml が無い場合は, examples/ の外の最初の config を選択
+  // スクリプトに対応する config (train_hf.py なら hf.yaml), 次に train.yaml,
+  // どちらも無い場合は examples/ の外の最初の config を選択
   const configPath =
     chosenPath ??
+    configForScript(selectedScript, configs) ??
     configs.find((path) => path === 'configs/experiment/train.yaml') ??
     configs.find((path) => !path.includes('/examples/')) ??
     configs[0] ??
@@ -65,19 +67,24 @@ export function LaunchPage() {
   }
 
   // スクリプトを替えたら, 対応する experiment の config があれば合わせて選択
-  // (書き換えた内容を捨てない場合は, config はそのまま)
+  // 書き換えた内容を捨てない場合は, スクリプトも替えずにそのまま
   const selectScript = (next: string) => {
-    setScript(next)
-    validate.reset()
     const matched = configForScript(next, configs)
-    if (!matched || matched === configPath) return
+    const switching = matched !== undefined && matched !== configPath
     if (
+      switching &&
       edited &&
-      !window.confirm('書き換えた内容を捨てて, スクリプトに合う config に切り替えますか?')
+      !window.confirm(
+        `書き換えた内容を捨てて, ${next} と ${matched.replace('configs/experiment/', '')} に切り替えますか?`,
+      )
     )
       return
-    setChosenPath(matched)
-    setDraft(null)
+    setScript(next)
+    validate.reset()
+    if (switching) {
+      setChosenPath(matched)
+      setDraft(null)
+    }
   }
 
   const editText = (value: string) => {
@@ -194,7 +201,16 @@ export function LaunchPage() {
               >
                 ML-Found で config を確かめる
               </Button>
-              {validate.data?.ok === false && <ErrorBox error={validate.data.error} />}
+              {validate.data?.ok === false && (
+                <div className="space-y-1">
+                  <ErrorBox error={validate.data.error} />
+                  {validate.data.default_config && (
+                    <p className="text-xs text-ink-3">
+                      default: <span className="font-mono">{validate.data.default_config}</span>
+                    </p>
+                  )}
+                </div>
+              )}
               {validate.data?.ok && (
                 <div>
                   <p className="mb-2 flex items-center gap-1.5 text-good-text">

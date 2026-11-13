@@ -14,10 +14,10 @@ from ml_dashboard.api.routes import NOT_FOUND, get_project
 from ml_dashboard.core.jobs import Job, JobManager
 from ml_dashboard.core.models import Progress, RunSummary
 from ml_dashboard.core.projects import (
-    EXPERIMENT_DIR,
     Project,
     ProjectError,
     default_config_for,
+    experiment_config_for,
     list_experiment_configs,
     list_scripts,
 )
@@ -507,11 +507,16 @@ def validate_config(
             400, f"学習のスクリプトが見つかりません: {body.script}"
         )
 
-    # 学習と同じ方法で読み込み, 失敗した場合は理由を返却
+    # 学習と同じ方法で読み込み, 失敗した場合は理由と元にした default を返却
     try:
         checked = validate_text(project, body.text, body.script)
     except Exception as error:
-        result = ValidateResult(ok=False, error=describe(error), diff={})
+        project_dir = Path(project.path)
+        default_path = default_config_for(project_dir, body.script)
+        result = ValidateResult(
+            ok=False, error=describe(error), diff={},
+            default_config=default_path.relative_to(project_dir).as_posix()
+        )
         return result
 
     result = ValidateResult(
@@ -560,9 +565,11 @@ def create_job(
         if body.config_text is not None:
             validate_text(project, body.config_text, body.script)
         else:
+            # config を指定しない場合は, スクリプトに対応する experiment の
+            # config (train_hf.py なら hf.yaml, 無ければ train.yaml)
             config_path = resolve_config(
                 project, body.config_path
-                or (EXPERIMENT_DIR / "train.yaml").as_posix()
+                or experiment_config_for(Path(project.path), body.script)
             )
             check_config(project, config_path, body.script)
     except HTTPException:

@@ -17,7 +17,7 @@ ML-Found が実験ごとに残すディレクトリ (`history.csv`, `config.yaml
 
 ## できること
 
-- **プロジェクト**: ML-Found を使っているディレクトリ (`configs/default/train.yaml` を持つもの) を登録する. 親のディレクトリを指定すると, 3 階層下までのプロジェクトをまとめて探して登録できる (隠しディレクトリ, `outputs`, `data`, `node_modules` など, git の submodule の中は探さない)
+- **プロジェクト**: ML-Found を使っているディレクトリ (`configs/default/train.yaml` を持つもの) を登録する. 親のディレクトリを指定すると, 3 階層下までのプロジェクトをまとめて探して登録できる (隠しディレクトリ, `outputs`, `data`, `node_modules` など, git の submodule の中は探さない. submodule の中のプロジェクトは, そのディレクトリを直接指定すれば探せる)
 - **実験の一覧**: 状態, default との差分, エポック数, ベストの指標, 学習時間を表で見る. config の差分の文字で絞り込み, 並べ替える
 - **実験の詳細**
     - 学習曲線: 学習用と検証用を重ねたグラフ. ベストのエポックと Early Stopping の位置を示す. 拡大と対数の縦軸に対応
@@ -30,7 +30,9 @@ ML-Found が実験ごとに残すディレクトリ (`history.csv`, `config.yaml
 - **メモとタグと星**: 実験にメモ, タグ, 星を付け, 一覧で星とタグで絞り込む. メモとタグの文字でも検索できる. ダッシュボードのデータの置き場に保存し, 実験のディレクトリには書き込まない
 - **比較**: 選んだ実験 (8 つまで) の学習曲線を指標ごとに重ね, config の違う項目を並べる. 番号の付いた画像があれば, 同じエポックの画像を実験ごとに横に並べる (その番号が無い実験は, それより前で最も近い番号の画像)
 - **ハイパーパラメータの分析**: 同じ名前の実験で値を変えた config の項目と, ベストや最後の指標の関係を散布図と値ごとの表で見る. 値を変えたときに結果が大きく動いた項目の順位も出す
-- **学習の起動**: 学習のスクリプトと experiment の config を選び, フォーム (エポック数, Optimizer と Scheduler とその引数. ML-Found の登録簿から説明と範囲付きで表示) か YAML の欄で書き換えて, プロジェクトの Python で学習を始める. 起動の前に ML-Found で config の誤り (存在しない項目など) を確かめる. 学習のスクリプトは, プロジェクトのディレクトリの `train` で始まる Python のファイルで, `--experiment <config のパス>` を受け取るもの (ML-Found の例と同じ形). スクリプトごとに default の config が違う場合は名前で対応させる (`train_hf.py` は `configs/default/hf.yaml` を元にし, `configs/experiment/hf.yaml` を最初に選ぶ. 対応する config が無ければ `train.yaml`)
+- **学習の起動**: 学習のスクリプトと experiment の config を選び, フォーム (エポック数, Optimizer と Scheduler とその引数. ML-Found の登録簿から説明と範囲付きで表示) か YAML の欄で書き換えて, プロジェクトの Python で学習を始める. 起動の前に ML-Found で config の誤り (存在しない項目など) を確かめる. 学習のスクリプトは, プロジェクトのディレクトリの `train` で始まる Python のファイルで, `--experiment <config のパス>` を受け取るもの (ML-Found の例と同じ形). スクリプトごとに default の config が違う場合は, 名前で対応させる
+    - 起動の前の確認は, スクリプトの本文に `configs/default/<名前>.yaml` が 1 種類だけ書かれていればその config を元にする. 無ければ名前で選び, `train_hf.py` なら `configs/default/hf.yaml`, 次に `train_hf.yaml`, どちらも無ければ `train.yaml` を元にする. 元にした config は確かめた結果に表示する
+    - スクリプトを選ぶと, 名前で対応する experiment の config (`configs/experiment/hf.yaml` など. `train.py` なら `train.yaml`) があれば, それに切り替える. 無ければ選んでいる config のまま
 - **ジョブ**: 起動した学習のエポックとバッチの進捗バー, 残り時間の目安, 標準出力を見る. エポックの区切りで止めるか, すぐに止める (Ctrl-C と同じ). 学習中の実験は一覧と学習曲線も自動で更新する
 - ライトとダークの表示
 

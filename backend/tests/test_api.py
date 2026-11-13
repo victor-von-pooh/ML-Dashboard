@@ -122,12 +122,16 @@ def test_scan_skips_submodules(client: TestClient, tmp_path: Path) -> None:
     """
     # リポジトリの直下のタスクと, submodule の中の例を用意
     root = tmp_path / "repo"
-    projects = (root / "tasks" / "task_a", root / "lib" / "examples" / "b")
+    projects = (
+        root / "tasks" / "task_a", root / "lib" / "examples" / "b",
+        root / "vendor" / "deep" / "c"
+    )
     for project in projects:
         (project / "configs" / "default").mkdir(parents=True)
         (project / "configs" / "default" / "train.yaml").write_text("{}\n")
     (root / ".gitmodules").write_text(
         '[submodule "lib"]\n\tpath = lib\n\turl = https://example.com/lib\n'
+        '[submodule "deep"]\n\tpath = vendor/deep\n'
     )
 
     found = client.post("/api/projects/scan", json={"path": str(root)})
