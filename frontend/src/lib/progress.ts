@@ -1,10 +1,20 @@
 import type { JobInfo, Progress, RunStatus } from '../api/client'
 
-/** エポックの中の進み具合 (0 から 1). 検証中は学習を終えたものとして扱う */
+/**
+ * エポックの中の進み具合 (0 から 1). 検証中と, 学習用データの評価し直し
+ * (train_eval) の間は, 学習を終えたものとして扱う
+ */
 export function progressRatio(progress: Progress): number {
-  if (!progress.total_batches) return progress.phase === 'valid' ? 1 : 0
-  const within = Math.min(1, progress.batch / progress.total_batches)
-  return progress.phase === 'valid' ? 1 : within
+  if (progress.phase !== 'train') return 1
+  if (!progress.total_batches) return 0
+  return Math.min(1, progress.batch / progress.total_batches)
+}
+
+/** 進み具合のフェーズの表示名 */
+export function phaseLabel(phase: string): string {
+  if (phase === 'valid') return '検証'
+  if (phase === 'train_eval') return '学習用データの評価'
+  return '学習'
 }
 
 /** これまでの速さから, 予定のエポックを終えるまでの残りの秒数を見積もる */

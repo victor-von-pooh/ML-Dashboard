@@ -11,7 +11,14 @@ import { Card, EmptyState, ErrorBox, PageHeader, Spinner, StatusBadge } from '..
 import { seriesVar } from '../../lib/colors'
 import { formatDateTime, formatDuration, formatMetric, formatValue } from '../../lib/format'
 import { groupImageSeries, sharedImageSeries } from '../../lib/images'
-import { MAX_COMPARE, diffConfigs, flattenConfig, groupMetrics, toPoints } from '../../lib/metrics'
+import {
+  MAX_COMPARE,
+  TRAIN_PREFIXES,
+  diffConfigs,
+  flattenConfig,
+  groupMetrics,
+  toPoints,
+} from '../../lib/metrics'
 import { ImageCompare } from './ImageCompare'
 
 /** 実験の短い名前. 名前が全て同じなら月日と時刻だけ, 違うなら名前と時刻 */
@@ -86,12 +93,10 @@ export function ComparePage() {
   const allColumns = [...new Set(ready.flatMap((slot) => slot.history.columns))]
   const charts = groupMetrics(allColumns)
     .flatMap((group) => group.keys)
-    .filter(
-      (key) =>
-        showTrain ||
-        !key.startsWith('train/') ||
-        !allColumns.includes(key.replace('train/', 'valid/')),
-    )
+    .filter((key) => {
+      const prefix = TRAIN_PREFIXES.find((item) => key.startsWith(item))
+      return showTrain || !prefix || !allColumns.includes(key.replace(prefix, 'valid/'))
+    })
     .map((column) => {
       const having = ready.filter((slot) => slot.history.columns.includes(column))
       const missing = ready.filter((slot) => !slot.history.columns.includes(column))

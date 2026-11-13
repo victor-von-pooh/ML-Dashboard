@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { JobInfo, Progress } from '../api/client'
-import { estimateRemaining, jobStatus, progressRatio } from './progress'
+import { estimateRemaining, jobStatus, phaseLabel, progressRatio } from './progress'
 
 const base: Progress = {
   phase: 'train',
@@ -19,6 +19,14 @@ describe('progress', () => {
     expect(progressRatio(base)).toBe(0.5)
     expect(progressRatio({ ...base, phase: 'valid', batch: 1 })).toBe(1)
     expect(progressRatio({ ...base, total_batches: null })).toBe(0)
+  })
+
+  it('学習用データの評価し直しの間は学習を終えたものとし, 表示名を分ける', () => {
+    expect(progressRatio({ ...base, phase: 'train_eval', batch: 1 })).toBe(1)
+    expect(progressRatio({ ...base, phase: 'train_eval', total_batches: null })).toBe(1)
+    expect(phaseLabel('train')).toBe('学習')
+    expect(phaseLabel('train_eval')).toBe('学習用データの評価')
+    expect(phaseLabel('valid')).toBe('検証')
   })
 
   it('これまでの速さから残りの時間を見積もる', () => {

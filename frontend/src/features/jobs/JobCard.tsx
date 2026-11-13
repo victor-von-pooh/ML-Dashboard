@@ -6,7 +6,7 @@ import { encodeRunId, type JobInfo, type Progress } from '../../api/client'
 import { useStopJob } from '../../api/hooks'
 import { Button, ErrorBox, StatusBadge } from '../../components/ui'
 import { formatDateTime, formatDuration } from '../../lib/format'
-import { estimateRemaining, jobStatus, progressRatio } from '../../lib/progress'
+import { estimateRemaining, jobStatus, phaseLabel, progressRatio } from '../../lib/progress'
 
 /** 割合の進捗バー. 読み上げ用に値も持たせる */
 export function ProgressBar({
@@ -51,7 +51,7 @@ export function ProgressBar({
 /** エポックとバッチの進捗バー */
 export function ProgressBars({ progress }: { progress: Progress }) {
   const remaining = estimateRemaining(progress, progress.start_epoch)
-  const phase = progress.phase === 'valid' ? '検証' : '学習'
+  const phase = phaseLabel(progress.phase)
   return (
     <div className="space-y-3">
       <ProgressBar

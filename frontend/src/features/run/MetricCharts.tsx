@@ -6,10 +6,11 @@ import { Card } from '../../components/ui'
 import { groupMetrics, toPoints } from '../../lib/metrics'
 import { seriesVar } from '../../lib/colors'
 
-/** 学習用を 1 色目, 検証用を 2 色目にそろえる */
+/** 学習用を 1 色目, 検証用を 2 色目, 学習用データの評価し直しを 3 色目にそろえる */
 function colorIndex(key: string, position: number): number {
   if (key.startsWith('train/')) return 0
   if (key.startsWith('valid/')) return 1
+  if (key.startsWith('train_eval/')) return 2
   return position
 }
 

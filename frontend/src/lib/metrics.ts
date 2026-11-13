@@ -3,13 +3,17 @@ import type { History } from '../api/client'
 /** 比べられる実験の数の上限 (グラフの系列の色の数) */
 export const MAX_COMPARE = 8
 
-/** 1 つのグラフにまとめる指標 (例: train/loss と valid/loss を loss に) */
+/** 1 つのグラフにまとめる指標 (例: train/loss, train_eval/loss, valid/loss を loss に) */
 export interface MetricGroup {
   name: string
   keys: string[]
 }
 
-const PHASES = ['train', 'valid']
+// train_eval は, 学習用データを推論モードで評価し直した値 (ML-Found の trainer.eval_train)
+const PHASES = ['train', 'train_eval', 'valid']
+
+/** 学習用データの指標 (学習中の値と, 推論モードで評価し直した値) の接頭辞 */
+export const TRAIN_PREFIXES = ['train/', 'train_eval/']
 
 /** history.csv の列を, 学習用と検証用を重ねる指標ごとにまとめる */
 export function groupMetrics(columns: string[]): MetricGroup[] {
