@@ -62,6 +62,8 @@ make serve   # 画面をビルドして http://127.0.0.1:8765 で起動 (端末�
 
 開いたら, 画面の「プロジェクトを追加」から ML-Found を使っているディレクトリを絶対パスで登録する.
 
+画面ごとの使い方と, ML_tester のタスクで試す手順は [docs/GUIDE.md](docs/GUIDE.md) にまとめた.
+
 ### デモのプロジェクト
 
 手元に ML-Found のプロジェクトが無い場合は, `demo/` で試せる. 2 本の渦巻きを分ける小さなモデルを CPU で数秒ずつ学習し, エポックごとの決定境界の画像 (`boundary/epoch_001.png` など) も保存する.
@@ -97,6 +99,7 @@ make api            # バックエンドの API を変えたら, 画面の型を
 | `demo/` | 動作の確認と画面の通しのテストに使う ML-Found のプロジェクト |
 | `frontend/e2e/` | 画面の通しのテスト (Playwright) |
 | `ML-Found/` | submodule |
+| `docs/GUIDE.md` | 画面ごとの使い方と, 試す手順 |
 | `docs/DESIGN.md` | 設計の方針と段階 |
 
 ## ライセンス
