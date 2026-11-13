@@ -23,6 +23,7 @@ from ml_dashboard.core.models import (
     FileKind,
     History,
     LogEntry,
+    LrStep,
     Mode,
     ParamValue,
     Progress,
@@ -41,6 +42,9 @@ TIME_PATTERN = re.compile(r"^(\d{2})-(\d{2})-(\d{2})(?:_(\d+))?$")
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 CHECKPOINT_SUFFIXES = {".pt", ".pth", ".ckpt", ".safetensors"}
 TEXT_SUFFIXES = {".yaml", ".yml", ".csv", ".log", ".patch", ".json", ".txt"}
+
+# 更新ごとの学習率をグラフに渡す点の数の上限
+MAX_LR_STEPS = 5000
 
 class RunNotFoundError(Exception):
     pass
@@ -276,6 +280,44 @@ def read_history_csv(path: Path) -> History:
     return history
 
 
+def read_lr_steps(path: Path, limit: int = MAX_LR_STEPS) -> list[LrStep]:
+    """
+    lr_steps.csv (更新ごとの学習率) を読み込む関数
+
+    Parameters
+    ----------
+    path: Path
+        lr_steps.csv のパス
+    limit: int = MAX_LR_STEPS
+        返す点の数の上限, 超える場合は等間隔に間引く (最後の点は残す)
+
+    Returns
+    ----------
+    steps: list[LrStep]
+        更新ごとの番号, エポック, 学習率, 読めない行は除外
+    """
+    text = path.read_text(encoding="utf-8", errors="replace")
+    steps = []
+    for row in csv.DictReader(text.splitlines()):
+        step, epoch = to_float(row.get("step")), to_float(row.get("epoch"))
+        if step is None or epoch is None:
+            continue
+        steps.append(
+            LrStep(
+                step=int(step), epoch=int(epoch), lr=to_float(row.get("lr"))
+            )
+        )
+
+    # 長い学習でもグラフに渡す量を抑えるように間引き
+    if len(steps) > limit:
+        stride = math.ceil(len(steps) / limit)
+        steps = steps[::stride] + (
+            [steps[-1]] if (len(steps) - 1) % stride else []
+        )
+
+    return steps
+
+
 def read_history(run_dir: Path, entries: list[LogEntry]) -> History:
     """
     実験の指標の推移を読み込む関数
@@ -296,6 +338,9 @@ def read_history(run_dir: Path, entries: list[LogEntry]) -> History:
     path = run_dir / "history.csv"
     if path.is_file():
         history = read_history_csv(path)
+        lr_path = run_dir / "lr_steps.csv"
+        if lr_path.is_file():
+            history.lr_steps = read_lr_steps(lr_path)
         return history
 
     # 学習中や失敗した実験は, ログのエポックごとの指標から作り直し

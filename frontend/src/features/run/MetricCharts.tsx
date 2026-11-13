@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import type { BestValue, History } from '../../api/client'
 import { LineChart, type ChartMarker, type ChartSeries } from '../../components/LineChart'
 import { Card } from '../../components/ui'
-import { groupMetrics, toPoints } from '../../lib/metrics'
+import { groupMetrics, lrStepPoints, toPoints } from '../../lib/metrics'
 import { seriesVar } from '../../lib/colors'
 
 /** 学習用を 1 色目, 検証用を 2 色目にそろえる */
@@ -39,11 +39,23 @@ export function MetricCharts({
     () =>
       groups.map((group) => ({
         group,
-        series: group.keys.map<ChartSeries>((key, position) => ({
-          name: key,
-          color: seriesVar(colorIndex(key, position)),
-          points: toPoints(history, key),
-        })),
+        series: [
+          ...group.keys.map<ChartSeries>((key, position) => ({
+            name: key,
+            color: seriesVar(colorIndex(key, position)),
+            points: toPoints(history, key),
+          })),
+          // step ごとに学習率を変えた実験は, エポックの中の変化も重ねる
+          ...(group.name === 'lr' && history.lr_steps.length > 0
+            ? [
+                {
+                  name: 'lr (更新ごと)',
+                  color: seriesVar(group.keys.length),
+                  points: lrStepPoints(history.lr_steps),
+                },
+              ]
+            : []),
+        ],
       })),
     [groups, history],
   )
