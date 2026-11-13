@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { ExternalLink, OctagonX, Square } from 'lucide-react'
+import { ExternalLink, OctagonX, SkipBack, Square } from 'lucide-react'
 import { Link } from 'react-router'
 
 import { encodeRunId, type JobInfo, type Progress } from '../../api/client'
@@ -124,13 +124,28 @@ export function JobCard({ job, detail = false }: { job: JobInfo; detail?: boolea
                 {job.stop_requested ? '止めています' : 'エポックの区切りで止める'}
               </Button>
               <Button
+                icon={SkipBack}
+                disabled={stop.isPending}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      'エポックの途中で学習を止めますか?\n途中のエポックは捨て, 最後に終えたエポックの状態に戻します.',
+                    )
+                  ) {
+                    stop.mutate({ jobId: job.id, force: false, now: true })
+                  }
+                }}
+              >
+                途中で止める
+              </Button>
+              <Button
                 variant="danger"
                 icon={OctagonX}
                 disabled={stop.isPending}
                 onClick={() => {
                   if (
                     window.confirm(
-                      'エポックの途中で学習を止めますか? (Ctrl-C と同じ)\n今のエポックの結果は記録されません.',
+                      'プロセスに割り込んで学習を止めますか? (Ctrl-C と同じ)\n今のエポックの結果は記録されません.',
                     )
                   ) {
                     stop.mutate({ jobId: job.id, force: true })
@@ -152,7 +167,9 @@ export function JobCard({ job, detail = false }: { job: JobInfo; detail?: boolea
       {running && (
         <p className="mt-2 text-xs text-ink-3">
           「エポックの区切りで止める」は今のエポックを終えて結果を保存してから止めます.
-          「すぐに止める」は今のエポックの結果を残しません.
+          「途中で止める」は 1 秒ほどで止め,
+          途中のエポックを捨てて最後に終えたエポックの状態に戻します (ML-Found が対応している場合).
+          「すぐに止める」はプロセスに割り込むので, 今のエポックの結果を残しません.
         </p>
       )}
       {running && job.progress && (

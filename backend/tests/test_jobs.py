@@ -36,7 +36,9 @@ else:
     status["status"] = "completed"
 (run / "run.json").write_text(json.dumps(status))
 (run / "progress.json").unlink()
-print("done", status["status"], flush=True)
+stop = run / "STOP"
+kind = stop.read_text().strip() if stop.exists() else ""
+print("done", status["status"], kind or "epoch", flush=True)
 '''
 
 
@@ -163,6 +165,39 @@ def test_job_lifecycle(client: TestClient, project_dir: Path) -> None:
 
     jobs = client.get("/api/jobs").json()
     assert [item["id"] for item in jobs] == [job_id]
+
+
+def test_stop_within_epoch(client: TestClient, project_dir: Path) -> None:
+    """
+    エポックの途中で止める要求が, STOP に now と書くことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    (project_dir / "train.py").write_text(FAKE_TRAIN)
+    project_id = register(client, project_dir)
+    created = client.post(
+        f"/api/projects/{project_id}/jobs", json={"script": "train.py"}
+    )
+    job_id = created.json()["id"]
+    wait_for(client, job_id, "run_id", ...)
+
+    stopped = client.post(
+        f"/api/jobs/{job_id}/stop", json={"force": False, "now": True}
+    )
+    assert stopped.json()["stop_requested"] is True
+    job = wait_for(client, job_id, "status", "finished")
+    assert job["run"]["status"] == "stopped"
+    output = client.get(f"/api/jobs/{job_id}/output").json()["text"]
+    assert "done stopped now" in output
 
 
 def test_force_stop(client: TestClient, project_dir: Path) -> None:

@@ -33,7 +33,7 @@ ML-Found が実験ごとに残すディレクトリ (`history.csv`, `config.yaml
 - **学習の起動**: 学習のスクリプトと experiment の config を選び, フォーム (エポック数, Optimizer と Scheduler とその引数. ML-Found の登録簿から説明と範囲付きで表示) か YAML の欄で書き換えて, プロジェクトの Python で学習を始める. 起動の前に ML-Found で config の誤り (存在しない項目など) を確かめる. 学習のスクリプトは, プロジェクトのディレクトリの `train` で始まる Python のファイルで, `--experiment <config のパス>` を受け取るもの (ML-Found の例と同じ形). スクリプトごとに default の config が違う場合は, 名前で対応させる
     - 起動の前の確認は, スクリプトの本文に `configs/default/<名前>.yaml` が 1 種類だけ書かれていればその config を元にする. 無ければ名前で選び, `train_hf.py` なら `configs/default/hf.yaml`, 次に `train_hf.yaml`, どちらも無ければ `train.yaml` を元にする. 元にした config は確かめた結果に表示する
     - スクリプトを選ぶと, 名前で対応する experiment の config (`configs/experiment/hf.yaml` など. `train.py` なら `train.yaml`) があれば, それに切り替える. 無ければ選んでいる config のまま
-- **ジョブ**: 起動した学習のエポックとバッチの進捗バー, 残り時間の目安, 標準出力を見る. エポックの区切りで止めるか, すぐに止める (Ctrl-C と同じ). 学習中の実験は一覧と学習曲線も自動で更新する
+- **ジョブ**: 起動した学習のエポックとバッチの進捗バー, 残り時間の目安, 標準出力を見る. エポックの区切りで止めるか, エポックの途中で止めて最後に終えたエポックに戻すか, すぐに止める (Ctrl-C と同じ). 学習中の実験は一覧と学習曲線も自動で更新する
 - ライトとダークの表示
 
 進み具合の表示と中断は, ML-Found が実験のディレクトリに書く `run.json` と `progress.json`, `STOP` のファイルを使う (ML-Found の README の「学習の外からの確認と中断」). 今後の予定は [docs/DESIGN.md](docs/DESIGN.md) の「段階」を参照.

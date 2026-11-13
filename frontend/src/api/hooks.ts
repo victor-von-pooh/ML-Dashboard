@@ -161,7 +161,8 @@ export function useJobOutput(jobId: string, live: boolean) {
 export function useStopJob() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: ({ jobId, force }: { jobId: string; force: boolean }) => api.stopJob(jobId, force),
+    mutationFn: ({ jobId, force, now = false }: { jobId: string; force: boolean; now?: boolean }) =>
+      api.stopJob(jobId, force, now),
     onSuccess: (job) => {
       // 一覧の表示もすぐに更新し, 止めるボタンを続けて押せないようにする
       client.setQueryData(keys.job(job.id), job)

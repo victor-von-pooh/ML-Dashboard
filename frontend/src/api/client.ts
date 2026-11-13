@@ -142,10 +142,11 @@ export const api = {
   getRegistry: () => request<Registry>('/api/registry'),
   listJobs: () => request<JobInfo[]>('/api/jobs'),
   getJob: (jobId: string) => request<JobInfo>(`/api/jobs/${encodeURIComponent(jobId)}`),
-  stopJob: (jobId: string, force: boolean) =>
+  // now はエポックの途中でも止める (ML-Found が途中のエポックを捨てる), force はプロセスに割り込む
+  stopJob: (jobId: string, force: boolean, now = false) =>
     request<JobInfo>(`/api/jobs/${encodeURIComponent(jobId)}/stop`, {
       method: 'POST',
-      body: JSON.stringify({ force }),
+      body: JSON.stringify({ force, now }),
     }),
   getJobOutput: (jobId: string) =>
     request<{ text: string }>(`/api/jobs/${encodeURIComponent(jobId)}/output`),

@@ -462,7 +462,8 @@ class JobManager:
         return jobs
 
     def stop(
-        self, job_id: str, project_of: dict[str, Project], force: bool
+        self, job_id: str, project_of: dict[str, Project], force: bool,
+        now: bool = False
     ) -> Optional[Job]:
         """
         ジョブの学習を止める関数
@@ -476,6 +477,9 @@ class JobManager:
         force: bool
             True の場合はエポックの区切りを待たずにプロセスに割り込み,
             繰り返すと SIGTERM, SIGKILL の順に強くする
+        now: bool = False
+            True の場合は STOP に now と書き, ML-Found にエポックの途中でも
+            止めてもらう (途中のエポックは捨て, 最後に終えたエポックに戻る)
 
         Returns
         ----------
@@ -488,10 +492,15 @@ class JobManager:
                 return job
             project = project_of.get(job.project_id)
 
-            # まずはエポックの区切りで止める要求を実験のディレクトリに配置
+            # まずは止める要求を実験のディレクトリに配置
+            # (中身が無ければエポックの区切りで, now ならエポックの途中でも)
             run_dir = self.find_run(job, project) if project else None
             if run_dir is not None and not force:
-                (run_dir / STOP_FILE).touch()
+                stop_path = run_dir / STOP_FILE
+                if now:
+                    stop_path.write_text("now\n", encoding="utf-8")
+                else:
+                    stop_path.touch()
 
             # 実験が無い場合と強制の場合は, このサーバーが起動したものに限り
             # シグナルを送信 (起動し直した後の pid は別のプロセスの可能性)
