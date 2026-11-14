@@ -44,6 +44,8 @@ interface Props {
   logScale?: boolean
   height?: number
   xLabel?: string
+  /** 横軸の右端 (長さの違う実験を比べるときに短い実験に合わせる). 無ければ全体 */
+  xMax?: number
   /** 読み上げ用のグラフの説明 */
   label: string
 }
@@ -61,6 +63,7 @@ export function LineChart({
   logScale = false,
   height = 260,
   xLabel,
+  xMax,
   label,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null)
@@ -149,7 +152,11 @@ export function LineChart({
           min: (value: { min: number; max: number }) =>
             value.min === value.max ? value.min - 1 : value.min,
           max: (value: { min: number; max: number }) =>
-            value.min === value.max ? value.max + 1 : value.max,
+            xMax !== undefined
+              ? Math.max(xMax, value.min + 1)
+              : value.min === value.max
+                ? value.max + 1
+                : value.max,
           minInterval: 1,
           axisLine: { lineStyle: { color: grid } },
           axisLabel: { color: ink3, fontSize: 11 },
@@ -213,7 +220,7 @@ export function LineChart({
       },
       { replaceMerge: ['series'] },
     )
-  }, [series, markers, logScale, xLabel, theme])
+  }, [series, markers, logScale, xLabel, xMax, theme])
 
   const reset = () => {
     chartRef.current?.dispatchAction({ type: 'dataZoom', start: 0, end: 100 })

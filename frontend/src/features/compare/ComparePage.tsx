@@ -45,6 +45,8 @@ export function ComparePage() {
   const [params, setParams] = useSearchParams()
   const [showTrain, setShowTrain] = useState(false)
   const [logScale, setLogScale] = useState(false)
+  // 長さの違う実験を比べるときに, 横軸を一番短い実験の最後のエポックに合わせる
+  const [fitShortest, setFitShortest] = useState(false)
   const project = useProject(projectId)
 
   // 同じ実験の重複を除き, 色の数までに制限
@@ -113,6 +115,13 @@ export function ComparePage() {
         identical: identicalSeries(series),
       }
     })
+
+  // 実験ごとの最後のエポック (長さの違う実験を比べる横軸のため)
+  const lengths = ready
+    .map((slot) => Math.max(0, ...slot.history.rows.map((row) => Number(row.epoch ?? 0))))
+    .filter((value) => value > 0)
+  const shortest = Math.min(...lengths)
+  const longest = Math.max(...lengths)
 
   // 2 つ以上の実験にある番号付きの画像の並び (同じエポックの生成画像などを並べて比べる)
   const sharedImages = sharedImageSeries(ready.map((slot) => groupImageSeries(slot.run.files, 1)))
@@ -275,6 +284,17 @@ export function ComparePage() {
                   />
                   縦軸を対数にする
                 </label>
+                {lengths.length > 1 && shortest !== longest && (
+                  <label className="flex items-center gap-1.5 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={fitShortest}
+                      onChange={(event) => setFitShortest(event.target.checked)}
+                      className="accent-[var(--accent)]"
+                    />
+                    横軸を一番短い実験 ({shortest} エポック) に合わせる
+                  </label>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -283,6 +303,7 @@ export function ComparePage() {
                   <LineChart
                     series={series}
                     logScale={logScale}
+                    xMax={fitShortest ? shortest : undefined}
                     xLabel="epoch"
                     label={`${column} の実験ごとの推移`}
                   />
