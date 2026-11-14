@@ -3,6 +3,8 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from ml_dashboard.core.runs import optimizers_from_config
+
 
 def register(client: TestClient, project_dir: Path) -> str:
     """
@@ -251,6 +253,7 @@ def test_run_detail_history_log(
 
     # Optimizer ごとの情報 (書いていない場合と形が違う場合は None)
     assert client.get(base).json()["optimizers"] is None
+    assert client.get(base).json()["monitor"] == "valid/acc"
     (run_dir / "run.json").write_text(json.dumps({
         "status": "completed",
         "optimizers": [
@@ -485,3 +488,33 @@ def test_notes_corrupt_file_and_remove(
 
     client.delete(f"/api/projects/{project_id}")
     assert not (notes_dir / f"{project_id}.json").exists()
+
+
+def test_optimizers_from_config() -> None:
+    """
+    run.json に optimizers の無い古い実験で, config の optimizers から
+    Optimizer ごとの情報を作ることを確かめる関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    None
+    """
+    # 名前ごとのクラス, 受け持つ部分, Scheduler (形の違う項目は除外)
+    config = {"optimizers": {
+        "generator": {
+            "name": "Adam", "modules": ["generator"],
+            "scheduler": {"name": "StepLR"}
+        },
+        "discriminator": {"name": "SGD", "modules": ["discriminator"]},
+        "broken": "Adam"
+    }}
+    optimizers = optimizers_from_config(config)
+    assert optimizers is not None
+    assert [
+        (item.name, item.optimizer, item.scheduler) for item in optimizers
+    ] == [("generator", "Adam", "StepLR"), ("discriminator", "SGD", None)]
+    assert optimizers_from_config({"optimizer": {"name": "Adam"}}) is None

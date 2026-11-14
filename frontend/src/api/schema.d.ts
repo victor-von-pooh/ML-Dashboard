@@ -1037,6 +1037,8 @@ export interface components {
             model_summary_rows?: number | null;
             /** Optimizers */
             optimizers?: components["schemas"]["OptimizerInfo"][] | null;
+            /** Monitor */
+            monitor?: string | null;
         };
         /** RunFile */
         RunFile: {

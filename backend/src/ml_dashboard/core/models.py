@@ -130,6 +130,8 @@ class RunDetail(RunSummary):
     # Optimizer ごとの名前, クラス, 受け持つ部分, Scheduler (run.json の
     # optimizers), 書いていない古い実験は None
     optimizers: Optional[list[OptimizerInfo]] = None
+    # 監視する指標 (ベストモデルを選ばない実験でも最後の値を出すため)
+    monitor: Optional[str] = None
 
 
 class LrPoint(BaseModel):

@@ -2175,6 +2175,17 @@
               }
             ],
             "title": "Optimizers"
+          },
+          "monitor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monitor"
           }
         },
         "type": "object",

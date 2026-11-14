@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { CheckCircle2, Info, Play, RotateCcw, ShieldCheck, TriangleAlert } from 'lucide-react'
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
 import { useConfig, useCreateJob, useProject, useValidateConfig } from '../../api/hooks'
@@ -59,7 +59,13 @@ export function LaunchPage() {
     return () => window.removeEventListener('beforeunload', warn)
   }, [edited])
 
+  // フォームに誤りのある欄 (読めない値, 範囲の外) があれば開始しない. その欄の
+  // 値は YAML に書き込んでいないので, 開始すると前の値で学習してしまうため
+  const formRef = useRef<HTMLDivElement>(null)
+  const [formError, setFormError] = useState<string | null>(null)
+
   const selectConfig = (path: string) => {
+    setFormError(null)
     if (edited && !window.confirm('書き換えた内容を捨てて, 別の config に切り替えますか?')) return
     setChosenPath(path)
     setDraft(null)
@@ -69,6 +75,7 @@ export function LaunchPage() {
   // スクリプトを替えたら, 対応する experiment の config があれば合わせて選択
   // 書き換えた内容を捨てない場合は, スクリプトも替えずにそのまま
   const selectScript = (next: string) => {
+    setFormError(null)
     const matched = configForScript(next, configs)
     const switching = matched !== undefined && matched !== configPath
     if (
@@ -88,11 +95,22 @@ export function LaunchPage() {
   }
 
   const editText = (value: string) => {
+    setFormError(null)
     setDraft({ path: configPath, text: value })
     validate.reset()
   }
 
   const launch = () => {
+    // 使えない (YAML が読めずに止めている) 欄は除く
+    const invalid = formRef.current?.querySelector<HTMLElement>(
+      '[aria-invalid="true"]:not(:disabled)',
+    )
+    if (invalid) {
+      setFormError('フォームに誤りのある欄があります. 直してから開始してください')
+      invalid.focus()
+      return
+    }
+    setFormError(null)
     create.mutate(
       edited || !configPath
         ? { script: selectedScript, config_text: text }
@@ -183,14 +201,16 @@ export function LaunchPage() {
             </div>
           </Card>
 
-          <ConfigForm
-            // config かスクリプトを選び直したら, フォームの状態 (選び直した名前など) も作り直す
-            key={`${selectedScript}:${configPath ?? 'none'}`}
-            projectId={projectId}
-            script={selectedScript}
-            text={text}
-            onChange={editText}
-          />
+          <div ref={formRef}>
+            <ConfigForm
+              // config かスクリプトを選び直したら, フォームの状態 (選び直した名前など) も作り直す
+              key={`${selectedScript}:${configPath ?? 'none'}`}
+              projectId={projectId}
+              script={selectedScript}
+              text={text}
+              onChange={editText}
+            />
+          </div>
 
           <Card title="起動の前の確認">
             <div className="space-y-3 text-sm">
@@ -250,6 +270,7 @@ export function LaunchPage() {
             </div>
           </Card>
 
+          {formError && <ErrorBox error={formError} />}
           {create.error && <ErrorBox error={create.error} />}
           <Button
             variant="primary"
