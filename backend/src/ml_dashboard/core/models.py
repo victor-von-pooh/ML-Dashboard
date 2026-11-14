@@ -129,8 +129,10 @@ class LrPoint(BaseModel):
 class History(BaseModel):
     columns: list[str]
     rows: list[dict[str, Optional[float]]]
-    # step ごとに学習率を変えた実験の, 更新ごとの学習率 (lr_steps.csv)
+    # step ごとに学習率を変えた実験の, 更新ごとの学習率 (lr_steps.csv の lr)
     lr_steps: list[LrPoint] = []
+    # 複数の Optimizer の実験の, 列 (lr_<名前>) ごとの更新ごとの学習率
+    named_lr_steps: dict[str, list[LrPoint]] = {}
 
 
 # 分析に使う config の値 (入れ子は . でつないだ項目, 配列は JSON の文字列)

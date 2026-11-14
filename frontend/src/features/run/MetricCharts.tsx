@@ -7,6 +7,15 @@ import { groupMetrics, toPoints } from '../../lib/metrics'
 import { seriesVar } from '../../lib/colors'
 
 /** 学習用を 1 色目, 検証用を 2 色目, 学習用データの評価し直しを 3 色目にそろえる */
+/**
+ * 学習率のグラフに重ねる, 更新ごとの学習率の点を返す. lr は 1 つの Optimizer の列,
+ * lr_<名前> は名前付きの複数の Optimizer の列で, それ以外の指標は空
+ */
+function stepsOf(history: History, name: string): History['lr_steps'] {
+  if (name === 'lr') return history.lr_steps
+  return history.named_lr_steps[name] ?? []
+}
+
 function colorIndex(key: string, position: number): number {
   if (key.startsWith('train/')) return 0
   if (key.startsWith('valid/')) return 1
@@ -48,13 +57,13 @@ export function MetricCharts({
           })),
           // step ごとに学習率を変えた実験は, エポックの中の変化も点線で重ねる
           // (位置はバックエンドがエポックの軸の上に計算済み. 対数の軸では 0 以下を欠損)
-          ...(group.name === 'lr' && history.lr_steps.length > 0
+          ...(stepsOf(history, group.name).length > 0
             ? [
                 {
-                  name: 'lr (更新ごと)',
+                  name: `${group.name} (更新ごと)`,
                   color: seriesVar(2),
                   dashed: true,
-                  points: history.lr_steps.map<[number, number | null]>(({ x, lr }) => [
+                  points: stepsOf(history, group.name).map<[number, number | null]>(({ x, lr }) => [
                     x,
                     logScale && lr != null && lr <= 0 ? null : lr,
                   ]),
@@ -106,8 +115,8 @@ export function MetricCharts({
               logScale={logScale}
               xLabel="epoch"
               label={
-                group.name === 'lr' && history.lr_steps.length > 0
-                  ? 'lr のエポックごとの推移と, 更新ごとの推移'
+                stepsOf(history, group.name).length > 0
+                  ? `${group.name} のエポックごとの推移と, 更新ごとの推移`
                   : `${group.name} のエポックごとの推移`
               }
             />

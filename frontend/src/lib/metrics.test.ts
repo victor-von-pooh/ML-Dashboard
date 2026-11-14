@@ -66,7 +66,12 @@ describe('summarizeDiff', () => {
 
 describe('toPoints', () => {
   it('エポックの列が無い場合は行の番号を使う', () => {
-    const history = { columns: ['loss'], rows: [{ loss: 1 }, { loss: null }], lr_steps: [] }
+    const history = {
+      columns: ['loss'],
+      rows: [{ loss: 1 }, { loss: null }],
+      lr_steps: [],
+      named_lr_steps: {},
+    }
     expect(toPoints(history, 'loss')).toEqual([
       [1, 1],
       [2, null],
