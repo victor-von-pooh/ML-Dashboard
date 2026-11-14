@@ -667,6 +667,25 @@ def test_validate_named_optimizers(
     assert result["notes"][0].startswith("optimizers.generator: ")
     assert "T_max" in result["notes"][0]
 
+    # 1 つ目の必須の引数の不足 (注意) があっても, 2 つ目の名前の誤りはエラー
+    text = (
+        "optimizers:\n  discriminator:\n    scheduler:\n      name: StepLR\n"
+        "  generator:\n    params:\n      lrr: 0.1\n"
+    )
+    result = client.post(url, json={"text": text}).json()
+    assert result["ok"] is False
+    assert "optimizers.generator" in result["error"]
+    assert "lrr" in result["error"]
+
+    # trainer の値の参照 (${...}) も, 名前ごとの確認で解決
+    text = (
+        "trainer:\n  epochs: ${experiment.seed}\n"
+        "optimizers:\n  generator:\n    scheduler:\n"
+        "      name: OneCycleLR\n      params:\n        max_lr: 0.1\n"
+    )
+    result = client.post(url, json={"text": text}).json()
+    assert "InterpolationKeyError" not in (result.get("error") or "")
+
     # 一番上の optimizer は書けない
     result = client.post(
         url, json={"text": "optimizer:\n  name: SGD\n"}

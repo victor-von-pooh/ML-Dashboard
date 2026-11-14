@@ -252,10 +252,13 @@ def optim_views(cfg: Any) -> list[tuple[str, Any]]:
     from ml_found.training.optim import named_views, uses_named_optimizers
 
     # 名前付きの Optimizer は, ML-Found と同じ形の名前ごとの config
+    # (trainer の値の参照 ${...} も解決できるように, 元の config で解決)
     if uses_named_optimizers(cfg):
-        views = [
-            (f"optimizers.{name}: ", view) for name, view in named_views(cfg)
-        ]
+        trainer = OmegaConf.to_container(cfg.trainer, resolve=True)
+        views = []
+        for name, view in named_views(cfg):
+            view.trainer = trainer
+            views.append((f"optimizers.{name}: ", view))
     else:
         views = [("", cfg)]
 
@@ -288,19 +291,23 @@ def check_param_names(cfg: Any) -> list[str]:
     )
 
     # 名前の誤りはエラーのまま, 必須の引数の不足だけを注意として返却
+    # 名前付きの Optimizer は, 1 つの不足で他の名前の確認が止まらないように
+    # 名前ごとに確認
     warnings = []
-    try:
-        check_optim_params(cfg)
-    except ValueError as error:
-        if "必須の引数がありません" not in str(error):
-            raise
-        warnings.append(
-            f"{error} (学習のスクリプトが補う場合はそのまま起動できます)"
-        )
+    for prefix, view in optim_views(cfg):
+        try:
+            check_optim_params(view)
+        except ValueError as error:
+            if "必須の引数がありません" not in str(error):
+                if not prefix:
+                    raise
+                raise ValueError(f"{prefix}{error}") from None
+            warnings.append(
+                f"{prefix}{error} (学習のスクリプトが補う場合はそのまま起動"
+                "できます)"
+            )
 
-        # ML-Found は不足で止まり値の範囲を確かめないので, 範囲だけを確認
-        # (名前付きの Optimizer は名前ごと)
-        for prefix, view in optim_views(cfg):
+            # ML-Found は不足で止まり値の範囲を確かめないので, 範囲だけを確認
             try:
                 check_param_values(
                     resolve_optimizer_class(view.optimizer.name),
@@ -312,7 +319,9 @@ def check_param_names(cfg: Any) -> list[str]:
                         view.scheduler.params
                     )
             except ValueError as value_error:
-                raise ValueError(f"{prefix}{value_error}") from value_error
+                if not prefix:
+                    raise
+                raise ValueError(f"{prefix}{value_error}") from None
 
     return warnings
 
