@@ -84,18 +84,23 @@ export function AnalysisPage() {
   const name = pick(search.get('name'), names, names[0] ?? '')
   const runs = useMemo(() => all.filter((run) => run.name === name), [all, name])
 
-  const varying = useMemo(() => varyingParams(runs), [runs])
   const metrics = useMemo(() => metricOptions(runs), [runs])
+  const metric = pick(
+    search.get('y'),
+    metrics.map((item) => item.id),
+    'best',
+  )
+  // 変えた項目と何通りかは, 結果のある実験だけで数える (結果の無い実験だけが
+  // 違う値の項目を, 既定の横軸に選ばないため)
+  const varying = useMemo(() => {
+    const scored = runs.filter((run) => metricValue(run, metric) != null)
+    return varyingParams(scored.length > 0 ? scored : runs)
+  }, [runs, metric])
   const defaultX = varying.find((item) => item.complete && !item.noise)?.key
   const xKey = pick(
     search.get('x'),
     varying.map((item) => item.key),
     defaultX ?? varying[0]?.key ?? '',
-  )
-  const metric = pick(
-    search.get('y'),
-    metrics.map((item) => item.id),
-    'best',
   )
   const inferred = metricDirection(runs, metric)
   const direction: Direction = pick(search.get('dir'), ['max', 'min'], inferred) as Direction
