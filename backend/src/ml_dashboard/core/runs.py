@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Optional, cast
 
 from omegaconf import OmegaConf
+from pydantic import ValidationError
 
 from ml_dashboard.core.logs import (
     DEFAULT_FORMAT,
@@ -26,6 +27,7 @@ from ml_dashboard.core.models import (
     LrPoint,
     Mode,
     ModelParam,
+    OptimizerInfo,
     ParamValue,
     Progress,
     RunDetail,
@@ -975,10 +977,43 @@ class RunData:
                 else None
             ),
             model_summary=summary_rows,
-            model_summary_rows=summary_total
+            model_summary_rows=summary_total,
+            optimizers=read_optimizers(self.status)
         )
 
         return detail
+
+
+def read_optimizers(
+    status: dict[str, Any]
+) -> Optional[list[OptimizerInfo]]:
+    """
+    run.json の optimizers (Optimizer ごとの名前, クラス, 受け持つ部分,
+    Scheduler) を読む関数
+
+    Parameters
+    ----------
+    status: dict[str, Any]
+        run.json の内容
+
+    Returns
+    ----------
+    optimizers: Optional[list[OptimizerInfo]]
+        Optimizer ごとの情報 (形の違う行は除く), 書いていない場合と
+        リストでない場合は None
+    """
+    # 形の違う行 (手で書き換えたものなど) だけを除外
+    raw = status.get("optimizers")
+    if not isinstance(raw, list):
+        return None
+    optimizers = []
+    for item in raw:
+        try:
+            optimizers.append(OptimizerInfo.model_validate(item))
+        except ValidationError:
+            continue
+
+    return optimizers
 
 
 def summarize_run(output_dir: Path, run_dir: Path) -> RunSummary:

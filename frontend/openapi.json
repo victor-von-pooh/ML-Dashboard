@@ -1510,6 +1510,55 @@
         ],
         "title": "ModelParam"
       },
+      "OptimizerInfo": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "optimizer": {
+            "type": "string",
+            "title": "Optimizer"
+          },
+          "modules": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modules"
+          },
+          "scheduler": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduler"
+          }
+        },
+        "type": "object",
+        "required": [
+          "optimizer"
+        ],
+        "title": "OptimizerInfo"
+      },
       "ParamSpec": {
         "properties": {
           "name": {
@@ -2112,6 +2161,20 @@
               }
             ],
             "title": "Model Summary Rows"
+          },
+          "optimizers": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/OptimizerInfo"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Optimizers"
           }
         },
         "type": "object",

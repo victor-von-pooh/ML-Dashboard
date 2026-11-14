@@ -168,6 +168,55 @@ function ParamTable({ rows, total }: { rows: ModelParam[]; total: number }) {
   )
 }
 
+/** 名前付きの複数の Optimizer の, 名前ごとのクラス, 受け持つ部分, Scheduler */
+function OptimizerTable({ optimizers }: { optimizers: NonNullable<RunDetail['optimizers']> }) {
+  return (
+    <Card title="Optimizer ごとの受け持つ部分" padded={false}>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead className="border-b border-line text-xs text-ink-3">
+            <tr>
+              <th scope="col" className="px-4 py-2 font-medium">
+                名前
+              </th>
+              <th scope="col" className="px-4 py-2 font-medium">
+                Optimizer
+              </th>
+              <th scope="col" className="px-4 py-2 font-medium">
+                受け持つ部分
+              </th>
+              <th scope="col" className="px-4 py-2 font-medium">
+                Scheduler
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {optimizers.map((item, index) => (
+              <tr key={item.name ?? `#${index}`} className="border-b border-line last:border-0">
+                <th scope="row" className="px-4 py-1.5 font-mono text-xs font-medium">
+                  {item.name}
+                </th>
+                <td className="px-4 py-1.5 font-mono text-xs">{item.optimizer}</td>
+                <td className="px-4 py-1.5 font-mono text-xs">
+                  {/* 受け持つ部分は 1 つずつ行を分け, 名前の途中で折り返さない */}
+                  {(item.modules ?? []).length > 0
+                    ? (item.modules ?? []).map((module, position) => (
+                        <div key={`${position}-${module}`} className="whitespace-nowrap">
+                          {module}
+                        </div>
+                      ))
+                    : '-'}
+                </td>
+                <td className="px-4 py-1.5 font-mono text-xs">{item.scheduler ?? 'なし'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  )
+}
+
 export function ModelTab({ run }: { run: RunDetail }) {
   const blocks: [string, string | null | undefined][] = [
     ['モデルの構造', run.model_structure],
@@ -187,6 +236,9 @@ export function ModelTab({ run }: { run: RunDetail }) {
           )}
         </Card>
       ))}
+      {run.optimizers?.some((item) => item.name !== null) && (
+        <OptimizerTable optimizers={run.optimizers} />
+      )}
       {run.model_summary && (
         <ParamTable
           rows={run.model_summary}
