@@ -956,6 +956,50 @@ def get_job(request: Request, job_id: str) -> JobInfo:
     return info
 
 
+@router.post("/jobs/{job_id}/rerun", status_code=201, responses=NOT_FOUND)
+def rerun_job(request: Request, job_id: str) -> JobInfo:
+    """
+    終わったジョブと同じスクリプトと config で, もう一度学習を起動する関数
+
+    Parameters
+    ----------
+    request: Request
+        リクエスト
+    job_id: str
+        元のジョブの ID
+
+    Returns
+    ----------
+    info: JobInfo
+        起動したジョブ
+    """
+    # 画面で書き換えた config (ジョブのディレクトリの中) は中身を, プロジェクト
+    # の config はプロジェクトからの相対パスを渡し, 起動と同じ確認を通す
+    job, project = load_job(request, job_id)
+    if project is None:
+        raise HTTPException(
+            404, f"プロジェクトが見つかりません: {job.project_id}"
+        )
+    config = Path(job.config)
+    if config.is_relative_to(get_jobs(request).job_dir(job_id)):
+        if not config.is_file():
+            raise HTTPException(400, f"config が見つかりません: {config}")
+        body = JobCreate(
+            script=job.script,
+            config_text=config.read_text(encoding="utf-8")
+        )
+    elif config.is_relative_to(Path(project.path)):
+        body = JobCreate(
+            script=job.script,
+            config_path=config.relative_to(project.path).as_posix()
+        )
+    else:
+        raise HTTPException(400, f"config の場所が分かりません: {config}")
+    info = create_job(request, project.id, body)
+
+    return info
+
+
 @router.post("/jobs/{job_id}/stop", responses=NOT_FOUND)
 def stop_job(request: Request, job_id: str, body: StopRequest) -> JobInfo:
     """

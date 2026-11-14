@@ -1,11 +1,12 @@
 import clsx from 'clsx'
-import { ExternalLink, OctagonX, SkipBack, Square } from 'lucide-react'
-import { Link } from 'react-router'
+import { ExternalLink, OctagonX, RotateCcw, SkipBack, Square } from 'lucide-react'
+import { Link, useNavigate } from 'react-router'
 
 import { encodeRunId, type JobInfo, type Progress } from '../../api/client'
-import { useStopJob } from '../../api/hooks'
+import { useRerunJob, useStopJob } from '../../api/hooks'
 import { Button, ErrorBox, StatusBadge } from '../../components/ui'
 import { formatDateTime, formatDuration } from '../../lib/format'
+import { summarizeDiff } from '../../lib/metrics'
 import { estimateRemaining, jobStatus, phaseLabel, progressRatio } from '../../lib/progress'
 
 /** 割合の進捗バー. 読み上げ用に値も持たせる */
@@ -77,6 +78,8 @@ export function JobCard({ job, detail = false }: { job: JobInfo; detail?: boolea
   const stop = useStopJob()
   const running = job.status === 'running'
   const run = job.run
+  const rerun = useRerunJob()
+  const navigate = useNavigate()
 
   return (
     <section className="rounded-xl border border-line bg-surface p-4 shadow-sm shadow-black/[0.03]">
@@ -98,6 +101,16 @@ export function JobCard({ job, detail = false }: { job: JobInfo; detail?: boolea
               ? '画面で書き換えた config'
               : job.config.split('/').slice(-3).join('/')}
           </p>
+          {/* 同じスクリプトのジョブを見分けるための, 進んだエポックと config の違い */}
+          {run && (
+            <p className="tabular truncate text-xs text-ink-2">
+              {run.epochs}
+              {run.planned_epochs != null && ` / ${run.planned_epochs}`} エポック
+              {' · '}
+              {summarizeDiff(run.diff).slice(0, 3).join(', ') || 'default との差分なし'}
+              {Object.keys(run.diff).length > 3 && ' …'}
+            </p>
+          )}
           <p className="tabular text-xs text-ink-3">
             開始 {formatDateTime(job.created_at)}
             {job.finished_at && ` · 終了 ${formatDateTime(job.finished_at)}`}
@@ -113,6 +126,18 @@ export function JobCard({ job, detail = false }: { job: JobInfo; detail?: boolea
               <ExternalLink className="size-4" aria-hidden />
               実験を開く
             </Link>
+          )}
+          {!running && (
+            <Button
+              icon={RotateCcw}
+              disabled={rerun.isPending}
+              onClick={() =>
+                rerun.mutate(job.id, { onSuccess: (next) => navigate(`/jobs/${next.id}`) })
+              }
+              title="同じスクリプトと config で, もう一度学習を起動する"
+            >
+              同じ設定でもう一度
+            </Button>
           )}
           {running && (
             <>
@@ -159,6 +184,11 @@ export function JobCard({ job, detail = false }: { job: JobInfo; detail?: boolea
         </div>
       </div>
 
+      {rerun.error && (
+        <div className="mt-3">
+          <ErrorBox error={rerun.error} />
+        </div>
+      )}
       {stop.error && (
         <div className="mt-3">
           <ErrorBox error={stop.error} />

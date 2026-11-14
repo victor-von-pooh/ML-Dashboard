@@ -846,6 +846,49 @@
         }
       }
     },
+    "/api/jobs/{job_id}/rerun": {
+      "post": {
+        "summary": "Rerun Job",
+        "description": "終わったジョブと同じスクリプトと config で, もう一度学習を起動する関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\njob_id: str\n    元のジョブの ID\n\nReturns\n----------\ninfo: JobInfo\n    起動したジョブ",
+        "operationId": "rerun_job",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobInfo"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "プロジェクトか実験が見つからない"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobs/{job_id}/stop": {
       "post": {
         "summary": "Stop Job",

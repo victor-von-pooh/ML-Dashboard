@@ -120,6 +120,9 @@ test('フォームで config を変え, 学習を起動して完了まで見届�
   await page.getByRole('button', { name: '学習を開始' }).click()
   await expect(page).toHaveURL(/\/jobs\//)
   await expect(page.getByText('完了', { exact: true }).first()).toBeVisible({ timeout: 45_000 })
+  // 終わったジョブには進んだエポックと, 同じ設定でもう一度起動するボタン
+  await expect(page.getByText(/3 \/ 3 エポック/).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: '同じ設定でもう一度' })).toBeVisible()
 
   // 起動した学習が実験の一覧に加わり, フォームで変えた Optimizer で学習している
   await page.goto(`/projects/${projectId}`)
