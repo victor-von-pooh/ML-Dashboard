@@ -362,6 +362,73 @@ class ProjectStore:
 
         return project
 
+    def move(self, project_id: str, path: str) -> Optional[Project]:
+        """
+        プロジェクトのディレクトリを付け替える関数
+
+        ディレクトリを移した場合に, 登録 (ID, 名前, メモ) を残したまま新しい
+        場所を指す. Python が前のディレクトリの中にあった場合は探し直す
+
+        Parameters
+        ----------
+        project_id: str
+            プロジェクトの ID
+        path: str
+            新しいディレクトリ
+
+        Returns
+        ----------
+        project: Optional[Project]
+            付け替えたプロジェクト, ID が無い場合は None
+        """
+        # ML-Found のプロジェクトであることの確認 (前後の空白と引用符は除く.
+        # ターミナルから貼ったパスなど)
+        project_dir = Path(
+            path.strip().strip("'\"")
+        ).expanduser().resolve()
+        if not project_dir.is_dir():
+            raise ValueError(f"ディレクトリが見つかりません: {project_dir}")
+        if not is_project_dir(project_dir):
+            raise ValueError(
+                f"{DEFAULT_CONFIG} が無いので ML-Found のプロジェクトでは"
+                f"ありません: {project_dir}"
+            )
+
+        with self.lock:
+            projects = self.load()
+            current = next(
+                (item for item in projects if item.id == project_id), None
+            )
+            if current is None:
+                return None
+
+            # 他のプロジェクトと同じディレクトリは不可
+            for project in projects:
+                if project.id != project_id and project.path == str(
+                    project_dir
+                ):
+                    raise ValueError(
+                        f"登録済みのプロジェクトです: {project.name}"
+                    )
+
+            # 前のディレクトリの中の Python (.venv など) と, もう無い Python
+            # (上の階層の .venv ごと移した場合など) は探し直して確かめる
+            python = current.python
+            if python.startswith(current.path.rstrip("/") + "/") or (
+                not Path(python).is_file()
+            ):
+                python = find_python(project_dir)
+            check_python(python)
+            moved = Project(
+                id=current.id, name=current.name, path=str(project_dir),
+                python=python, created_at=current.created_at
+            )
+            self.save([
+                moved if item.id == project_id else item for item in projects
+            ])
+
+        return moved
+
     def remove(self, project_id: str) -> bool:
         """
         プロジェクトの登録を外す関数

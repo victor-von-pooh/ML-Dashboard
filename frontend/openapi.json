@@ -150,6 +150,57 @@
           }
         }
       },
+      "patch": {
+        "summary": "Move Project",
+        "description": "プロジェクトのディレクトリを付け替える関数 (メモとタグは残す)\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\nbody: ProjectMove\n    新しいディレクトリ\n\nReturns\n----------\ninfo: ProjectInfo\n    付け替えたプロジェクト",
+        "operationId": "move_project",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectMove"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectInfo"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "プロジェクトか実験が見つからない"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "summary": "Delete Project",
         "description": "プロジェクトの登録を外す関数, 実験のファイルは消さない\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\n\nReturns\n----------\nNone",
@@ -1888,6 +1939,19 @@
           "latest_run"
         ],
         "title": "ProjectInfo"
+      },
+      "ProjectMove": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "ProjectMove"
       },
       "Registry": {
         "properties": {

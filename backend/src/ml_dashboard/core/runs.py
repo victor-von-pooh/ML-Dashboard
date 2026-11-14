@@ -3,6 +3,7 @@ import json
 import math
 import os
 import re
+from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional, cast
@@ -331,6 +332,16 @@ def thin_indices(values: list[float], limit: int) -> list[int]:
 
 
 # 読み込んだ lr_steps.csv の点 (ファイルの更新時刻と大きさが同じ間は再利用)
+# 読み込んだ train.log の記録 (ファイルの更新時刻と大きさが同じ間は再利用.
+# 学習中は一覧を何度も読み直すので, 大きなログを毎回読まないため). 最近
+# 使ったものから, ファイルの大きさの合計が上限に収まるだけを残す
+LOG_CACHE: OrderedDict[
+    str, tuple[tuple[int, int, str], list[LogEntry]]
+] = OrderedDict()
+
+# 残すログのファイルの大きさの合計の上限 (バイト)
+MAX_LOG_CACHE_BYTES = 64 * 1024 * 1024
+
 LR_CACHE: dict[str, tuple[tuple[int, int, int], list[LrPoint]]] = {}
 
 
@@ -404,6 +415,47 @@ def read_model_summary(
     SUMMARY_CACHE[str(path)] = (key, result)
 
     return result
+
+
+def cached_log(path: Path, log_format: str) -> list[LogEntry]:
+    """
+    train.log を記録ごとに分けた結果を, 変わっていなければ再利用する関数
+
+    Parameters
+    ----------
+    path: Path
+        train.log のパス
+    log_format: str
+        logging の書式
+
+    Returns
+    ----------
+    entries: list[LogEntry]
+        記録 (リストは写し. 中の記録は共有するので書き換えない)
+    """
+    # ファイルが無い場合は空, 更新時刻と大きさと書式が同じなら前の結果
+    try:
+        stat = path.stat()
+    except OSError:
+        return []
+    key = (stat.st_mtime_ns, stat.st_size, log_format)
+    cached = LOG_CACHE.get(str(path))
+    if cached is not None and cached[0] == key:
+        LOG_CACHE.move_to_end(str(path))
+        return list(cached[1])
+    entries = parse_log(path, log_format)
+
+    # 上限の半分より大きいログは残さず, 合計が上限を超えたら古いものを捨てる
+    LOG_CACHE.pop(str(path), None)
+    if stat.st_size <= MAX_LOG_CACHE_BYTES // 2:
+        LOG_CACHE[str(path)] = (key, entries)
+    while LOG_CACHE and sum(
+        item[0][1] for item in LOG_CACHE.values()
+    ) > MAX_LOG_CACHE_BYTES:
+        LOG_CACHE.popitem(last=False)
+    entries = list(entries)
+
+    return entries
 
 
 def read_lr_steps(
@@ -798,7 +850,7 @@ class RunData:
         self.config = load_yaml(run_dir / "config.yaml")
         self.status = read_json(run_dir / "run.json")
         log_format = section(self.config, "experiment").get("log_format")
-        self.entries = parse_log(
+        self.entries = cached_log(
             run_dir / "train.log",
             log_format if isinstance(log_format, str) else DEFAULT_FORMAT
         )

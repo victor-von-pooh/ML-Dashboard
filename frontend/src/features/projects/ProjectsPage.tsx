@@ -3,17 +3,29 @@ import { useState } from 'react'
 import { Link } from 'react-router'
 
 import type { ProjectInfo } from '../../api/client'
-import { useProjects, useRemoveProject } from '../../api/hooks'
+import { useMoveProject, useProjects, useRemoveProject } from '../../api/hooks'
 import { Button, EmptyState, ErrorBox, PageHeader, Spinner } from '../../components/ui'
 import { AddProjectDialog } from './AddProjectDialog'
 
 function ProjectCard({ project }: { project: ProjectInfo }) {
   const remove = useRemoveProject()
+  const move = useMoveProject()
 
   const onRemove = () => {
-    if (window.confirm(`「${project.name}」の登録を外しますか? 実験のファイルは消えません.`)) {
+    if (
+      window.confirm(
+        `「${project.name}」の登録を外しますか? 実験のファイルは消えませんが, ダッシュボードで付けたメモ, タグ, 星は消えます (ディレクトリを移した場合は「場所を変える」でメモを残せます).`,
+      )
+    ) {
       remove.mutate(project.id)
     }
+  }
+  // ディレクトリを移した場合に, 登録 (メモ, タグ, 星) を残したまま場所を変える
+  const onMove = () => {
+    const typed = window.prompt(`「${project.name}」の新しいディレクトリ`, project.path)
+    // 前後の空白と引用符 (ターミナルから貼ったパスなど) を除く
+    const path = typed?.trim().replace(/^['"]|['"]$/g, '')
+    if (path && path !== project.path) move.mutate({ id: project.id, path })
   }
 
   // カード全体を押せるように, リンクの疑似要素を広げ, 削除のボタンはその上に重ねる
@@ -63,10 +75,28 @@ function ProjectCard({ project }: { project: ProjectInfo }) {
         )}
       </div>
       {project.error && (
-        <p className="flex items-start gap-1 text-xs text-critical-text">
-          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-          <span className="break-all">{project.error}</span>
-        </p>
+        <div className="relative z-10 space-y-1">
+          <p className="flex items-start gap-1 text-xs text-critical-text">
+            <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+            <span className="break-all">{project.error}</span>
+          </p>
+          {/* ディレクトリが見つからない場合だけ (移した場合) */}
+          {project.error.includes('ディレクトリが見つかりません') && (
+            <Button
+              variant="secondary"
+              onClick={onMove}
+              disabled={move.isPending}
+              aria-label={`${project.name} の場所を変える`}
+            >
+              場所を変える
+            </Button>
+          )}
+        </div>
+      )}
+      {move.error && (
+        <div className="relative z-10">
+          <ErrorBox error={move.error} />
+        </div>
       )}
       {remove.error && (
         <div className="relative z-10">

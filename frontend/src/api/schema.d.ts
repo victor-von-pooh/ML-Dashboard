@@ -126,7 +126,25 @@ export interface paths {
         delete: operations["delete_project"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Move Project
+         * @description プロジェクトのディレクトリを付け替える関数 (メモとタグは残す)
+         *
+         *     Parameters
+         *     ----------
+         *     request: Request
+         *         リクエスト
+         *     project_id: str
+         *         プロジェクトの ID
+         *     body: ProjectMove
+         *         新しいディレクトリ
+         *
+         *     Returns
+         *     ----------
+         *     info: ProjectInfo
+         *         付け替えたプロジェクト
+         */
+        patch: operations["move_project"];
         trace?: never;
     };
     "/api/projects/{project_id}/runs": {
@@ -963,6 +981,11 @@ export interface components {
             /** Error */
             error?: string | null;
         };
+        /** ProjectMove */
+        ProjectMove: {
+            /** Path */
+            path: string;
+        };
         /** Registry */
         Registry: {
             /** Optimizers */
@@ -1344,6 +1367,48 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description プロジェクトか実験が見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_project: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectMove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectInfo"];
+                };
             };
             /** @description プロジェクトか実験が見つからない */
             404: {

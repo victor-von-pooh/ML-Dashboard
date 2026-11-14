@@ -103,6 +103,14 @@ export function useRemoveProject() {
   })
 }
 
+export function useMoveProject() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, path }: { id: string; path: string }) => api.moveProject(id, path),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.projects }),
+  })
+}
+
 export function useScanProjects() {
   return useMutation({ mutationFn: api.scanProjects })
 }
