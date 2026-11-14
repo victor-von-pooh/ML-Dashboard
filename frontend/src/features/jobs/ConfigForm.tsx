@@ -343,6 +343,12 @@ export function ConfigForm({
 
   const epochs = config ? getIn(config, 'trainer.epochs') : undefined
   const [epochsInvalid, setEpochsInvalid] = useState(false)
+  // YAML の欄などで値が変わったら, 前の誤りの表示を消す
+  const [seenEpochs, setSeenEpochs] = useState(epochs)
+  if (seenEpochs !== epochs) {
+    setSeenEpochs(epochs)
+    setEpochsInvalid(false)
+  }
   const commitEpochs = (raw: string) => {
     const value = Number(raw)
     if (!Number.isInteger(value) || value < 1) {

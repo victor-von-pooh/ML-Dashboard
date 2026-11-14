@@ -9,7 +9,7 @@ import {
   Search,
   Trophy,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { encodeRunId, type RunNote, type RunStatus, type RunSummary } from '../../api/client'
@@ -135,8 +135,25 @@ function RunsPage({ projectId }: { projectId: string }) {
       },
       { replace: true },
     )
-  const query = params.get('q') ?? ''
-  const setQuery = (value: string) => update({ q: value })
+  // 検索の文字は入力欄で持ち, 打ち終えてから URL に書く (打つたびに URL を
+  // 書き換えると, 入力の位置や変換中の文字が崩れるため). 戻るなどで URL が
+  // 変わった場合は入力欄を合わせる
+  const urlQuery = params.get('q') ?? ''
+  const [query, setQueryText] = useState(urlQuery)
+  const [seenQuery, setSeenQuery] = useState(urlQuery)
+  if (seenQuery !== urlQuery) {
+    setSeenQuery(urlQuery)
+    setQueryText(urlQuery)
+  }
+  const setQuery = (value: string) => setQueryText(value)
+  useEffect(() => {
+    if (query === urlQuery) return
+    const timer = window.setTimeout(() => {
+      setSeenQuery(query)
+      update({ q: query })
+    }, 400)
+    return () => window.clearTimeout(timer)
+  })
   const statusParam = params.get('status')
   const status: RunStatus | 'all' = STATUS_FILTERS.some((item) => item.id === statusParam)
     ? (statusParam as RunStatus)
@@ -342,7 +359,10 @@ function RunsPage({ projectId }: { projectId: string }) {
           />
         </div>
         <div className="flex flex-wrap gap-1" role="group" aria-label="状態で絞り込む">
-          {STATUS_FILTERS.filter((item) => item.id === 'all' || counts[item.id]).map((item) => (
+          {/* 選んでいる状態は, 実験が無くなっても出す (何で絞り込んでいるか分かるように) */}
+          {STATUS_FILTERS.filter(
+            (item) => item.id === 'all' || counts[item.id] || item.id === status,
+          ).map((item) => (
             <button
               key={item.id}
               type="button"

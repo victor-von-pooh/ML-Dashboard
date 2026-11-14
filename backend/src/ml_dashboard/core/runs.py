@@ -890,11 +890,14 @@ class RunData:
             run.json の値, 無ければ config と指標の推移から決めた値.
             決まらない場合は None
         """
+        # run.json の値を優先, 無ければ config から決めた名前 (記録に列が
+        # ある場合だけ)
         if isinstance(self.status.get("monitor"), str):
             return str(self.status["monitor"])
-        monitor, _ = get_monitor(self.config, self.history.columns)
+        name, _ = get_monitor(self.config, self.history.columns)
+        monitor = name if name in self.history.columns else None
 
-        return monitor or None
+        return monitor
 
     def summary(self) -> RunSummary:
         """
@@ -1081,7 +1084,9 @@ def optimizers_from_config(
             )
         ))
 
-    return optimizers or None
+    result = optimizers if optimizers else None
+
+    return result
 
 
 def summarize_run(output_dir: Path, run_dir: Path) -> RunSummary:
