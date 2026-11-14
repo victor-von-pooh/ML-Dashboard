@@ -620,3 +620,75 @@ def test_validate_notes_filled_scheduler(
     ).json()
     assert result["ok"] is False
     assert "eta_min には auto と書けません" in result["error"]
+
+
+def test_validate_named_optimizers(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    名前付きの複数の Optimizer (optimizers) の config で, 引数の範囲の誤りと
+    補う Scheduler の引数のお知らせを, 名前を付けて返すことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # default を名前付きの 2 つの Optimizer に変更
+    (project_dir / "configs" / "default" / "train.yaml").write_text(
+        "experiment:\n  name: demo\n  output_dir: outputs\n"
+        "optimizers:\n"
+        "  discriminator:\n    name: Adam\n    modules: [discriminator]\n"
+        "  generator:\n    name: Adam\n    modules: [generator]\n"
+    )
+    project_id = register(client, project_dir)
+    url = f"/api/projects/{project_id}/validate"
+
+    # 範囲の外の値は, どの Optimizer かを付けた誤り
+    text = "optimizers:\n  generator:\n    params:\n      lr: -1\n"
+    result = client.post(url, json={"text": text}).json()
+    assert result["ok"] is False
+    assert "optimizers.generator" in result["error"]
+    assert "lr は 0.0 以上" in result["error"]
+
+    # Scheduler の auto は, 名前を付けたお知らせ
+    text = (
+        "optimizers:\n  generator:\n    scheduler:\n"
+        "      name: CosineAnnealingLR\n      params:\n        T_max: auto\n"
+    )
+    result = client.post(url, json={"text": text}).json()
+    assert result["ok"] is True
+    assert result["notes"][0].startswith("optimizers.generator: ")
+    assert "T_max" in result["notes"][0]
+
+    # 1 つ目の必須の引数の不足 (注意) があっても, 2 つ目の名前の誤りはエラー
+    text = (
+        "optimizers:\n  discriminator:\n    scheduler:\n      name: StepLR\n"
+        "  generator:\n    params:\n      lrr: 0.1\n"
+    )
+    result = client.post(url, json={"text": text}).json()
+    assert result["ok"] is False
+    assert "optimizers.generator" in result["error"]
+    assert "lrr" in result["error"]
+
+    # trainer の値の参照 (${...}) も, 名前ごとの確認で解決
+    text = (
+        "trainer:\n  epochs: ${experiment.seed}\n"
+        "optimizers:\n  generator:\n    scheduler:\n"
+        "      name: OneCycleLR\n      params:\n        max_lr: 0.1\n"
+    )
+    result = client.post(url, json={"text": text}).json()
+    assert "InterpolationKeyError" not in (result.get("error") or "")
+
+    # 一番上の optimizer は書けない
+    result = client.post(
+        url, json={"text": "optimizer:\n  name: SGD\n"}
+    ).json()
+    assert result["ok"] is False
+    assert "optimizers.<名前>" in result["error"]

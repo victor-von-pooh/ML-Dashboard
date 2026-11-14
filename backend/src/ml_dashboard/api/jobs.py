@@ -230,6 +230,41 @@ def resolve_config(project: Project, relative: str) -> Path:
     return path
 
 
+def optim_views(cfg: Any) -> list[tuple[str, Any]]:
+    """
+    Optimizer と Scheduler の 1 組ごとの config を, 表示に付ける接頭辞と
+    一緒に返す関数
+
+    名前付きの複数の Optimizer (optimizers) の場合は名前ごとに, そうでない
+    場合は config そのものを返す
+
+    Parameters
+    ----------
+    cfg: Any
+        学習に使う config
+
+    Returns
+    ----------
+    views: list[tuple[str, Any]]
+        接頭辞 (optimizers.<名前>: か空) と, optimizer, scheduler, trainer を
+        持つ config の組
+    """
+    from ml_found.training.optim import named_views, uses_named_optimizers
+
+    # 名前付きの Optimizer は, ML-Found と同じ形の名前ごとの config
+    # (trainer の値の参照 ${...} も解決できるように, 元の config で解決)
+    if uses_named_optimizers(cfg):
+        trainer = OmegaConf.to_container(cfg.trainer, resolve=True)
+        views = []
+        for name, view in named_views(cfg):
+            view.trainer = trainer
+            views.append((f"optimizers.{name}: ", view))
+    else:
+        views = [("", cfg)]
+
+    return views
+
+
 def check_param_names(cfg: Any) -> list[str]:
     """
     Optimizer と Scheduler の引数の名前と値を確かめ, 必須の不足は注意にする関数
@@ -256,25 +291,37 @@ def check_param_names(cfg: Any) -> list[str]:
     )
 
     # 名前の誤りはエラーのまま, 必須の引数の不足だけを注意として返却
+    # 名前付きの Optimizer は, 1 つの不足で他の名前の確認が止まらないように
+    # 名前ごとに確認
     warnings = []
-    try:
-        check_optim_params(cfg)
-    except ValueError as error:
-        if "必須の引数がありません" not in str(error):
-            raise
-        warnings.append(
-            f"{error} (学習のスクリプトが補う場合はそのまま起動できます)"
-        )
-
-        # ML-Found は不足で止まり値の範囲を確かめないので, 範囲だけを確認
-        check_param_values(
-            resolve_optimizer_class(cfg.optimizer.name), cfg.optimizer.params
-        )
-        if cfg.scheduler.name is not None:
-            check_param_values(
-                resolve_scheduler_class(cfg.scheduler.name),
-                cfg.scheduler.params
+    for prefix, view in optim_views(cfg):
+        try:
+            check_optim_params(view)
+        except ValueError as error:
+            if "必須の引数がありません" not in str(error):
+                if not prefix:
+                    raise
+                raise ValueError(f"{prefix}{error}") from None
+            warnings.append(
+                f"{prefix}{error} (学習のスクリプトが補う場合はそのまま起動"
+                "できます)"
             )
+
+            # ML-Found は不足で止まり値の範囲を確かめないので, 範囲だけを確認
+            try:
+                check_param_values(
+                    resolve_optimizer_class(view.optimizer.name),
+                    view.optimizer.params
+                )
+                if view.scheduler.name is not None:
+                    check_param_values(
+                        resolve_scheduler_class(view.scheduler.name),
+                        view.scheduler.params
+                    )
+            except ValueError as value_error:
+                if not prefix:
+                    raise
+                raise ValueError(f"{prefix}{value_error}") from None
 
     return warnings
 
@@ -475,12 +522,19 @@ def check_config(
 
         # データの量で決まる Scheduler の引数は, 学習を始めるときに
         # ML-Found が補うのでお知らせし, エポック数の食い違いを確認
-        notes = describe_filled(cfg, missing_data_size_params(cfg.scheduler))
-        mismatch, note = check_one_cycle_epochs(cfg)
-        if mismatch is not None and value_error is None:
-            value_error = mismatch
-        if note is not None:
-            warnings.append(note)
+        # (名前付きの Optimizer は名前ごとに確かめ, 名前を付けて表示)
+        notes = []
+        for prefix, view in optim_views(cfg):
+            notes += [
+                f"{prefix}{note}" for note in describe_filled(
+                    view, missing_data_size_params(view.scheduler)
+                )
+            ]
+            mismatch, note = check_one_cycle_epochs(view)
+            if mismatch is not None and value_error is None:
+                value_error = f"{prefix}{mismatch}"
+            if note is not None:
+                warnings.append(f"{prefix}{note}")
     finally:
         sys.path.remove(str(project_dir))
     config = OmegaConf.to_container(cfg, resolve=True)

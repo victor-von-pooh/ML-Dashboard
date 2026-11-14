@@ -26,7 +26,7 @@ ML-Found が実験ごとに残すディレクトリ (`history.csv`, `config.yaml
 - **プロジェクト**: ML-Found を使っているディレクトリ (`configs/default/train.yaml` を持つもの) を登録する. 親のディレクトリを指定すると, 3 階層下までのプロジェクトをまとめて探して登録できる (隠しディレクトリ, `outputs`, `data`, `node_modules` など, git の submodule の中は探さない. submodule の中のプロジェクトは, そのディレクトリを直接指定すれば探せる)
 - **実験の一覧**: 状態, default との差分, エポック数, ベストの指標, 学習時間を表で見る. config の差分の文字で絞り込み, 並べ替える
 - **実験の詳細**
-    - 学習曲線: 学習用と検証用 (ML-Found の `trainer.eval_train` で評価し直した学習用の値も) を重ねたグラフ. ベストのエポックと Early Stopping の位置を示す (ベストモデルを選ばない設定 `trainer.select_best: false` の実験は, ベストを出さない). 拡大と対数の縦軸に対応. step ごとに学習率を変えた実験 (ML-Found の `lr_steps.csv` がある実験) は, 学習率のグラフにエポックの中の変化も重ねる
+    - 学習曲線: 学習用と検証用 (ML-Found の `trainer.eval_train` で評価し直した学習用の値も) を重ねたグラフ. ベストのエポックと Early Stopping の位置を示す (ベストモデルを選ばない設定 `trainer.select_best: false` の実験は, ベストを出さない). 拡大と対数の縦軸に対応. step ごとに学習率を変えた実験 (ML-Found の `lr_steps.csv` がある実験) は, 学習率のグラフにエポックの中の変化も重ねる (名前付きの複数の Optimizer の実験は, `lr_<名前>` のグラフごと)
     - config: default との差分と, config 全体の検索
     - モデル: モデルの構造, Optimizer, Scheduler, パラメータの一覧 (名前, 層, 形, 要素数, 学習するか, 重みの共有)
     - 環境: git の情報, OS, PyTorch, パッケージの一覧, 学習時の未コミットの変更
@@ -36,7 +36,7 @@ ML-Found が実験ごとに残すディレクトリ (`history.csv`, `config.yaml
 - **メモとタグと星**: 実験にメモ, タグ, 星を付け, 一覧で星とタグで絞り込む. メモとタグの文字でも検索できる. ダッシュボードのデータの置き場に保存し, 実験のディレクトリには書き込まない
 - **比較**: 選んだ実験 (8 つまで) の学習曲線を指標ごとに重ね, config の違う項目を並べる. 番号の付いた画像があれば, 同じエポックの画像を実験ごとに横に並べる (その番号が無い実験は, それより前で最も近い番号の画像)
 - **ハイパーパラメータの分析**: 同じ名前の実験で値を変えた config の項目と, ベストや最後の指標の関係を散布図と値ごとの表で見る. 値を変えたときに結果が大きく動いた項目の順位も出す
-- **学習の起動**: 学習のスクリプトと experiment の config を選び, フォーム (エポック数, Optimizer と Scheduler とその引数. ML-Found の登録簿から説明と範囲付きで表示) か YAML の欄で書き換えて, プロジェクトの Python で学習を始める. 起動の前に ML-Found で config を確かめ, 誤り (存在しない項目, 範囲の外の値など. 値の誤りはフォームにも表示), 注意 (学習率が下がりきらないなど), お知らせ (ML-Found が学習を始めるときに補う Scheduler の引数など) を表示する. 画面からの起動では `experiment.output_dir` は変えられない. 学習のスクリプトは, プロジェクトのディレクトリの `train` で始まる Python のファイルで, `--experiment <config のパス>` を受け取るもの (ML-Found の例と同じ形. ML-Found の `load_project_config` を使うと, これと「項目=値」の上書きを受け取れる). スクリプトごとに default の config が違う場合は, 名前で対応させる
+- **学習の起動**: 学習のスクリプトと experiment の config を選び, フォーム (エポック数, Optimizer と Scheduler とその引数. ML-Found の登録簿から説明と範囲付きで表示. ML-Found の `optimizers` で名前付きの複数の Optimizer を使う場合は, 名前ごとの欄) か YAML の欄で書き換えて, プロジェクトの Python で学習を始める. 起動の前に ML-Found で config を確かめ, 誤り (存在しない項目, 範囲の外の値など. 値の誤りはフォームにも表示), 注意 (学習率が下がりきらないなど), お知らせ (ML-Found が学習を始めるときに補う Scheduler の引数など) を表示する. 画面からの起動では `experiment.output_dir` は変えられない. 学習のスクリプトは, プロジェクトのディレクトリの `train` で始まる Python のファイルで, `--experiment <config のパス>` を受け取るもの (ML-Found の例と同じ形. ML-Found の `load_project_config` を使うと, これと「項目=値」の上書きを受け取れる). スクリプトごとに default の config が違う場合は, 名前で対応させる
     - 起動の前の確認は, スクリプトの本文に `configs/default/<名前>.yaml` (`.yml` も) が 1 種類だけ書かれていればその config を元にする. 無ければ名前で選び, `train_hf.py` なら `configs/default/hf.yaml`, 次に `train_hf.yaml`, どちらも無ければ `train.yaml` を元にする. 元にした config は確かめた結果に表示する
     - スクリプトを選ぶと, 名前で対応する experiment の config (`configs/experiment/hf.yaml` など. `train.py` なら `train.yaml`) があれば, それに切り替える. 無ければ選んでいる config のまま
 - **ジョブ**: 起動した学習のエポックとバッチの進捗バー, 残り時間の目安, 標準出力を見る. エポックの区切りで止めるか, エポックの途中で止めて最後に終えたエポックに戻すか, すぐに止める (Ctrl-C と同じ). 学習中の実験は一覧と学習曲線も自動で更新する

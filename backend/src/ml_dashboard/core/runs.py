@@ -404,7 +404,9 @@ def read_model_summary(
     return result
 
 
-def read_lr_steps(path: Path, limit: int = MAX_LR_STEPS) -> list[LrPoint]:
+def read_lr_steps(
+    path: Path, limit: int = MAX_LR_STEPS, column: str = "lr"
+) -> list[LrPoint]:
     """
     lr_steps.csv (更新ごとの学習率) を, エポックの軸の上の点にして読み込む関数
 
@@ -417,6 +419,8 @@ def read_lr_steps(path: Path, limit: int = MAX_LR_STEPS) -> list[LrPoint]:
         lr_steps.csv のパス
     limit: int = MAX_LR_STEPS
         返す点の数の上限, 超える場合は区間ごとの最小と最大を残して間引く
+    column: str = "lr"
+        学習率の列 (名前付きの複数の Optimizer の場合は lr_<名前>)
 
     Returns
     ----------
@@ -425,7 +429,7 @@ def read_lr_steps(path: Path, limit: int = MAX_LR_STEPS) -> list[LrPoint]:
     """
     stat = path.stat()
     key = (stat.st_mtime_ns, stat.st_size, limit)
-    cached = LR_CACHE.get(str(path))
+    cached = LR_CACHE.get(f"{path}#{column}")
     if cached is not None and cached[0] == key:
         return cached[1]
 
@@ -435,9 +439,9 @@ def read_lr_steps(path: Path, limit: int = MAX_LR_STEPS) -> list[LrPoint]:
     with path.open(encoding="utf-8-sig", errors="replace", newline="") as f:
         reader = csv.reader(f)
         header = next(reader, [])
-        if "epoch" not in header or "lr" not in header:
+        if "epoch" not in header or column not in header:
             return []
-        epoch_column, lr_column = header.index("epoch"), header.index("lr")
+        epoch_column, lr_column = header.index("epoch"), header.index(column)
         for row in reader:
             if len(row) <= max(epoch_column, lr_column):
                 continue
@@ -465,9 +469,31 @@ def read_lr_steps(path: Path, limit: int = MAX_LR_STEPS) -> list[LrPoint]:
         )
         for index in thin_indices(lrs, limit)
     ]
-    LR_CACHE[str(path)] = (key, points)
+    LR_CACHE[f"{path}#{column}"] = (key, points)
 
     return points
+
+
+def lr_step_columns(path: Path) -> list[str]:
+    """
+    lr_steps.csv の学習率の列の名前を返す関数
+
+    Parameters
+    ----------
+    path: Path
+        lr_steps.csv のパス
+
+    Returns
+    ----------
+    columns: list[str]
+        step と epoch 以外の列の名前
+    """
+    # 見出しの行だけを読み込み
+    with path.open(encoding="utf-8-sig", errors="replace", newline="") as f:
+        header = next(csv.reader(f), [])
+    columns = [name for name in header if name not in ("step", "epoch")]
+
+    return columns
 
 
 def read_history(run_dir: Path, entries: list[LogEntry]) -> History:
@@ -493,6 +519,11 @@ def read_history(run_dir: Path, entries: list[LogEntry]) -> History:
         lr_path = run_dir / "lr_steps.csv"
         if lr_path.is_file():
             history.lr_steps = read_lr_steps(lr_path)
+            history.named_lr_steps = {
+                column: read_lr_steps(lr_path, column=column)
+                for column in lr_step_columns(lr_path)
+                if column.startswith("lr_")
+            }
         return history
 
     # 学習中や失敗した実験は, ログのエポックごとの指標から作り直し

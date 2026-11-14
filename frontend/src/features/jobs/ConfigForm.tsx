@@ -26,6 +26,13 @@ function getIn(config: Config, key: string): unknown {
   }, config)
 }
 
+/** config の optimizers に名前付きで書いた Optimizer の名前 (無ければ空) */
+function namedOptimizers(config: Config): string[] {
+  const named = config.optimizers
+  if (!named || typeof named !== 'object' || Array.isArray(named)) return []
+  return Object.keys(named)
+}
+
 /** 書き換えている途中の文字が落ち着いてから値を使う (読み込みの回数を抑える) */
 function useDebounced<T>(value: T, delay: number): T {
   const [current, setCurrent] = useState(value)
@@ -133,6 +140,7 @@ function ParamField({
 function ClassSection({
   title,
   section,
+  kind,
   specs,
   config,
   allowNone,
@@ -140,7 +148,9 @@ function ClassSection({
   disabled,
 }: {
   title: string
-  section: 'optimizer' | 'scheduler'
+  /** 書き換える config の場所 (optimizer, scheduler, optimizers.<名前> など) */
+  section: string
+  kind: 'optimizer' | 'scheduler'
   specs: ClassSpec[]
   config: Config
   allowNone: boolean
@@ -159,7 +169,7 @@ function ClassSection({
   const spec = specs.find((item) => item.name === name)
   const shown = spec?.params.filter((param) => advanced || !param.advanced) ?? []
   const hidden = (spec?.params.length ?? 0) - shown.length
-  const interval = getIn(config, 'scheduler.interval') as string | undefined
+  const interval = getIn(config, `${section}.interval`) as string | undefined
 
   const choose = (value: string | null) => {
     setChosen(value)
@@ -175,11 +185,11 @@ function ClassSection({
       if (value === null) {
         // Scheduler を使わない場合は, 引数と interval を消して名前だけを残す
         next = deleteYamlValue(next, `${section}.params`)
-        return deleteYamlValue(next, 'scheduler.interval')
+        return deleteYamlValue(next, `${section}.interval`)
       }
       next = setYamlValue(next, `${section}.params`, kept)
-      if (section === 'scheduler' && STEP_SCHEDULERS.has(value)) {
-        next = setYamlValue(next, 'scheduler.interval', 'step')
+      if (kind === 'scheduler' && STEP_SCHEDULERS.has(value)) {
+        next = setYamlValue(next, `${section}.interval`, 'step')
       }
       return next
     })
@@ -213,7 +223,7 @@ function ClassSection({
           自作のクラスは引数が分からないので, YAML の欄で書いてください.
         </p>
       )}
-      {section === 'scheduler' && name && (
+      {kind === 'scheduler' && name && (
         <div className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] items-center gap-2">
           <label htmlFor={intervalId} className="font-mono text-xs text-ink-2">
             interval
@@ -222,7 +232,7 @@ function ClassSection({
             id={intervalId}
             value={interval ?? 'epoch'}
             onChange={(event) =>
-              onEdit((text) => setYamlValue(text, 'scheduler.interval', event.target.value))
+              onEdit((text) => setYamlValue(text, `${section}.interval`, event.target.value))
             }
             className="h-8 w-44 rounded-md border border-line bg-bg px-2 font-mono text-xs"
           >
@@ -401,24 +411,39 @@ export function ConfigForm({
               className="h-8 w-32 rounded-md border border-line bg-bg px-2 font-mono text-xs aria-[invalid=true]:border-critical"
             />
           </div>
-          <ClassSection
-            title="Optimizer"
-            section="optimizer"
-            specs={registry.data?.optimizers ?? []}
-            config={config}
-            allowNone={false}
-            disabled={stale}
-            onEdit={onEdit}
-          />
-          <ClassSection
-            title="Scheduler"
-            section="scheduler"
-            specs={registry.data?.schedulers ?? []}
-            config={config}
-            allowNone
-            disabled={stale}
-            onEdit={onEdit}
-          />
+          {/* 名前付きの複数の Optimizer (optimizers) は, 名前ごとに Optimizer と Scheduler */}
+          {(namedOptimizers(config).length > 0
+            ? namedOptimizers(config).map((name) => ({
+                key: name,
+                optimizer: `optimizers.${name}`,
+                scheduler: `optimizers.${name}.scheduler`,
+                suffix: ` (${name})`,
+              }))
+            : [{ key: '', optimizer: 'optimizer', scheduler: 'scheduler', suffix: '' }]
+          ).map((entry) => (
+            <div key={entry.key} className="space-y-6">
+              <ClassSection
+                title={`Optimizer${entry.suffix}`}
+                section={entry.optimizer}
+                kind="optimizer"
+                specs={registry.data?.optimizers ?? []}
+                config={config}
+                allowNone={false}
+                disabled={stale}
+                onEdit={onEdit}
+              />
+              <ClassSection
+                title={`Scheduler${entry.suffix}`}
+                section={entry.scheduler}
+                kind="scheduler"
+                specs={registry.data?.schedulers ?? []}
+                config={config}
+                allowNone
+                disabled={stale}
+                onEdit={onEdit}
+              />
+            </div>
+          ))}
           {editError && <ErrorBox error={editError} live={false} />}
           <p className="text-[11px] text-ink-3">
             フォームで変えた値は YAML の欄にも書き込まれます. * は必須の引数です.

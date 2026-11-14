@@ -1193,6 +1193,17 @@
             "type": "array",
             "title": "Lr Steps",
             "default": []
+          },
+          "named_lr_steps": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/LrPoint"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Named Lr Steps",
+            "default": {}
           }
         },
         "type": "object",

@@ -743,6 +743,13 @@ export interface components {
              * @default []
              */
             lr_steps: components["schemas"]["LrPoint"][];
+            /**
+             * Named Lr Steps
+             * @default {}
+             */
+            named_lr_steps: {
+                [key: string]: components["schemas"]["LrPoint"][];
+            };
         };
         /** JobCreate */
         JobCreate: {

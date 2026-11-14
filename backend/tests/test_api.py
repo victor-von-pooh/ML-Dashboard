@@ -273,6 +273,18 @@ def test_run_detail_history_log(
         {"x": 1.5, "lr": 0.05},
         {"x": 2.0, "lr": None},
     ]
+    assert history["named_lr_steps"] == {}
+
+    # 名前付きの複数の Optimizer の実験は, 列 (lr_<名前>) ごとに返却
+    (run_dir / "lr_steps.csv").write_text(
+        "step,epoch,lr_a,lr_b\n1,1,0.1,0.2\n2,1,0.05,0.2\n"
+    )
+    history = client.get(f"{base}/history").json()
+    assert history["lr_steps"] == []
+    assert history["named_lr_steps"]["lr_b"] == [
+        {"x": 1.0, "lr": 0.2}, {"x": 1.5, "lr": 0.2}
+    ]
+    assert set(history["named_lr_steps"]) == {"lr_a", "lr_b"}
 
     log = client.get(f"{base}/log").json()
     assert log[2]["message"].startswith("OS の情報:")
