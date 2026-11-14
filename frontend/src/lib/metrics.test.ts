@@ -84,7 +84,9 @@ describe('toPoints', () => {
       [2, null],
     ])
   })
+})
 
+describe('identicalSeries', () => {
   it('全ての点が同じ値の系列を, 名前の組にまとめる', () => {
     const a: [number, number | null][] = [
       [1, 0.5],
@@ -103,6 +105,14 @@ describe('toPoints', () => {
         },
         { name: 'd', points: [[1, null]] },
         { name: 'e', points: [[1, null]] },
+        { name: 'f', points: [[1, 0.5]] },
+        {
+          name: 'g',
+          points: [
+            [1, null],
+            [2, 0.25],
+          ],
+        },
       ]),
     ).toEqual([['a', 'b']])
   })

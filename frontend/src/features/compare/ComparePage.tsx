@@ -12,13 +12,13 @@ import { seriesVar } from '../../lib/colors'
 import { formatDateTime, formatDuration, formatMetric, formatValue } from '../../lib/format'
 import { groupImageSeries, sharedImageSeries } from '../../lib/images'
 import {
+  MAX_COMPARE,
+  TRAIN_PREFIXES,
   diffConfigs,
   flattenConfig,
   groupMetrics,
   identicalSeries,
-  MAX_COMPARE,
   toPoints,
-  TRAIN_PREFIXES,
 } from '../../lib/metrics'
 import { ImageCompare } from './ImageCompare'
 
@@ -293,7 +293,7 @@ export function ComparePage() {
                   )}
                   {identical.map((names) => (
                     <p key={names.join()} className="mt-1 text-[11px] text-ink-3">
-                      線が重なっています: {names.join(', ')} は全てのエポックで同じ値です
+                      線が重なっている実験: {names.join(', ')} (全てのエポックで同じ値)
                     </p>
                   ))}
                 </Card>
