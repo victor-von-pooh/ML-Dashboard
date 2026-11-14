@@ -30,7 +30,11 @@ export function estimateRemaining(progress: Progress, startEpoch = 1): number | 
 
 /** ジョブの状態を, 実験の状態に合わせて表す */
 export function jobStatus(job: JobInfo): RunStatus {
-  if (job.run) return job.run.status
+  // 終わったジョブの実験の状態が分からない (run.json を書く前に止まった)
+  // 場合は, 終了コードで判断する
+  const settled =
+    job.status === 'finished' && (job.run?.status === 'unknown' || job.run?.status === 'running')
+  if (job.run && !settled) return job.run.status
   if (job.status === 'running') return 'running'
   if (job.stop_requested) return 'stopped'
   return job.return_code === 0 ? 'completed' : 'failed'

@@ -54,5 +54,7 @@ describe('progress', () => {
     expect(jobStatus({ ...job, status: 'running' })).toBe('running')
     expect(jobStatus({ ...job, stop_requested: true })).toBe('stopped')
     expect(jobStatus({ ...job, run: { status: 'stopped' } } as unknown as JobInfo)).toBe('stopped')
+    // run.json を書く前に止まった実験 (状態が分からない) は, 終了コードで判断
+    expect(jobStatus({ ...job, run: { status: 'unknown' } } as unknown as JobInfo)).toBe('failed')
   })
 })
