@@ -26,7 +26,6 @@ function getIn(config: Config, key: string): unknown {
   }, config)
 }
 
-/** 書き換えている途中の文字が落ち着いてから値を使う (読み込みの回数を抑える) */
 /** config の optimizers に名前付きで書いた Optimizer の名前 (無ければ空) */
 function namedOptimizers(config: Config): string[] {
   const named = config.optimizers
@@ -34,6 +33,7 @@ function namedOptimizers(config: Config): string[] {
   return Object.keys(named)
 }
 
+/** 書き換えている途中の文字が落ち着いてから値を使う (読み込みの回数を抑える) */
 function useDebounced<T>(value: T, delay: number): T {
   const [current, setCurrent] = useState(value)
   useEffect(() => {

@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
 import type { RunParams } from '../api/client'
-import { groupByParam, metricDirection, metricValue, sensitivity, varyingParams } from './analysis'
+import {
+  groupByParam,
+  metricDirection,
+  metricOptions,
+  metricValue,
+  sensitivity,
+  varyingParams,
+} from './analysis'
 
 function run(id: string, params: RunParams['params'], best: number | null): RunParams {
   return {
@@ -29,6 +36,14 @@ describe('analysis', () => {
       { key: 'opt', numeric: false, values: 2, complete: true, noise: false },
       { key: 'extra', numeric: false, values: 2, complete: false, noise: false },
     ])
+  })
+
+  it('結果の選択肢から学習率 (lr と lr_<名前>) を除く', () => {
+    const named = {
+      ...runs[0]!,
+      final_metrics: { 'valid/loss': 0.2, lr: 0.1, lr_generator: 0.1, lr_discriminator: 0.1 },
+    }
+    expect(metricOptions([named]).map((option) => option.id)).toEqual(['best', 'final:valid/loss'])
   })
 
   it('ベストと最後の指標を取り出す', () => {

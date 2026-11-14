@@ -99,9 +99,9 @@ export function metricOptions(runs: RunParams[]): MetricOption[] {
   const monitor = runs.find((run) => run.best)?.best?.monitor
   return [
     { id: 'best', label: monitor ? `ベスト (${monitor})` : 'ベスト' },
-    // 学習率は結果ではないので除外
+    // 学習率 (名前付きの複数の Optimizer の lr_<名前> も) は結果ではないので除外
     ...[...finals]
-      .filter((key) => key !== 'lr')
+      .filter((key) => key !== 'lr' && !key.startsWith('lr_'))
       .sort()
       .map((key) => ({ id: `final:${key}`, label: `最終 ${key}` })),
   ]

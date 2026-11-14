@@ -6,16 +6,17 @@ import { Card } from '../../components/ui'
 import { groupMetrics, toPoints } from '../../lib/metrics'
 import { seriesVar } from '../../lib/colors'
 
-/** 学習用を 1 色目, 検証用を 2 色目, 学習用データの評価し直しを 3 色目にそろえる */
 /**
  * 学習率のグラフに重ねる, 更新ごとの学習率の点を返す. lr は 1 つの Optimizer の列,
  * lr_<名前> は名前付きの複数の Optimizer の列で, それ以外の指標は空
  */
 function stepsOf(history: History, name: string): History['lr_steps'] {
   if (name === 'lr') return history.lr_steps
-  return history.named_lr_steps[name] ?? []
+  const named = history.named_lr_steps ?? {}
+  return (name.startsWith('lr_') && Object.hasOwn(named, name) && named[name]) || []
 }
 
+/** 学習用を 1 色目, 検証用を 2 色目, 学習用データの評価し直しを 3 色目にそろえる */
 function colorIndex(key: string, position: number): number {
   if (key.startsWith('train/')) return 0
   if (key.startsWith('valid/')) return 1
