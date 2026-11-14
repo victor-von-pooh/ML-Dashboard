@@ -95,6 +95,8 @@ export function RunDetailPage() {
   const series = seriesOf(data.files)
   const tab: TabId = requestedTab === 'images' && series.length === 0 ? 'charts' : requestedTab
 
+  // 学習中 (running) は「経過」と「最新」(終わってからの学習時間と最終の値の
+  // 代わり)
   // ベストモデルを選ばない実験 (best が無い) も, 監視する指標の最後の値を出す
   const monitor = data.best?.monitor ?? data.monitor ?? undefined
   const others = Object.entries(data.final_metrics).filter(
@@ -147,8 +149,8 @@ export function RunDetailPage() {
           }
         />
         <StatTile
-          label="学習時間"
-          value={formatDuration(data.duration_sec)}
+          label={running ? '経過' : '学習時間'}
+          value={formatDuration(running ? data.progress?.elapsed_sec : data.duration_sec)}
           hint={
             data.final_weights && data.final_weights !== 'partial'
               ? FINAL_WEIGHTS[data.final_weights]
@@ -165,7 +167,13 @@ export function RunDetailPage() {
           hint={data.seed != null ? `seed ${data.seed}` : undefined}
         />
         <StatTile
-          label={monitor ? `最終 ${monitor}` : '最終エポック'}
+          label={
+            monitor
+              ? `${running ? '最新' : '最終'} ${monitor}`
+              : running
+                ? '最新エポック'
+                : '最終エポック'
+          }
           value={formatMetric(monitor ? data.final_metrics[monitor] : undefined)}
           hint={others.map(([key, value]) => `${key} ${formatMetric(value)}`).join(' · ')}
         />
