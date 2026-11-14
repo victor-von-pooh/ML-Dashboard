@@ -932,6 +932,33 @@ class RunData:
 
         return best
 
+    def notices(self) -> list[str]:
+        """
+        読めなかったファイルなど, 表示の値が確かでない理由を集める関数
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        ----------
+        notices: list[str]
+            画面に注意として出す文
+        """
+        # run.json があるのに読めない場合は, 状態をログから判断している
+        notices = []
+        if (self.run_dir / "run.json").is_file() and not self.status:
+            notices.append(
+                "run.json を読めません (壊れているか空です). 状態とエポック数"
+                "はログと指標の記録から判断しています"
+            )
+        if (self.run_dir / "config.yaml").is_file() and not self.config:
+            notices.append(
+                "config.yaml を読めません. config の差分と分析には出ません"
+            )
+
+        return notices
+
     def monitor(self) -> Optional[str]:
         """
         監視する指標の名前を返す関数
@@ -1061,7 +1088,8 @@ class RunData:
                 read_optimizers(self.status)
                 or optimizers_from_config(self.config)
             ),
-            monitor=self.monitor()
+            monitor=self.monitor(),
+            notices=self.notices()
         )
 
         return detail

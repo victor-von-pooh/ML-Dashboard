@@ -1094,6 +1094,11 @@ export interface components {
             optimizers?: components["schemas"]["OptimizerInfo"][] | null;
             /** Monitor */
             monitor?: string | null;
+            /**
+             * Notices
+             * @default []
+             */
+            notices: string[];
         };
         /** RunFile */
         RunFile: {

@@ -2293,6 +2293,14 @@
               }
             ],
             "title": "Monitor"
+          },
+          "notices": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notices",
+            "default": []
           }
         },
         "type": "object",
