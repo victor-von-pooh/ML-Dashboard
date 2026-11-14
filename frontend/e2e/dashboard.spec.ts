@@ -33,6 +33,27 @@ test('プロジェクトから実験の一覧と詳細を開く', async ({ page 
   // デモの 2 つの実験が完了の状態で並ぶ
   const rows = page.getByRole('checkbox', { name: /を比較に選ぶ/ })
   await expect(rows).toHaveCount(2)
+
+  // 絞り込みの文字は URL に残り, 詳細を開いて戻っても同じ
+  await page
+    .getByRole('searchbox')
+    .or(page.getByPlaceholder(/絞り込/))
+    .first()
+    .fill('sgd')
+  await expect(page).toHaveURL(/q=sgd/)
+  await page.goBack()
+  await page.goForward()
+  await expect(
+    page
+      .getByRole('searchbox')
+      .or(page.getByPlaceholder(/絞り込/))
+      .first(),
+  ).toHaveValue('sgd')
+  await page
+    .getByRole('searchbox')
+    .or(page.getByPlaceholder(/絞り込/))
+    .first()
+    .fill('')
   await expect(page.getByText('完了', { exact: true }).first()).toBeVisible()
 
   // 実験の詳細では学習曲線と, エポックごとの決定境界の画像を見られる
@@ -84,6 +105,11 @@ test('フォームで config を変え, 学習を起動して完了まで見届�
   await lr.press('Enter')
   await expect(page.getByText('0 以上の値にしてください')).toBeVisible()
   await expect(editor).not.toHaveValue(/lr: -1/)
+  // 誤りのある欄が残っている間は開始せず, その欄に移る
+  await page.getByRole('button', { name: '学習を開始' }).click()
+  await expect(page.getByText('フォームに誤りのある欄があります')).toBeVisible()
+  await expect(lr).toBeFocused()
+  await expect(page).toHaveURL(/\/launch/)
   await lr.fill('0.05')
   await lr.press('Enter')
   await expect(editor).toHaveValue(/lr: 0.05/)

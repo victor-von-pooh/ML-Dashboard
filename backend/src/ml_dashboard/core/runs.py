@@ -876,6 +876,26 @@ class RunData:
 
         return best
 
+    def monitor(self) -> Optional[str]:
+        """
+        監視する指標の名前を返す関数
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        ----------
+        monitor: Optional[str]
+            run.json の値, 無ければ config と指標の推移から決めた値.
+            決まらない場合は None
+        """
+        if isinstance(self.status.get("monitor"), str):
+            return str(self.status["monitor"])
+        monitor, _ = get_monitor(self.config, self.history.columns)
+
+        return monitor or None
+
     def summary(self) -> RunSummary:
         """
         一覧に表示する実験の概要をまとめる関数
@@ -978,7 +998,11 @@ class RunData:
             ),
             model_summary=summary_rows,
             model_summary_rows=summary_total,
-            optimizers=read_optimizers(self.status)
+            optimizers=(
+                read_optimizers(self.status)
+                or optimizers_from_config(self.config)
+            ),
+            monitor=self.monitor()
         )
 
         return detail
@@ -1014,6 +1038,50 @@ def read_optimizers(
             continue
 
     return optimizers
+
+
+def optimizers_from_config(
+    config: dict[str, Any]
+) -> Optional[list[OptimizerInfo]]:
+    """
+    config の optimizers (名前付きの複数の Optimizer) から, Optimizer ごとの
+    情報を作る関数
+
+    run.json に optimizers を書かない古い版の ML-Found の実験のため
+
+    Parameters
+    ----------
+    config: dict[str, Any]
+        実験の config
+
+    Returns
+    ----------
+    optimizers: Optional[list[OptimizerInfo]]
+        名前ごとの情報, optimizers を書いていない場合は None
+    """
+    # 形の違う項目は除き, Scheduler は名前があれば使う
+    named = config.get("optimizers")
+    if not isinstance(named, dict) or not named:
+        return None
+    optimizers = []
+    for name, item in named.items():
+        if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+            continue
+        modules = item.get("modules")
+        scheduler = item.get("scheduler")
+        optimizers.append(OptimizerInfo(
+            name=str(name), optimizer=item["name"],
+            modules=(
+                [str(module) for module in modules]
+                if isinstance(modules, list) else None
+            ),
+            scheduler=(
+                scheduler["name"] if isinstance(scheduler, dict)
+                and isinstance(scheduler.get("name"), str) else None
+            )
+        ))
+
+    return optimizers or None
 
 
 def summarize_run(output_dir: Path, run_dir: Path) -> RunSummary:

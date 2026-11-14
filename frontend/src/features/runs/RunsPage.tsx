@@ -28,6 +28,7 @@ import { MAX_COMPARE, summarizeDiff } from '../../lib/metrics'
 import { StarButton } from '../run/NotePanel'
 
 type SortKey = 'started' | 'best' | 'duration' | 'epochs'
+const SORT_KEYS: SortKey[] = ['started', 'best', 'duration', 'epochs']
 
 const STATUS_FILTERS: { id: RunStatus | 'all'; label: string }[] = [
   { id: 'all', label: 'すべて' },
@@ -117,20 +118,56 @@ function RunsPage({ projectId }: { projectId: string }) {
   const runs = useRuns(projectId)
   const notes = useNotes(projectId)
   const saveNote = useSaveNote(projectId)
-  const [starredOnly, setStarredOnly] = useState(false)
-  const [tag, setTag] = useState<string | null>(null)
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
-  const [query, setQuery] = useState('')
-  const [status, setStatus] = useState<RunStatus | 'all'>('all')
-  const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: 'started', desc: true })
+
+  // 絞り込みと並べ替えも URL に残し, 詳細を開いて戻っても同じ一覧にする
+  // (q: 文字, status: 状態, star: 星だけ, tag: タグ, sort と desc: 並べ替え)
+  const update = (patch: Record<string, string | null>) =>
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        for (const [key, value] of Object.entries(patch)) {
+          if (value === null || value === '') next.delete(key)
+          else next.set(key, value)
+        }
+        return next
+      },
+      { replace: true },
+    )
+  const query = params.get('q') ?? ''
+  const setQuery = (value: string) => update({ q: value })
+  const statusParam = params.get('status')
+  const status: RunStatus | 'all' = STATUS_FILTERS.some((item) => item.id === statusParam)
+    ? (statusParam as RunStatus)
+    : 'all'
+  const setStatus = (value: RunStatus | 'all') => update({ status: value === 'all' ? null : value })
+  const starredOnly = params.get('star') === '1'
+  const setStarredOnly = (change: (value: boolean) => boolean) =>
+    update({ star: change(starredOnly) ? '1' : null })
+  const tag = params.get('tag')
+  const setTag = (change: (value: string | null) => string | null) => update({ tag: change(tag) })
+  const sortParam = params.get('sort')
+  const sortKey: SortKey = SORT_KEYS.includes(sortParam as SortKey)
+    ? (sortParam as SortKey)
+    : 'started'
+  const sortDesc = params.get('desc') !== '0'
+  const sort = { key: sortKey, desc: sortDesc }
+  const setSort = (
+    change: (previous: { key: SortKey; desc: boolean }) => { key: SortKey; desc: boolean },
+  ) => {
+    const next = change(sort)
+    update({ sort: next.key === 'started' ? null : next.key, desc: next.desc ? null : '0' })
+  }
 
   // 比較に選んだ実験は URL に残し, 比較から戻っても選んだままにする
   // 読み込んだ後は, 一覧に無い ID と重複を除外
   const known = runs.data ? new Set(runs.data.map((run) => run.id)) : null
   const selected = [...new Set(params.getAll('sel'))].filter((id) => !known || known.has(id))
   const setSelected = (ids: string[]) => {
-    const next = new URLSearchParams()
+    // 絞り込みと並べ替えの値は残し, 選んだ実験だけを置き換える
+    const next = new URLSearchParams(params)
+    next.delete('sel')
     for (const id of ids) next.append('sel', id)
     setParams(next, { replace: true })
   }
@@ -147,8 +184,8 @@ function RunsPage({ projectId }: { projectId: string }) {
   )
   const bestRun = useMemo(() => findBestRun(all, latest), [all, latest])
 
-  // 絞り込みと並べ替え
-  const visible = useMemo(() => {
+  // 絞り込みと並べ替え (URL の値から求めるので, 毎回計算する. 軽い計算)
+  const visible = (() => {
     const words = query.toLowerCase().split(/\s+/).filter(Boolean)
     const filtered = all.filter((run) => {
       if (status !== 'all' && run.status !== status) return false
@@ -162,9 +199,9 @@ function RunsPage({ projectId }: { projectId: string }) {
       return words.every((word) => text.includes(word))
     })
     return [...filtered].sort((a, b) =>
-      compareValues(sortValue(a, sort.key), sortValue(b, sort.key), sort.desc),
+      compareValues(sortValue(a, sortKey), sortValue(b, sortKey), sortDesc),
     )
-  }, [all, query, status, sort, notes.data, starredOnly, tag])
+  })()
 
   // 今ある実験に書かれたタグの一覧と星の数 (消えた実験のメモは数えない)
   const { allTags, starredCount } = useMemo(() => {
