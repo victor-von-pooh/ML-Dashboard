@@ -328,6 +328,19 @@ def test_edited_config_text(client: TestClient, project_dir: Path) -> None:
     assert plain["config_text"] is None
     wait_for(client, plain["id"], "status", "finished")
 
+    # 同じ設定でもう一度: 書き換えた config は中身を, プロジェクトの config は
+    # 同じファイルを使う
+    again = client.post(f"/api/jobs/{created['id']}/rerun")
+    assert again.status_code == 201
+    assert again.json()["config_text"] == "trainer:\n  epochs: 4\n"
+    assert again.json()["id"] != created["id"]
+    wait_for(client, again.json()["id"], "status", "finished")
+    plain_again = client.post(f"/api/jobs/{plain['id']}/rerun").json()
+    assert plain_again["config_text"] is None
+    assert plain_again["config"] == plain["config"]
+    wait_for(client, plain_again["id"], "status", "finished")
+    assert client.post("/api/jobs/missing/rerun").status_code == 404
+
 
 def test_registry_and_required_params(
     client: TestClient, project_dir: Path

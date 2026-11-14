@@ -131,6 +131,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ text, script: script || undefined }),
     }),
+  rerunJob: (jobId: string) =>
+    request<JobInfo>(`/api/jobs/${encodeURIComponent(jobId)}/rerun`, { method: 'POST' }),
   createJob: (projectId: string, body: JobCreate) =>
     request<JobInfo>(`/api/projects/${encodeURIComponent(projectId)}/jobs`, {
       method: 'POST',

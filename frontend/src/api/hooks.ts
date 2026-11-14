@@ -139,6 +139,14 @@ export function useCreateJob(projectId: string) {
   })
 }
 
+export function useRerunJob() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: api.rerunJob,
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.jobs }),
+  })
+}
+
 export function useJobs() {
   return useQuery({
     queryKey: keys.jobs,
