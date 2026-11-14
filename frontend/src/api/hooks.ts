@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react'
+
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api, type JobInfo, type RunNote } from './client'
@@ -142,7 +144,31 @@ export function useJobs() {
 /** サイドバー用に, 実行中のジョブの数だけを取り出す */
 export function useRunningJobCount() {
   const query = useJobs()
+  useRefreshOnJobChange(query.data)
   return query.data?.filter((job) => job.status === 'running').length ?? 0
+}
+
+/**
+ * ジョブの状態か実験が変わったら, そのプロジェクトの実験の一覧と,
+ * サイドバーの実験の数 (プロジェクトの一覧) を読み直す
+ */
+function useRefreshOnJobChange(jobs: JobInfo[] | undefined) {
+  const client = useQueryClient()
+  const previous = useRef<Map<string, string> | null>(null)
+  useEffect(() => {
+    if (!jobs) return
+    const current = new Map(jobs.map((job) => [job.id, `${job.status}:${job.run_id ?? ''}`]))
+    // 最初の読み込みは比べる相手が無いので, 覚えるだけ
+    const before = previous.current
+    previous.current = current
+    if (before === null) return
+    const changed = jobs.filter((job) => before.get(job.id) !== current.get(job.id))
+    if (changed.length === 0) return
+    void client.invalidateQueries({ queryKey: keys.projects, exact: true })
+    for (const projectId of new Set(changed.map((job) => job.project_id))) {
+      void client.invalidateQueries({ queryKey: keys.runs(projectId) })
+    }
+  }, [client, jobs])
 }
 
 export function useJob(jobId: string) {
