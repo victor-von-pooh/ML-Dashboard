@@ -46,8 +46,9 @@ ML-Found が実験ごとに残すディレクトリ (`history.csv`, `config.yaml
 
 ## 必要なもの
 
-- Python 3.10 以上と [uv](https://docs.astral.sh/uv/). ML-Found の依存の PyTorch も入るので, 最初の `make setup` は時間がかかる
-- Node.js 24 以上と [pnpm](https://pnpm.io/)
+- [uv](https://docs.astral.sh/uv/) (Python は uv が用意する. 3.10 以上で, 3.12 と 3.13 で確かめている). ML-Found の依存の PyTorch も入るので, 最初の `make setup` は数 GB を取得し, 回線によって数分かかる
+- Node.js 24 以上と [pnpm](https://pnpm.io/) 11 以上 (`corepack enable` で `package.json` の版が入る)
+- 画面の通しのテスト (`make e2e`) だけは, 手元の Google Chrome を使う (CI では Playwright の Chromium)
 
 ## 導入と起動
 
@@ -55,12 +56,14 @@ ML-Found が実験ごとに残すディレクトリ (`history.csv`, `config.yaml
 git clone --recursive https://github.com/victor-von-pooh/ML-Dashboard.git
 cd ML-Dashboard
 make setup   # submodule, Python と Node.js の依存
-make serve   # 画面をビルドして http://127.0.0.1:8765 で起動 (端末を占有するので, 止めるまで使い続ける)
+make serve   # 画面をビルドして http://127.0.0.1:8765 で起動 (端末を占有する. Ctrl-C で止める)
 ```
 
-起動すると, 起動ごとのトークンが付いた URL (`http://127.0.0.1:8765/api/auth?token=...`) が表示されるので, それを開く. ダッシュボードは学習のプロセスを起動できるため, 同じ端末の他の利用者や他のサイトから使えないように, トークンを Cookie に保存したブラウザからだけ API を受け付ける. 毎回同じトークンにする場合は, 環境変数 `ML_DASHBOARD_TOKEN` で指定する.
+起動すると, 画面のビルドのログの後に, 起動ごとのトークンが付いた URL (`http://127.0.0.1:8765/api/auth?token=...`) が表示されるので, それを開く. ダッシュボードは学習のプロセスを起動できるため, 同じ端末の他の利用者や他のサイトから使えないように, トークンを Cookie に保存したブラウザからだけ API を受け付ける. 毎回同じトークンにする場合は, 環境変数 `ML_DASHBOARD_TOKEN` で指定する.
 
-開いたら, 画面の「プロジェクトを追加」から ML-Found を使っているディレクトリを絶対パスで登録する.
+開いたら, 画面の「プロジェクトを追加」から ML-Found を使っているディレクトリを, 絶対パスか `~` からのパスで登録する.
+
+ダッシュボードを止めても, 画面から起動した学習は別のプロセスなので止まらずに続く. 学習も止める場合は, 先にジョブの画面で止める.
 
 画面ごとの使い方と, ML_tester のタスクで試す手順は [docs/GUIDE.md](docs/GUIDE.md) にまとめた.
 
@@ -69,10 +72,16 @@ make serve   # 画面をビルドして http://127.0.0.1:8765 で起動 (端末�
 手元に ML-Found のプロジェクトが無い場合は, `demo/` で試せる. 2 本の渦巻きを分ける小さなモデルを CPU で数秒ずつ学習し, エポックごとの決定境界の画像 (`boundary/epoch_001.png` など) も保存する.
 
 1. `make serve` の前か別の端末で `make demo` を実行し, config を変えた 3 つの実験 (Adam, SGD, 小さなモデル) を作る
-2. 画面の「プロジェクトを追加」で, clone したディレクトリの中の `demo` を絶対パス (例: `/home/me/ML-Dashboard/demo`) で登録する
+2. 画面の「プロジェクトを追加」で, clone したディレクトリの中の `demo` を絶対パスか `~` からのパス (例: `~/ML-Dashboard/demo`) で登録する
 3. 学習曲線, 決定境界の画像の推移, 実験の比較を確かめる. 画面から学習を起動する場合は `configs/experiment/examples/quick.yaml` (3 エポック) が手軽
 
 `make demo` を実行するたびに実験が 3 つずつ増える. 消す場合は `demo/outputs/` を削除する.
+
+### 自分のプロジェクトを使う
+
+ML-Found のプロジェクトの作り方 (`configs/default/train.yaml`, `configs/experiment/train.yaml`, 学習スクリプト) は, ML-Found の README の [使い方](https://github.com/victor-von-pooh/ML-Found#使い方) にある. 小さな雛形として `demo/` (`train.py` と `configs/`) を写して始めてもよい.
+
+画面から起動する学習には, 登録したときに見つかった仮想環境の Python を使う. プロジェクトのディレクトリから上に向かって (git のルートかホームの手前まで) `.venv` か `venv` の `bin/python` を探し, 無い場合はダッシュボード自身の Python を使う. その Python には ML-Found と学習に使うライブラリを入れておく. 仮想環境は登録の**前**に作る (後から作った場合は, 登録を外して追加し直すか, 場所を変える).
 
 ### 起動の設定
 
@@ -80,7 +89,7 @@ make serve   # 画面をビルドして http://127.0.0.1:8765 で起動 (端末�
 ローカルから 1 人で使う前提なので, 既定では `127.0.0.1` だけで待ち受ける. `--host` で変えられるが, トークンを知る人は学習のコードを実行できるので勧めない.
 
 登録したプロジェクトなどのダッシュボードのデータは `~/.ml-dashboard/` に保存する. 環境変数 `ML_DASHBOARD_HOME` で場所を変えられる.
-画面で書き換えた config と, 起動した学習の標準出力もここに保存する. プロジェクトのディレクトリには, 学習を止めるときの `STOP` 以外は何も書き込まない.
+画面で書き換えた config と, 起動した学習の標準出力, メモとタグもここに保存する. 全て消す場合は, ダッシュボードを止めてからこのディレクトリを削除する. プロジェクトのディレクトリには, 学習を止めるときの `STOP` 以外は何も書き込まない.
 
 ## 開発
 
