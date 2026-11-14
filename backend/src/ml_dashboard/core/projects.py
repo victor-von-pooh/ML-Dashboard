@@ -381,8 +381,11 @@ class ProjectStore:
         project: Optional[Project]
             付け替えたプロジェクト, ID が無い場合は None
         """
-        # ML-Found のプロジェクトであることの確認
-        project_dir = Path(path).expanduser().resolve()
+        # ML-Found のプロジェクトであることの確認 (前後の空白と引用符は除く.
+        # ターミナルから貼ったパスなど)
+        project_dir = Path(
+            path.strip().strip("'\"")
+        ).expanduser().resolve()
         if not project_dir.is_dir():
             raise ValueError(f"ディレクトリが見つかりません: {project_dir}")
         if not is_project_dir(project_dir):
@@ -408,10 +411,14 @@ class ProjectStore:
                         f"登録済みのプロジェクトです: {project.name}"
                     )
 
-            # 前のディレクトリの中の Python (.venv など) は探し直す
+            # 前のディレクトリの中の Python (.venv など) と, もう無い Python
+            # (上の階層の .venv ごと移した場合など) は探し直して確かめる
             python = current.python
-            if python.startswith(current.path.rstrip("/") + "/"):
+            if python.startswith(current.path.rstrip("/") + "/") or (
+                not Path(python).is_file()
+            ):
                 python = find_python(project_dir)
+            check_python(python)
             moved = Project(
                 id=current.id, name=current.name, path=str(project_dir),
                 python=python, created_at=current.created_at

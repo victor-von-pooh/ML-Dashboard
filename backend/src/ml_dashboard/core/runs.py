@@ -3,6 +3,7 @@ import json
 import math
 import os
 import re
+from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional, cast
@@ -332,11 +333,14 @@ def thin_indices(values: list[float], limit: int) -> list[int]:
 
 # 読み込んだ lr_steps.csv の点 (ファイルの更新時刻と大きさが同じ間は再利用)
 # 読み込んだ train.log の記録 (ファイルの更新時刻と大きさが同じ間は再利用.
-# 学習中は一覧を何度も読み直すので, 大きなログを毎回読まないため)
-LOG_CACHE: dict[str, tuple[tuple[int, int, str], list[LogEntry]]] = {}
+# 学習中は一覧を何度も読み直すので, 大きなログを毎回読まないため). 最近
+# 使ったものから, ファイルの大きさの合計が上限に収まるだけを残す
+LOG_CACHE: OrderedDict[
+    str, tuple[tuple[int, int, str], list[LogEntry]]
+] = OrderedDict()
 
-# 覚えておく train.log の数の上限 (超えたら全て捨てて読み直す)
-MAX_LOG_CACHE = 256
+# 残すログのファイルの大きさの合計の上限 (バイト)
+MAX_LOG_CACHE_BYTES = 64 * 1024 * 1024
 
 LR_CACHE: dict[str, tuple[tuple[int, int, int], list[LrPoint]]] = {}
 
@@ -427,7 +431,7 @@ def cached_log(path: Path, log_format: str) -> list[LogEntry]:
     Returns
     ----------
     entries: list[LogEntry]
-        記録 (呼び出し側で書き換えない)
+        記録 (リストは写し. 中の記録は共有するので書き換えない)
     """
     # ファイルが無い場合は空, 更新時刻と大きさと書式が同じなら前の結果
     try:
@@ -437,11 +441,19 @@ def cached_log(path: Path, log_format: str) -> list[LogEntry]:
     key = (stat.st_mtime_ns, stat.st_size, log_format)
     cached = LOG_CACHE.get(str(path))
     if cached is not None and cached[0] == key:
-        return cached[1]
+        LOG_CACHE.move_to_end(str(path))
+        return list(cached[1])
     entries = parse_log(path, log_format)
-    if len(LOG_CACHE) >= MAX_LOG_CACHE:
-        LOG_CACHE.clear()
-    LOG_CACHE[str(path)] = (key, entries)
+
+    # 上限の半分より大きいログは残さず, 合計が上限を超えたら古いものを捨てる
+    LOG_CACHE.pop(str(path), None)
+    if stat.st_size <= MAX_LOG_CACHE_BYTES // 2:
+        LOG_CACHE[str(path)] = (key, entries)
+    while LOG_CACHE and sum(
+        item[0][1] for item in LOG_CACHE.values()
+    ) > MAX_LOG_CACHE_BYTES:
+        LOG_CACHE.popitem(last=False)
+    entries = list(entries)
 
     return entries
 

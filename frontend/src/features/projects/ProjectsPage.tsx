@@ -22,7 +22,9 @@ function ProjectCard({ project }: { project: ProjectInfo }) {
   }
   // ディレクトリを移した場合に, 登録 (メモ, タグ, 星) を残したまま場所を変える
   const onMove = () => {
-    const path = window.prompt(`「${project.name}」の新しいディレクトリ`, project.path)
+    const typed = window.prompt(`「${project.name}」の新しいディレクトリ`, project.path)
+    // 前後の空白と引用符 (ターミナルから貼ったパスなど) を除く
+    const path = typed?.trim().replace(/^['"]|['"]$/g, '')
     if (path && path !== project.path) move.mutate({ id: project.id, path })
   }
 
@@ -78,9 +80,17 @@ function ProjectCard({ project }: { project: ProjectInfo }) {
             <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             <span className="break-all">{project.error}</span>
           </p>
-          <Button variant="secondary" onClick={onMove} disabled={move.isPending}>
-            場所を変える
-          </Button>
+          {/* ディレクトリが見つからない場合だけ (移した場合) */}
+          {project.error.includes('ディレクトリが見つかりません') && (
+            <Button
+              variant="secondary"
+              onClick={onMove}
+              disabled={move.isPending}
+              aria-label={`${project.name} の場所を変える`}
+            >
+              場所を変える
+            </Button>
+          )}
         </div>
       )}
       {move.error && (
