@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { diffConfigs, flattenConfig, groupMetrics, summarizeDiff, toPoints } from './metrics'
+import {
+  diffConfigs,
+  flattenConfig,
+  groupMetrics,
+  identicalSeries,
+  summarizeDiff,
+  toPoints,
+} from './metrics'
 
 describe('groupMetrics', () => {
   it('学習用と検証用を同じ指標にまとめ, 損失を先頭, 学習率を末尾にする', () => {
@@ -76,5 +83,27 @@ describe('toPoints', () => {
       [1, 1],
       [2, null],
     ])
+  })
+
+  it('全ての点が同じ値の系列を, 名前の組にまとめる', () => {
+    const a: [number, number | null][] = [
+      [1, 0.5],
+      [2, 0.25],
+    ]
+    expect(
+      identicalSeries([
+        { name: 'a', points: a },
+        { name: 'b', points: [...a] },
+        {
+          name: 'c',
+          points: [
+            [1, 0.5],
+            [2, 0.3],
+          ],
+        },
+        { name: 'd', points: [[1, null]] },
+        { name: 'e', points: [[1, null]] },
+      ]),
+    ).toEqual([['a', 'b']])
   })
 })

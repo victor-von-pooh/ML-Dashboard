@@ -76,3 +76,19 @@ export function summarizeDiff(diff: Record<string, unknown>): string[] {
 export function toPoints(history: History, key: string): [number, number | null][] {
   return history.rows.map((row, index) => [row.epoch ?? index + 1, row[key] ?? null])
 }
+
+/**
+ * 全ての点が同じ値の系列 (グラフで線が完全に重なり, 下の線が見えないもの) を,
+ * 名前の組にまとめて返す. 値の無い点だけの系列は対象外
+ */
+export function identicalSeries(
+  series: { name: string; points: [number, number | null][] }[],
+): string[][] {
+  const groups = new Map<string, string[]>()
+  for (const item of series) {
+    if (!item.points.some(([, value]) => value != null)) continue
+    const key = JSON.stringify(item.points)
+    groups.set(key, [...(groups.get(key) ?? []), item.name])
+  }
+  return [...groups.values()].filter((names) => names.length > 1)
+}
