@@ -186,6 +186,14 @@ export function ScatterChart({
                   opacity: 0.9,
                 },
                 symbolSize: (top ? 14 : 10) + Math.log2(item.ids.length) * 4,
+                // 同じ値の実験をまとめた点は, 何件かを横に出す
+                label: {
+                  show: item.ids.length > 1,
+                  position: 'right',
+                  formatter: `×${item.ids.length}`,
+                  color: ink2,
+                  fontSize: 11,
+                },
               }
             }),
             emphasis: { scale: 1.3, label: { show: false } },
