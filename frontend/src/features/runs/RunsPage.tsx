@@ -629,7 +629,7 @@ function RunRow({
           {diff.length === 0 && <span className="text-xs text-ink-3">なし</span>}
         </div>
       </td>
-      <td className="tabular px-3 py-2.5 text-right">
+      <td className="tabular px-3 py-2.5 text-right whitespace-nowrap">
         {run.epochs}
         {run.planned_epochs != null && <span className="text-ink-3"> / {run.planned_epochs}</span>}
         {run.early_stopped_epoch != null && (
@@ -639,7 +639,7 @@ function RunRow({
           <div className="text-[11px] text-accent-text">エポック {progress.epoch} を学習中</div>
         )}
       </td>
-      <td className="tabular px-3 py-2.5 text-right">
+      <td className="tabular px-3 py-2.5 text-right whitespace-nowrap">
         {run.best ? (
           <>
             <div className="flex items-center justify-end gap-1 font-medium">
@@ -656,7 +656,7 @@ function RunRow({
           <span className="text-ink-3">—</span>
         )}
       </td>
-      <td className="tabular px-3 py-2.5 text-right text-ink-2">
+      <td className="tabular px-3 py-2.5 text-right whitespace-nowrap text-ink-2">
         {formatDuration(run.duration_sec)}
       </td>
     </tr>

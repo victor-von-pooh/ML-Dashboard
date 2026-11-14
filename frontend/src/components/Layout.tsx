@@ -36,6 +36,13 @@ export function Layout() {
 
   return (
     <div className="flex h-full">
+      {/* キーボードで左のプロジェクトの一覧を飛ばして本文へ (フォーカスしたときだけ見える) */}
+      <a
+        href="#main"
+        className="sr-only z-50 rounded-md bg-surface px-3 py-2 text-sm focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:outline-2 focus:outline-accent"
+      >
+        本文へ移る
+      </a>
       <aside className="hidden w-60 shrink-0 flex-col border-r border-line bg-surface md:flex">
         <div className="flex items-center justify-between px-4 py-4">
           <NavLink to="/" className="flex items-center gap-2 font-semibold tracking-tight">
@@ -84,7 +91,7 @@ export function Layout() {
           </NavLink>
           <ThemeToggle />
         </header>
-        <main className="min-h-0 flex-1 overflow-y-auto">
+        <main id="main" tabIndex={-1} className="min-h-0 flex-1 overflow-y-auto outline-none">
           <div className="mx-auto max-w-7xl px-4 py-6 md:px-8 md:py-8">
             <Outlet />
           </div>
