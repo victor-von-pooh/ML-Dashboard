@@ -407,9 +407,15 @@ export function ConfigForm({
                 event.key === 'Enter' && commitEpochs(event.currentTarget.value)
               }
               aria-invalid={epochsInvalid}
+              aria-describedby={epochsInvalid ? `${epochsId}-error` : undefined}
               disabled={stale}
               className="h-8 w-32 rounded-md border border-line bg-bg px-2 font-mono text-xs aria-[invalid=true]:border-critical"
             />
+            {epochsInvalid && (
+              <span id={`${epochsId}-error`} className="text-[11px] text-critical-text">
+                1 以上の整数にしてください
+              </span>
+            )}
           </div>
           {/* 名前付きの複数の Optimizer (optimizers) は, 名前ごとに Optimizer と Scheduler */}
           {(namedOptimizers(config).length > 0

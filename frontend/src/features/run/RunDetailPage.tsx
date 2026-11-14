@@ -95,7 +95,8 @@ export function RunDetailPage() {
   const series = seriesOf(data.files)
   const tab: TabId = requestedTab === 'images' && series.length === 0 ? 'charts' : requestedTab
 
-  const monitor = data.best?.monitor
+  // ベストモデルを選ばない実験 (best が無い) も, 監視する指標の最後の値を出す
+  const monitor = data.best?.monitor ?? data.monitor ?? undefined
   const others = Object.entries(data.final_metrics).filter(
     ([key]) => (key.startsWith('valid/') || key.startsWith('train_eval/')) && key !== monitor,
   )
