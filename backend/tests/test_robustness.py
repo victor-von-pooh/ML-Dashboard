@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from ml_dashboard.app import create_app
+from ml_dashboard.core.runs import read_history_csv
 
 from conftest import write_run
 from test_api import register
@@ -430,3 +431,28 @@ def test_token_required(tmp_path: Path) -> None:
     assert auth.status_code == 303
     assert "httponly" in auth.headers["set-cookie"].lower()
     assert client.get("/api/projects").status_code == 200
+
+
+def test_broken_history_rows(tmp_path: Path) -> None:
+    """
+    epoch が数値でない行を持つ history.csv で, その行を捨てることを確かめる
+    関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 壊れた行と列の数の違う行を混ぜる
+    path = tmp_path / "history.csv"
+    path.write_text(
+        "epoch,train/loss\n1,0.5\nbroken,0.4\n2,0.3,9\n3,0.2\n",
+        encoding="utf-8"
+    )
+    history = read_history_csv(path)
+    assert [row["epoch"] for row in history.rows] == [1.0, 2.0, 3.0]
+    assert history.rows[1]["train/loss"] == 0.3
