@@ -94,6 +94,11 @@ export const api = {
   getProject: (id: string) => request<ProjectDetail>(`/api/projects/${encodeURIComponent(id)}`),
   addProject: (body: ProjectCreate) =>
     request<ProjectInfo>('/api/projects', { method: 'POST', body: JSON.stringify(body) }),
+  moveProject: (id: string, path: string) =>
+    request<ProjectInfo>(`/api/projects/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ path }),
+    }),
   removeProject: (id: string) =>
     request<void>(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   scanProjects: (path: string) =>

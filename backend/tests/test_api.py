@@ -1,4 +1,5 @@
 import json
+import shutil
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -518,3 +519,52 @@ def test_optimizers_from_config() -> None:
         (item.name, item.optimizer, item.scheduler) for item in optimizers
     ] == [("generator", "Adam", "StepLR"), ("discriminator", "SGD", None)]
     assert optimizers_from_config({"optimizer": {"name": "Adam"}}) is None
+
+
+def test_move_project(
+    client: TestClient, project_dir: Path, tmp_path: Path
+) -> None:
+    """
+    プロジェクトのディレクトリを移した場合に, 登録とメモを残したまま場所を
+    付け替えられることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # メモを付けてからディレクトリを移す
+    project_id = register(client, project_dir)
+    run = "demo/2026-11-08/10-00-00"
+    client.put(
+        f"/api/projects/{project_id}/runs/{run}/note",
+        json={"note": "残す", "tags": [], "starred": True}
+    )
+    moved_dir = tmp_path / "moved"
+    shutil.move(str(project_dir), moved_dir)
+
+    # 付け替えると同じ ID のまま, 実験とメモが見える
+    response = client.patch(
+        f"/api/projects/{project_id}", json={"path": str(moved_dir)}
+    )
+    assert response.status_code == 200
+    assert response.json()["id"] == project_id
+    assert client.get(f"/api/projects/{project_id}/runs").status_code == 200
+    notes = client.get(f"/api/projects/{project_id}/notes").json()
+    assert notes[run]["note"] == "残す"
+
+    # プロジェクトでないディレクトリと, 無い ID
+    assert client.patch(
+        f"/api/projects/{project_id}", json={"path": str(tmp_path)}
+    ).status_code == 400
+    assert client.patch(
+        "/api/projects/missing", json={"path": str(moved_dir)}
+    ).status_code == 404

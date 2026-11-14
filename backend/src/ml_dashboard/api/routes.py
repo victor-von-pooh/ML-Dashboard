@@ -54,6 +54,10 @@ class ProjectCreate(BaseModel):
     python: Optional[str] = None
 
 
+class ProjectMove(BaseModel):
+    path: str
+
+
 class ScanRequest(BaseModel):
     path: str
 
@@ -295,6 +299,39 @@ def read_project(request: Request, project_id: str) -> ProjectDetail:
     )
 
     return detail
+
+
+@router.patch("/projects/{project_id}", responses=NOT_FOUND)
+def move_project(
+    request: Request, project_id: str, body: ProjectMove
+) -> ProjectInfo:
+    """
+    プロジェクトのディレクトリを付け替える関数 (メモとタグは残す)
+
+    Parameters
+    ----------
+    request: Request
+        リクエスト
+    project_id: str
+        プロジェクトの ID
+    body: ProjectMove
+        新しいディレクトリ
+
+    Returns
+    ----------
+    info: ProjectInfo
+        付け替えたプロジェクト
+    """
+    # ディレクトリの誤りは 400, ID が無い場合は 404
+    try:
+        project = get_store(request).move(project_id, body.path)
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+    if project is None:
+        raise HTTPException(404, f"プロジェクトが見つかりません: {project_id}")
+    info = to_info(project)
+
+    return info
 
 
 @router.delete(

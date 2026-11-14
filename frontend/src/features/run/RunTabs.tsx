@@ -71,7 +71,8 @@ export function ConfigTab({ run }: { run: RunDetail }) {
         {changed.size === 0 ? (
           <p className="px-4 py-6 text-sm text-ink-3">default のまま学習しました.</p>
         ) : (
-          <table className="w-full text-sm">
+          // 長い値 (リストや入れ子) はカードの中で折り返す
+          <table className="w-full table-fixed text-sm">
             <thead className="text-left text-xs text-ink-3">
               <tr className="border-b border-line">
                 <th className="px-4 py-2 font-medium">項目</th>
@@ -84,11 +85,11 @@ export function ConfigTab({ run }: { run: RunDetail }) {
                 const item = (value ?? {}) as { default?: unknown; experiment?: unknown }
                 return (
                   <tr key={key} className="border-b border-line last:border-b-0">
-                    <td className="px-4 py-1.5 font-mono text-xs text-ink-2">{key}</td>
-                    <td className="px-4 py-1.5 font-mono text-xs text-ink-3 line-through decoration-ink-3/40">
+                    <td className="px-4 py-1.5 font-mono text-xs break-all text-ink-2">{key}</td>
+                    <td className="px-4 py-1.5 font-mono text-xs break-all text-ink-3 line-through decoration-ink-3/40">
                       {formatValue(item.default)}
                     </td>
-                    <td className="px-4 py-1.5 font-mono text-xs font-medium">
+                    <td className="px-4 py-1.5 font-mono text-xs font-medium break-all">
                       {formatValue(item.experiment)}
                     </td>
                   </tr>

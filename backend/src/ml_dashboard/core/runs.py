@@ -331,6 +331,13 @@ def thin_indices(values: list[float], limit: int) -> list[int]:
 
 
 # 読み込んだ lr_steps.csv の点 (ファイルの更新時刻と大きさが同じ間は再利用)
+# 読み込んだ train.log の記録 (ファイルの更新時刻と大きさが同じ間は再利用.
+# 学習中は一覧を何度も読み直すので, 大きなログを毎回読まないため)
+LOG_CACHE: dict[str, tuple[tuple[int, int, str], list[LogEntry]]] = {}
+
+# 覚えておく train.log の数の上限 (超えたら全て捨てて読み直す)
+MAX_LOG_CACHE = 256
+
 LR_CACHE: dict[str, tuple[tuple[int, int, int], list[LrPoint]]] = {}
 
 
@@ -404,6 +411,39 @@ def read_model_summary(
     SUMMARY_CACHE[str(path)] = (key, result)
 
     return result
+
+
+def cached_log(path: Path, log_format: str) -> list[LogEntry]:
+    """
+    train.log を記録ごとに分けた結果を, 変わっていなければ再利用する関数
+
+    Parameters
+    ----------
+    path: Path
+        train.log のパス
+    log_format: str
+        logging の書式
+
+    Returns
+    ----------
+    entries: list[LogEntry]
+        記録 (呼び出し側で書き換えない)
+    """
+    # ファイルが無い場合は空, 更新時刻と大きさと書式が同じなら前の結果
+    try:
+        stat = path.stat()
+    except OSError:
+        return []
+    key = (stat.st_mtime_ns, stat.st_size, log_format)
+    cached = LOG_CACHE.get(str(path))
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    entries = parse_log(path, log_format)
+    if len(LOG_CACHE) >= MAX_LOG_CACHE:
+        LOG_CACHE.clear()
+    LOG_CACHE[str(path)] = (key, entries)
+
+    return entries
 
 
 def read_lr_steps(
@@ -798,7 +838,7 @@ class RunData:
         self.config = load_yaml(run_dir / "config.yaml")
         self.status = read_json(run_dir / "run.json")
         log_format = section(self.config, "experiment").get("log_format")
-        self.entries = parse_log(
+        self.entries = cached_log(
             run_dir / "train.log",
             log_format if isinstance(log_format, str) else DEFAULT_FORMAT
         )
