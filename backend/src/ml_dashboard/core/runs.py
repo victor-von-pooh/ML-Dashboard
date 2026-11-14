@@ -283,9 +283,13 @@ def read_history_csv(path: Path) -> History:
     columns = [str(name) for name in reader.fieldnames or []]
 
     # 見出しより多い列 (キーが None) は捨て, 見出しの列だけを数値に変換
+    # epoch が数値でない行 (壊れた行) は捨てる (エポック数に数えず, 線を
+    # 途切れさせないため)
     rows = [
         {key: to_float(row.get(key)) for key in columns} for row in reader
     ]
+    if "epoch" in columns:
+        rows = [row for row in rows if row.get("epoch") is not None]
     history = History(columns=columns, rows=rows)
 
     return history
