@@ -122,7 +122,7 @@ ML-Found の TODO の項目 3 (進捗を渡す仕組みと学習の中断) の�
     - 概要: 状態, ベストのエポックと指標, 学習時間, 乱数シード, デバイス
     - 学習曲線: 指標ごとのグラフ. 学習用と検証用 (と, 学習用データを評価し直した `train_eval/`) を重ね, ベストのエポックと Early Stopping の位置を示す
     - config: 全体と default との差分
-    - モデル: モデルの構造, Optimizer, Scheduler (`train.log` から), 名前付きの複数の Optimizer の場合は名前ごとのクラス, 受け持つ部分, Scheduler の表 (`run.json` の `optimizers` から. 書いていない古い版の ML-Found の実験には出ない), パラメータの一覧 (`model_summary.csv` から. 名前か層で検索でき, 学習する, しないパラメータとバッファの要素数を出し, 重みの共有も示す)
+    - モデル: モデルの構造, Optimizer, Scheduler (`train.log` から), 名前付きの Optimizer (`optimizers`) の場合は名前ごとのクラス, 受け持つ部分, Scheduler の表 (`run.json` の `optimizers` から. 書いていない古い版の ML-Found の実験には出ない), パラメータの一覧 (`model_summary.csv` から. 名前か層で検索でき, 学習する, しないパラメータとバッファの要素数を出し, 重みの共有も示す)
     - 環境: git の情報と未コミットの変更, OS, PyTorch, パッケージ
     - ログ: `train.log`. 警告とエラーを強調
     - 画像: 番号の付いた画像のエポックごとの推移 (スライダーと再生), 実験のディレクトリの画像とファイルの一覧

@@ -191,8 +191,8 @@ function OptimizerTable({ optimizers }: { optimizers: NonNullable<RunDetail['opt
             </tr>
           </thead>
           <tbody>
-            {optimizers.map((item) => (
-              <tr key={item.name ?? ''} className="border-b border-line last:border-0">
+            {optimizers.map((item, index) => (
+              <tr key={item.name ?? `#${index}`} className="border-b border-line last:border-0">
                 <th scope="row" className="px-4 py-1.5 font-mono text-xs font-medium">
                   {item.name}
                 </th>
@@ -200,8 +200,8 @@ function OptimizerTable({ optimizers }: { optimizers: NonNullable<RunDetail['opt
                 <td className="px-4 py-1.5 font-mono text-xs">
                   {/* 受け持つ部分は 1 つずつ行を分け, 名前の途中で折り返さない */}
                   {(item.modules ?? []).length > 0
-                    ? (item.modules ?? []).map((module) => (
-                        <div key={module} className="whitespace-nowrap">
+                    ? (item.modules ?? []).map((module, position) => (
+                        <div key={`${position}-${module}`} className="whitespace-nowrap">
                           {module}
                         </div>
                       ))

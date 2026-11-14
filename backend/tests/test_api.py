@@ -263,8 +263,17 @@ def test_run_detail_history_log(
     optimizers = client.get(base).json()["optimizers"]
     assert [item["name"] for item in optimizers] == ["actor", "critic"]
     assert optimizers[0]["scheduler"] == "StepLR"
+    (run_dir / "run.json").write_text(json.dumps({
+        "status": "completed",
+        "optimizers": [
+            {"name": 1},
+            {"name": "critic", "optimizer": "SGD", "modules": ["critic"]}
+        ]
+    }))
+    optimizers = client.get(base).json()["optimizers"]
+    assert [item["name"] for item in optimizers] == ["critic"]
     (run_dir / "run.json").write_text(
-        '{"status": "completed", "optimizers": [{"name": 1}]}'
+        '{"status": "completed", "optimizers": "Adam"}'
     )
     assert client.get(base).json()["optimizers"] is None
     (run_dir / "run.json").unlink()

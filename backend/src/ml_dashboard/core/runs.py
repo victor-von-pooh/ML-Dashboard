@@ -999,16 +999,19 @@ def read_optimizers(
     Returns
     ----------
     optimizers: Optional[list[OptimizerInfo]]
-        Optimizer ごとの情報, 書いていない場合と形が違う場合は None
+        Optimizer ごとの情報 (形の違う行は除く), 書いていない場合と
+        リストでない場合は None
     """
-    # 形の違う値 (手で書き換えたものなど) は使わない
+    # 形の違う行 (手で書き換えたものなど) だけを除外
     raw = status.get("optimizers")
     if not isinstance(raw, list):
         return None
-    try:
-        optimizers = [OptimizerInfo.model_validate(item) for item in raw]
-    except ValidationError:
-        return None
+    optimizers = []
+    for item in raw:
+        try:
+            optimizers.append(OptimizerInfo.model_validate(item))
+        except ValidationError:
+            continue
 
     return optimizers
 
