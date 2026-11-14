@@ -12,6 +12,9 @@ const EMPTY: RunNote = { note: '', tags: [], starred: false }
 const MAX_TAGS = 20
 
 /** 星のボタン. 一覧と詳細で使う */
+// メモの長さの上限 (サーバーの上限と同じ)
+const NOTE_LIMIT = 20000
+
 export function StarButton({
   starred,
   onToggle,
@@ -207,12 +210,21 @@ export function NotePanel({ projectId, runId }: { projectId: string; runId: stri
           }}
           rows={2}
           autoFocus={empty}
-          maxLength={20000}
+          maxLength={NOTE_LIMIT}
+          aria-describedby={`${noteId}-count`}
           placeholder="この実験で試したこと, 気付いたことなど"
           className="block w-full resize-y rounded-lg border border-line bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
         />
         <p className="text-[11px] text-ink-3">
           ダッシュボードのデータの置き場に保存します (実験のディレクトリには書き込みません).
+          {/* 上限に近づいたら文字数を出す (上限を超える分は入らない) */}
+          <span
+            id={`${noteId}-count`}
+            className={text.length >= NOTE_LIMIT ? 'ml-1 text-warning-text' : 'ml-1'}
+          >
+            {text.length > NOTE_LIMIT * 0.8 &&
+              `${text.length.toLocaleString()} / ${NOTE_LIMIT.toLocaleString()} 字${text.length >= NOTE_LIMIT ? ' (上限)' : ''}`}
+          </span>
         </p>
         {tagError && <p className="text-xs text-critical-text">{tagError}</p>}
         {save.error && <ErrorBox error={save.error} />}
