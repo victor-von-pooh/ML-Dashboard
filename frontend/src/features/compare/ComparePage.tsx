@@ -17,6 +17,7 @@ import {
   diffConfigs,
   flattenConfig,
   groupMetrics,
+  identicalSeries,
   toPoints,
 } from '../../lib/metrics'
 import { ImageCompare } from './ImageCompare'
@@ -105,7 +106,12 @@ export function ComparePage() {
         color: slot.color,
         points: toPoints(slot.history, column),
       }))
-      return { column, series, missing: missing.map((slot) => shortLabel(slot.id)) }
+      return {
+        column,
+        series,
+        missing: missing.map((slot) => shortLabel(slot.id)),
+        identical: identicalSeries(series),
+      }
     })
 
   // 2 つ以上の実験にある番号付きの画像の並び (同じエポックの生成画像などを並べて比べる)
@@ -272,7 +278,7 @@ export function ComparePage() {
               </div>
             </div>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              {charts.map(({ column, series, missing }) => (
+              {charts.map(({ column, series, missing, identical }) => (
                 <Card key={column} title={<span className="font-mono">{column}</span>}>
                   <LineChart
                     series={series}
@@ -285,6 +291,11 @@ export function ComparePage() {
                       この指標が無い実験: {missing.join(', ')}
                     </p>
                   )}
+                  {identical.map((names) => (
+                    <p key={names.join()} className="mt-1 text-[11px] text-ink-3">
+                      線が重なっている実験: {names.join(', ')} (全てのエポックで同じ値)
+                    </p>
+                  ))}
                 </Card>
               ))}
             </div>

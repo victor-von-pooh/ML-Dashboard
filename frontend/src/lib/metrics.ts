@@ -76,3 +76,26 @@ export function summarizeDiff(diff: Record<string, unknown>): string[] {
 export function toPoints(history: History, key: string): [number, number | null][] {
   return history.rows.map((row, index) => [row.epoch ?? index + 1, row[key] ?? null])
 }
+
+/** 2 つの系列の全ての点 (エポックと値) が同じかどうか */
+function samePoints(a: [number, number | null][], b: [number, number | null][]): boolean {
+  if (a.length !== b.length) return false
+  return a.every(([x, y], index) => x === b[index]![0] && y === b[index]![1])
+}
+
+/**
+ * 全ての点が同じ値の系列 (グラフで線が完全に重なり, 下の線が見えないもの) を,
+ * 名前の組にまとめて返す. 値の無い点だけの系列は対象外
+ */
+export function identicalSeries(
+  series: { name: string; points: [number, number | null][] }[],
+): string[][] {
+  const groups: { points: [number, number | null][]; names: string[] }[] = []
+  for (const item of series) {
+    if (!item.points.some(([, value]) => value != null)) continue
+    const group = groups.find((candidate) => samePoints(candidate.points, item.points))
+    if (group) group.names.push(item.name)
+    else groups.push({ points: item.points, names: [item.name] })
+  }
+  return groups.filter((group) => group.names.length > 1).map((group) => group.names)
+}
