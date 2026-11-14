@@ -3,7 +3,7 @@ import { Download, ExternalLink, Search, X } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 
 import { runFileUrl, type LogEntry, type ModelParam, type RunDetail } from '../../api/client'
-import { Card } from '../../components/ui'
+import { Button, Card } from '../../components/ui'
 import { formatBytes, formatLogTime, formatValue } from '../../lib/format'
 import { flattenConfig } from '../../lib/metrics'
 import { countParams, filterParams } from '../../lib/modelSummary'
@@ -392,8 +392,13 @@ export function LogTab({ entries }: { entries: LogEntry[] }) {
   )
 }
 
+// ファイルのタブで一度に並べる画像の数
+const IMAGE_PAGE = 48
+
 export function FilesTab({ run, projectId }: { run: RunDetail; projectId: string }) {
   const images = run.files.filter((file) => file.kind === 'image')
+  // 画像が多い実験 (エポックごとの生成画像など) は, 少しずつ並べる
+  const [shown, setShown] = useState(IMAGE_PAGE)
   const [preview, setPreview] = useState<string | null>(null)
   const dialogRef = useRef<HTMLDialogElement>(null)
   const openerRef = useRef<HTMLButtonElement | null>(null)
@@ -414,7 +419,7 @@ export function FilesTab({ run, projectId }: { run: RunDetail; projectId: string
       {images.length > 0 && (
         <Card title={`画像 (${images.length})`}>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
-            {images.map((file) => (
+            {images.slice(0, shown).map((file) => (
               <button
                 key={file.path}
                 type="button"
@@ -434,6 +439,14 @@ export function FilesTab({ run, projectId }: { run: RunDetail; projectId: string
               </button>
             ))}
           </div>
+          {images.length > shown && (
+            <div className="mt-3 flex items-center gap-3 text-xs text-ink-3">
+              <Button variant="secondary" onClick={() => setShown((count) => count + IMAGE_PAGE)}>
+                さらに {Math.min(IMAGE_PAGE, images.length - shown)} 枚を表示
+              </Button>
+              {shown} / {images.length} 枚 (エポックごとの推移は「画像の推移」のタブ)
+            </div>
+          )}
         </Card>
       )}
       <Card title={`ファイル (${run.files.length})`} padded={false}>
@@ -448,6 +461,21 @@ export function FilesTab({ run, projectId }: { run: RunDetail; projectId: string
                 <td className="px-4 py-1.5 text-xs text-ink-3">{file.kind}</td>
                 <td className="tabular px-4 py-1.5 text-right text-xs text-ink-2">
                   {formatBytes(file.size)}
+                </td>
+                <td className="w-10 px-2 py-1.5">
+                  {/* 文字のファイルは新しいタブで開ける */}
+                  {file.kind === 'text' && (
+                    <a
+                      href={runFileUrl(projectId, run.id, file.path)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex rounded p-1 text-ink-3 hover:bg-surface-2 hover:text-ink"
+                      aria-label={`${file.path} を新しいタブで開く`}
+                      title="新しいタブで開く"
+                    >
+                      <ExternalLink className="size-3.5" aria-hidden />
+                    </a>
+                  )}
                 </td>
                 <td className="w-10 px-2 py-1.5">
                   <a
