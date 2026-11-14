@@ -150,7 +150,7 @@ export function useRunningJobCount() {
 
 /**
  * ジョブの状態か実験が変わったら, そのプロジェクトの実験の一覧と,
- * サイドバーの実験の数 (プロジェクトの一覧) を読み直す
+ * プロジェクトの一覧 (サイドバーとプロジェクトの画面の実験の数, 最新の実験) を読み直す
  */
 function useRefreshOnJobChange(jobs: JobInfo[] | undefined) {
   const client = useQueryClient()
