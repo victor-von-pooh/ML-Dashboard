@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -247,6 +248,25 @@ def test_run_detail_history_log(
         '{"status": "completed", "final_weights": "other"}'
     )
     assert client.get(base).json()["final_weights"] is None
+
+    # Optimizer ごとの情報 (書いていない場合と形が違う場合は None)
+    assert client.get(base).json()["optimizers"] is None
+    (run_dir / "run.json").write_text(json.dumps({
+        "status": "completed",
+        "optimizers": [
+            {"name": "actor", "optimizer": "Adam", "modules": ["actor"],
+             "scheduler": "StepLR"},
+            {"name": "critic", "optimizer": "SGD", "modules": ["critic"],
+             "scheduler": None}
+        ]
+    }))
+    optimizers = client.get(base).json()["optimizers"]
+    assert [item["name"] for item in optimizers] == ["actor", "critic"]
+    assert optimizers[0]["scheduler"] == "StepLR"
+    (run_dir / "run.json").write_text(
+        '{"status": "completed", "optimizers": [{"name": 1}]}'
+    )
+    assert client.get(base).json()["optimizers"] is None
     (run_dir / "run.json").unlink()
     assert detail["device"] == "cpu"
     assert detail["parameter_count"] == 131

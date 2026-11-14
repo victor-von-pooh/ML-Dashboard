@@ -108,7 +108,7 @@ ML-Found の TODO の項目 3 (進捗を渡す仕組みと学習の中断) の�
 
 | 加えたもの | 内容 |
 | --- | --- |
-| `run.json` | 実験の状態 (`running`, `completed`, `stopped`, `failed`), 開始と終了の時刻, 予定と実際のエポック数, 監視する指標, ベストモデルを選ぶか (`select_best`), ベストのエポックと値, Early Stopping で止めたエポック, `final_model.pt` の重み (`best`, `last`, `partial`), 乱数シード, デバイス, プロセスの ID とホスト名, エラーの内容. 開始時に作り, エポックごとと終了時に更新 |
+| `run.json` | 実験の状態 (`running`, `completed`, `stopped`, `failed`), 開始と終了の時刻, 予定と実際のエポック数, 監視する指標, ベストモデルを選ぶか (`select_best`), ベストのエポックと値, Early Stopping で止めたエポック, `final_model.pt` の重み (`best`, `last`, `partial`), 乱数シード, デバイス, Optimizer ごとの名前, クラス, 受け持つ部分, Scheduler (`optimizers`), プロセスの ID とホスト名, エラーの内容. 開始時に作り, エポックごとと終了時に更新 |
 | `progress.json` | 今のフェーズ (`train`, `train_eval`, `valid`. `train_eval` の間は, そのエポックの学習を終えたものとして進み具合を求める), エポック, バッチの位置と総数, 経過時間. 一定の間隔で上書き |
 | 中断の要求 | 実験のディレクトリに `STOP` というファイルがあれば, 今のエポックの区切りで学習を止め, `last.pt` を保存して `stopped` で終える. 中身が `now` ならエポックの途中でも止め, 途中のエポックを捨てて最後に終えたエポックの状態に戻す |
 
@@ -122,7 +122,7 @@ ML-Found の TODO の項目 3 (進捗を渡す仕組みと学習の中断) の�
     - 概要: 状態, ベストのエポックと指標, 学習時間, 乱数シード, デバイス
     - 学習曲線: 指標ごとのグラフ. 学習用と検証用 (と, 学習用データを評価し直した `train_eval/`) を重ね, ベストのエポックと Early Stopping の位置を示す
     - config: 全体と default との差分
-    - モデル: モデルの構造, Optimizer, Scheduler (`train.log` から), パラメータの一覧 (`model_summary.csv` から. 名前か層で検索でき, 学習する, しないパラメータとバッファの要素数を出し, 重みの共有も示す)
+    - モデル: モデルの構造, Optimizer, Scheduler (`train.log` から), 名前付きの複数の Optimizer の場合は名前ごとのクラス, 受け持つ部分, Scheduler の表 (`run.json` の `optimizers` から. 書いていない古い版の ML-Found の実験には出ない), パラメータの一覧 (`model_summary.csv` から. 名前か層で検索でき, 学習する, しないパラメータとバッファの要素数を出し, 重みの共有も示す)
     - 環境: git の情報と未コミットの変更, OS, PyTorch, パッケージ
     - ログ: `train.log`. 警告とエラーを強調
     - 画像: 番号の付いた画像のエポックごとの推移 (スライダーと再生), 実験のディレクトリの画像とファイルの一覧

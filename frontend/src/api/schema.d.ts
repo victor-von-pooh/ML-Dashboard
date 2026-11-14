@@ -839,6 +839,17 @@ export interface components {
              */
             same_as: string;
         };
+        /** OptimizerInfo */
+        OptimizerInfo: {
+            /** Name */
+            name?: string | null;
+            /** Optimizer */
+            optimizer: string;
+            /** Modules */
+            modules?: string[] | null;
+            /** Scheduler */
+            scheduler?: string | null;
+        };
         /** ParamSpec */
         ParamSpec: {
             /** Name */
@@ -1024,6 +1035,8 @@ export interface components {
             model_summary?: components["schemas"]["ModelParam"][] | null;
             /** Model Summary Rows */
             model_summary_rows?: number | null;
+            /** Optimizers */
+            optimizers?: components["schemas"]["OptimizerInfo"][] | null;
         };
         /** RunFile */
         RunFile: {

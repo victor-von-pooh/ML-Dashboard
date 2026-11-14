@@ -99,6 +99,15 @@ class ModelParam(BaseModel):
     same_as: str = ""
 
 
+class OptimizerInfo(BaseModel):
+    # ML-Found の run.json の optimizers の 1 つ (名前付きの場合は名前と
+    # 受け持つ部分, 1 つの Optimizer の場合は None)
+    name: Optional[str] = None
+    optimizer: str
+    modules: Optional[list[str]] = None
+    scheduler: Optional[str] = None
+
+
 class RunDetail(RunSummary):
     config: dict[str, Any]
     seed: Optional[int]
@@ -118,6 +127,9 @@ class RunDetail(RunSummary):
     # 全体の行数, ファイルが無い古い実験は None
     model_summary: Optional[list[ModelParam]] = None
     model_summary_rows: Optional[int] = None
+    # Optimizer ごとの名前, クラス, 受け持つ部分, Scheduler (run.json の
+    # optimizers), 書いていない古い実験は None
+    optimizers: Optional[list[OptimizerInfo]] = None
 
 
 class LrPoint(BaseModel):
