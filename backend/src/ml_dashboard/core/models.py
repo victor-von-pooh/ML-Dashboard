@@ -132,6 +132,8 @@ class RunDetail(RunSummary):
     optimizers: Optional[list[OptimizerInfo]] = None
     # 監視する指標 (ベストモデルを選ばない実験でも最後の値を出すため)
     monitor: Optional[str] = None
+    # 読めなかったファイルなど, 表示の値が確かでない理由 (画面に注意として出す)
+    notices: list[str] = []
 
 
 class LrPoint(BaseModel):

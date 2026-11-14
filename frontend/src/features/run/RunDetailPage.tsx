@@ -120,6 +120,12 @@ export function RunDetailPage() {
         }
       />
       {data.error && <ErrorBox error={data.error} live={false} />}
+      {data.notices.map((notice) => (
+        <p key={notice} className="mb-4 flex items-start gap-1.5 text-sm text-warning-text">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+          {notice}
+        </p>
+      ))}
       {data.final_weights === 'partial' && (
         <p className="mb-4 flex items-start gap-1.5 text-sm text-warning-text">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />

@@ -456,3 +456,30 @@ def test_broken_history_rows(tmp_path: Path) -> None:
     history = read_history_csv(path)
     assert [row["epoch"] for row in history.rows] == [1.0, 2.0, 3.0]
     assert history.rows[1]["train/loss"] == 0.3
+
+
+def test_unreadable_run_json_notice(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    run.json が壊れている実験の詳細に, 注意を出すことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 読める run.json では注意なし, 途中で切れた run.json では注意
+    project_id = register(client, project_dir)
+    base = f"/api/projects/{project_id}/runs/demo/2026-11-08/10-00-00"
+    assert client.get(base).json()["notices"] == []
+    run_dir = project_dir / "outputs/demo/2026-11-08/10-00-00"
+    (run_dir / "run.json").write_text('{"status": "comp', encoding="utf-8")
+    notices = client.get(base).json()["notices"]
+    assert any("run.json を読めません" in notice for notice in notices)
