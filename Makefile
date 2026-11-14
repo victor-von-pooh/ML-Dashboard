@@ -4,7 +4,8 @@
 PORT ?= 8765
 
 # 開発用のサーバーは変更のたびに作り直されるので, make を実行した間は同じトークンを使用
-DEV_TOKEN ?= $(shell python3 -c 'import secrets; print(secrets.token_urlsafe(16))')
+# (:= で 1 回だけ作る. ?= では参照のたびに作り直され, 表示と起動で値が変わる)
+DEV_TOKEN := $(or $(DEV_TOKEN),$(shell python3 -c 'import secrets; print(secrets.token_urlsafe(16))'))
 
 .PHONY: setup dev-backend dev-frontend build serve api check demo e2e
 
