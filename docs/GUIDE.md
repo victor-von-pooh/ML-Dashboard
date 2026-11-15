@@ -61,9 +61,9 @@ make serve
 2. パスの欄に, ML-Dashboard を clone したディレクトリの中の `demo` のパスを入れて (`~` から書ける. 例: `~/ML-Dashboard/demo`) 「探す」を押す
 3. 選ばれた状態で「1 件を追加」を押すと, 左の「PROJECTS」に `demo` が並ぶ. 数字は実験の数
 
-親のディレクトリを入れると, 3 階層下までのプロジェクトが並び, まとめて登録できる (`outputs` や `data`, submodule の中は探さない). 図は ML_tester (10 章) の 12 のタスクを探した例.
+親のディレクトリを入れると, 3 階層下までのプロジェクトが並び, まとめて登録できる (`outputs` や `data`, submodule の中は探さない). 図は ML_tester (10 章) のタスクを探した例 (タスクが 12 だった時のもの).
 
-![ML_tester を探した結果の 12 件](images/guide/scan.jpg)
+![ML_tester を探した結果](images/guide/scan.jpg)
 
 一度登録したプロジェクトは, ダッシュボードを起動し直しても残る.
 
@@ -265,11 +265,11 @@ scheduler:
 
 ## 10. ML_tester のタスクで試す
 
-[ML_tester](https://github.com/victor-von-pooh/ML_tester) は, ML-Found を使った 12 の学習の例 (表形式の分類, 画像, グラフ, 拡散モデル, 量子回路など) を持つ動作確認の場. `demo` より多くの種類の学習で画面を試したい場合に使える. ダッシュボードを使うのに ML_tester は要らない.
+[ML_tester](https://github.com/victor-von-pooh/ML_tester) は, ML-Found を使った多くの学習の例 (表形式の分類, 画像, 拡散モデル, 量子回路, ML-ModelControl の定義から組み立てたモデルなど) を持つ動作確認の場. `demo` より多くの種類の学習で画面を試したい場合に使える. ダッシュボードを使うのに ML_tester は要らない.
 
 1. ML_tester を, その README の「導入」の手順で導入する (`.venv` を作り, 依存を入れる). `.venv` は, ダッシュボードにプロジェクトを登録する**前**に作っておく. 登録したときに見つかった仮想環境の Python が, 画面から起動する学習に使われる
 2. ML_tester の root で `.venv` を有効にして, 下の表の実験を流す
-3. 2 章の手順で, ML_tester を clone したディレクトリを入れて「探す」を押し, 「12 件を追加」で登録する
+3. 2 章の手順で, ML_tester を clone したディレクトリを入れて「探す」を押し, 「n 件を追加」(n はタスクの数) で登録する
 
 流す実験.
 
