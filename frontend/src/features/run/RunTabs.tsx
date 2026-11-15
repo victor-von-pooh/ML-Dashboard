@@ -67,7 +67,13 @@ export function ConfigTab({ run }: { run: RunDetail }) {
 
   return (
     <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-      <Card title="default との差分" padded={false}>
+      <Card
+        title={
+          run.source?.default ? `default (${run.source.default}) との差分` : 'default との差分'
+        }
+        padded={false}
+      >
+        {run.source && <SourceLine source={run.source} />}
         {changed.size === 0 ? (
           <p className="px-4 py-6 text-sm text-ink-3">default のまま学習しました.</p>
         ) : (
@@ -525,5 +531,26 @@ export function FilesTab({ run, projectId }: { run: RunDetail; projectId: string
         )}
       </dialog>
     </div>
+  )
+}
+
+/** 実験の起動のしかた (ML-Found の source.yaml) の 1 行 */
+function SourceLine({ source }: { source: NonNullable<RunDetail['source']> }) {
+  const items: [string, string][] = []
+  if (source.script) items.push(['スクリプト', source.script])
+  if (source.experiment) items.push(['experiment', source.experiment])
+  if (source.overrides && source.overrides.length > 0) {
+    items.push(['上書き', source.overrides.join(', ')])
+  }
+  if (items.length === 0) return null
+  return (
+    <dl className="flex flex-wrap gap-x-4 gap-y-1 border-b border-line px-4 py-2 text-xs">
+      {items.map(([label, value]) => (
+        <div key={label} className="flex min-w-0 gap-1.5">
+          <dt className="shrink-0 text-ink-3">{label}</dt>
+          <dd className="font-mono break-all text-ink-2">{value}</dd>
+        </div>
+      ))}
+    </dl>
   )
 }

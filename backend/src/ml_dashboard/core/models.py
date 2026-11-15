@@ -53,6 +53,16 @@ class Progress(BaseModel):
     start_epoch: int = 1
 
 
+class RunSource(BaseModel):
+    # 実験の起動のしかた (ML-Found の source.yaml). 実行したスクリプト,
+    # default と experiment の config のパス, 「項目=値」の上書き. 分からない
+    # ものは None
+    script: Optional[str] = None
+    default: Optional[str] = None
+    experiment: Optional[str] = None
+    overrides: Optional[list[str]] = None
+
+
 class RunSummary(BaseModel):
     id: str
     name: str
@@ -67,6 +77,8 @@ class RunSummary(BaseModel):
     final_metrics: dict[str, Optional[float]]
     progress: Optional[Progress]
     error: Optional[str]
+    # 起動のしかた (source.yaml), 書いていない古い実験は None
+    source: Optional[RunSource] = None
 
 
 class LogEntry(BaseModel):

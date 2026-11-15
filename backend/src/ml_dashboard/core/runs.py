@@ -34,6 +34,7 @@ from ml_dashboard.core.models import (
     RunDetail,
     RunFile,
     RunParams,
+    RunSource,
     RunStatus,
     RunSummary,
 )
@@ -620,6 +621,47 @@ def load_yaml(path: Path) -> dict[str, Any]:
     return config
 
 
+def read_source(run_dir: Path) -> Optional[RunSource]:
+    """
+    実験の起動のしかた (ML-Found の source.yaml) を読み込む関数
+
+    Parameters
+    ----------
+    run_dir: Path
+        実験のディレクトリ
+
+    Returns
+    ----------
+    source: Optional[RunSource]
+        起動のしかた, ファイルが無いか読めない場合は None
+    """
+    # 追加の情報なので, 読めないファイルは無いものとして扱い, 実験の他の
+    # 表示を妨げない設定
+    try:
+        data = load_yaml(run_dir / "source.yaml")
+    except Exception:
+        return None
+    if not isinstance(data, dict) or not data:
+        return None
+
+    # 文字でない値は分からないもの (None) としての読み込み
+    text = {
+        key: value if isinstance(value, str) else None
+        for key, value in data.items()
+        if key in ("script", "default", "experiment")
+    }
+    overrides = data.get("overrides")
+    source = RunSource(
+        **text,
+        overrides=[str(item) for item in overrides]
+        if isinstance(overrides, list) else None
+    )
+    if not any(source.model_dump().values()):
+        return None
+
+    return source
+
+
 def read_json(path: Path) -> dict[str, Any]:
     """
     JSON のファイルを辞書で読み込む関数
@@ -1034,7 +1076,8 @@ class RunData:
             progress=(
                 read_progress(self.run_dir) if status == "running" else None
             ),
-            error=self.status.get("error") if status == "failed" else None
+            error=self.status.get("error") if status == "failed" else None,
+            source=read_source(self.run_dir)
         )
 
         return summary
