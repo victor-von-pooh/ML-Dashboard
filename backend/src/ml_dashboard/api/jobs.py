@@ -10,7 +10,12 @@ from fastapi import APIRouter, HTTPException, Request
 from omegaconf import DictConfig, OmegaConf
 from pydantic import BaseModel, model_validator
 
-from ml_dashboard.api.routes import NOT_FOUND, get_project
+from ml_dashboard.api.routes import (
+    NOT_FOUND,
+    RUN_PATH,
+    get_project,
+    get_run_data,
+)
 from ml_dashboard.core.jobs import Job, JobManager
 from ml_dashboard.core.models import Progress, RunSummary
 from ml_dashboard.core.projects import (
@@ -18,12 +23,14 @@ from ml_dashboard.core.projects import (
     ProjectError,
     default_config_for,
     experiment_config_for,
+    list_default_configs,
     list_experiment_configs,
     list_scripts,
 )
 from ml_dashboard.core.runs import (
     RunNotFoundError,
     read_progress,
+    read_source,
     resolve_run_dir,
     summarize_run,
 )
@@ -87,6 +94,9 @@ class ValidateRequest(BaseModel):
     text: str
     # 学習のスクリプト, 元にする default の config の選択に使用
     script: Optional[str] = None
+    # 元にする default の config (configs/default の中の相対パス).
+    # 指定しない場合はスクリプトから選択
+    default_config: Optional[str] = None
 
 
 class ValidateResult(BaseModel):
@@ -144,6 +154,9 @@ class JobCreate(BaseModel):
     script: str
     config_path: Optional[str] = None
     config_text: Optional[str] = None
+    # 起動の前の確認に使う default の config (configs/default の中の
+    # 相対パス). 指定しない場合はスクリプトから選択
+    default_config: Optional[str] = None
 
     @model_validator(mode="after")
     def check_one_config(self) -> "JobCreate":
@@ -189,10 +202,26 @@ class JobInfo(BaseModel):
     run: Optional[RunSummary]
     progress: Optional[Progress]
     config_text: Optional[str]
+    # 起動の前の確認に使った default の config, None はスクリプトから選択
+    default_config: Optional[str] = None
 
 
 class JobOutput(BaseModel):
     text: str
+
+
+class RelaunchPlan(BaseModel):
+    # 起動できない理由, 起動できる場合は None
+    reason: Optional[str] = None
+    script: Optional[str] = None
+    # 起動の前の確認に使う default の config (configs/default の中)
+    default_config: Optional[str] = None
+    # 選ぶプロジェクトの experiment の config, 一覧に無い場合は None
+    config_path: Optional[str] = None
+    # experiment の config の中身 (上書きを重ねたもの)
+    config_text: Optional[str] = None
+    # 実験の時と違うかもしれない点などのお知らせ
+    notes: list[str] = []
 
 
 def get_jobs(request: Request) -> JobManager:
@@ -234,6 +263,37 @@ def resolve_config(project: Project, relative: str) -> Path:
     if relative not in list_experiment_configs(Path(project.path)):
         raise HTTPException(
             404, f"experiment の config が見つかりません: {relative}"
+        )
+    path = Path(project.path) / relative
+
+    return path
+
+
+def resolve_default(
+    project: Project, relative: Optional[str]
+) -> Optional[Path]:
+    """
+    指定された default の config のパスを確かめる関数
+
+    Parameters
+    ----------
+    project: Project
+        プロジェクト
+    relative: Optional[str]
+        プロジェクトのディレクトリからの相対パス
+
+    Returns
+    ----------
+    path: Optional[Path]
+        default の config のパス, 指定が無い場合は None
+    """
+    if relative is None:
+        return None
+
+    # configs/default の中の YAML だけを受け付け
+    if relative not in list_default_configs(Path(project.path)):
+        raise HTTPException(
+            400, f"default の config が見つかりません: {relative}"
         )
     path = Path(project.path) / relative
 
@@ -546,7 +606,8 @@ def describe_missing_path(
 
 
 def check_config(
-    project: Project, path: Path, script: Optional[str] = None
+    project: Project, path: Path, script: Optional[str] = None,
+    default: Optional[Path] = None
 ) -> CheckedConfig:
     """
     ML-Found で config を読み込み, 学習を始める前の確認をする関数
@@ -559,6 +620,8 @@ def check_config(
         experiment の config のパス
     script: Optional[str] = None
         学習のスクリプト, 元にする default の config の選択に使用
+    default: Optional[Path] = None
+        元にする default の config, None の場合はスクリプトから選択
 
     Returns
     ----------
@@ -587,7 +650,7 @@ def check_config(
     # 自作の Optimizer (custom_optim.Lion など) を読めるように,
     # 学習のスクリプトと同じくプロジェクトのディレクトリから読み込む
     project_dir = Path(project.path)
-    default_path = default_config_for(project_dir, script)
+    default_path = default or default_config_for(project_dir, script)
     sys.path.insert(0, str(project_dir))
     try:
         cfg, diff = load_config(str(default_path), str(path))
@@ -708,8 +771,35 @@ def describe(error: Exception) -> str:
     return message
 
 
+def check_output_dir(loaded: object) -> None:
+    """
+    experiment の config が出力先を変えていればエラーにする関数
+
+    Parameters
+    ----------
+    loaded: object
+        読み込んだ experiment の config
+
+    Returns
+    ----------
+    None
+    """
+    # 出力先を変えた実験は実験の一覧に出せないので, 画面からの起動では変更不可
+    experiment = loaded.get("experiment") if isinstance(
+        loaded, (dict, DictConfig)
+    ) else None
+    if isinstance(experiment, (dict, DictConfig)) and (
+        "output_dir" in experiment
+    ):
+        raise ValueError(
+            "画面から起動する学習では experiment.output_dir を変えられません "
+            "(プロジェクトの実験の一覧に表示できないため)"
+        )
+
+
 def validate_text(
-    project: Project, text: str, script: Optional[str] = None
+    project: Project, text: str, script: Optional[str] = None,
+    default: Optional[Path] = None
 ) -> CheckedConfig:
     """
     書き換えた config の中身を一時ファイルに書いて確かめる関数
@@ -722,6 +812,8 @@ def validate_text(
         experiment の config の中身
     script: Optional[str] = None
         学習のスクリプト, 元にする default の config の選択に使用
+    default: Optional[Path] = None
+        元にする default の config, None の場合はスクリプトから選択
 
     Returns
     ----------
@@ -739,24 +831,14 @@ def validate_text(
             "書いてください"
         )
 
-    # 出力先を変えた実験は実験の一覧に出せないので, 画面からの起動では変更不可
-    experiment = loaded.get("experiment") if isinstance(
-        loaded, (dict, DictConfig)
-    ) else None
-    if isinstance(experiment, (dict, DictConfig)) and (
-        "output_dir" in experiment
-    ):
-        raise ValueError(
-            "画面から起動する学習では experiment.output_dir を変えられません "
-            "(プロジェクトの実験の一覧に表示できないため)"
-        )
+    check_output_dir(loaded)
 
     # 一時ファイルの場所はエラーの文から除去
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "experiment.yaml"
         path.write_text(text, encoding="utf-8")
         try:
-            checked = check_config(project, path, script)
+            checked = check_config(project, path, script, default)
         except Exception as error:
             message = str(error).replace(str(path), "experiment.yaml")
             raise ValueError(message) from error
@@ -871,12 +953,14 @@ def validate_config(
             400, f"学習のスクリプトが見つかりません: {body.script}"
         )
 
+    default = resolve_default(project, body.default_config)
+
     # 学習と同じ方法で読み込み, 失敗した場合は理由と元にした default を返却
     try:
-        checked = validate_text(project, body.text, body.script)
+        checked = validate_text(project, body.text, body.script, default)
     except Exception as error:
         project_dir = Path(project.path)
-        default_path = default_config_for(project_dir, body.script)
+        default_path = default or default_config_for(project_dir, body.script)
         result = ValidateResult(
             ok=False, error=describe(error), diff={},
             default_config=default_path.relative_to(project_dir).as_posix()
@@ -924,14 +1008,16 @@ def create_job(
             400, f"学習のスクリプトが見つかりません: {body.script}"
         )
 
+    default = resolve_default(project, body.default_config)
+
     # 起動する前に ML-Found で config の誤りを確認
     # ジョブのディレクトリは確認が通ってから作り, 失敗した起動は残さない設定
     config_path = None
     try:
         if body.config_text is not None:
-            require_valid(
-                validate_text(project, body.config_text, body.script)
-            )
+            require_valid(validate_text(
+                project, body.config_text, body.script, default
+            ))
         else:
             # config を指定しない場合は, スクリプトに対応する experiment の
             # config (train_hf.py なら hf.yaml, 無ければ train.yaml)
@@ -939,7 +1025,9 @@ def create_job(
                 project, body.config_path
                 or experiment_config_for(Path(project.path), body.script)
             )
-            require_valid(check_config(project, config_path, body.script))
+            require_valid(
+                check_config(project, config_path, body.script, default)
+            )
     except HTTPException:
         raise
     except Exception as error:
@@ -954,7 +1042,9 @@ def create_job(
         if config_path is None:
             config_path = jobs.job_dir(job_id) / "experiment.yaml"
             config_path.write_text(body.config_text or "", encoding="utf-8")
-        job = jobs.start(job_id, project, body.script, config_path)
+        job = jobs.start(
+            job_id, project, body.script, config_path, body.default_config
+        )
     except OSError as error:
         jobs.discard(job_id)
         raise HTTPException(
@@ -1084,24 +1174,295 @@ def rerun_job(request: Request, job_id: str) -> JobInfo:
         raise HTTPException(
             404, f"プロジェクトが見つかりません: {job.project_id}"
         )
+    # 記録した default が無くなった場合は, スクリプトから選ぶ形に戻す設定
+    default_config = job.default_config
+    if default_config not in list_default_configs(Path(project.path)):
+        default_config = None
     config = Path(job.config)
     if config.is_relative_to(get_jobs(request).job_dir(job_id)):
         if not config.is_file():
             raise HTTPException(400, f"config が見つかりません: {config}")
         body = JobCreate(
             script=job.script,
-            config_text=config.read_text(encoding="utf-8")
+            config_text=config.read_text(encoding="utf-8"),
+            default_config=default_config
         )
     elif config.is_relative_to(Path(project.path)):
         body = JobCreate(
             script=job.script,
-            config_path=config.relative_to(project.path).as_posix()
+            config_path=config.relative_to(project.path).as_posix(),
+            default_config=default_config
         )
     else:
         raise HTTPException(400, f"config の場所が分かりません: {config}")
     info = create_job(request, project.id, body)
 
     return info
+
+
+def is_inside(path: Path, root: Path) -> bool:
+    """
+    パスがディレクトリの中にあるかを, リンクを辿った先で確かめる関数
+
+    Parameters
+    ----------
+    path: Path
+        確かめるパス
+    root: Path
+        ディレクトリ
+
+    Returns
+    ----------
+    inside: bool
+        中にあるかどうか
+    """
+    try:
+        inside = path.resolve().is_relative_to(root.resolve())
+    except (OSError, RuntimeError):
+        inside = False
+
+    return inside
+
+
+def find_run_experiment(
+    project_dir: Path, jobs_dir: Path, experiment: str
+) -> tuple[Optional[str], Path]:
+    """
+    実験が使った experiment の config のファイルを探す関数
+
+    Parameters
+    ----------
+    project_dir: Path
+        プロジェクトのディレクトリ
+    jobs_dir: Path
+        ダッシュボードのジョブの置き場
+    experiment: str
+        source.yaml の experiment (プロジェクトの中なら相対パス)
+
+    Returns
+    ----------
+    config_path: Optional[str]
+        プロジェクトの experiment の config の一覧にあればその相対パス
+    path: Path
+        中身を読むファイル
+    """
+    # 一覧にある config は, 起動の画面でそのまま選べる形で返却
+    if experiment in list_experiment_configs(project_dir):
+        return experiment, project_dir / experiment
+
+    # 画面から起動した学習の config (ジョブの置き場) とプロジェクトの
+    # configs の中の他の YAML は中身だけを使用. それ以外の場所のファイルと,
+    # リンクの先が YAML でないものは読まない設定
+    path = Path(experiment)
+    if not path.is_absolute():
+        path = project_dir / path
+    allowed = path.resolve().suffix in (".yaml", ".yml") and (
+        is_inside(path, project_dir / "configs") or is_inside(path, jobs_dir)
+    )
+    if not allowed:
+        raise ValueError(
+            "experiment の config は, プロジェクトの configs の中か画面から"
+            f"起動した学習の YAML だけを読みます: {experiment}"
+        )
+    if not path.is_file():
+        raise ValueError(
+            f"experiment の config が見つかりません: {experiment}"
+        )
+
+    return None, path
+
+
+def apply_overrides(text: str, overrides: list[str]) -> str:
+    """
+    experiment の config の中身に「項目=値」の上書きを重ねる関数
+
+    ML-Found の merge_experiment と同じく, 上書きでクラスを変える項目は
+    experiment に書いた引数を捨てる
+
+    Parameters
+    ----------
+    text: str
+        experiment の config の中身
+    overrides: list[str]
+        「項目=値」の上書き
+
+    Returns
+    ----------
+    merged: str
+        上書きを重ねた YAML (元のコメントは消える)
+    """
+    import_ml_found()
+    from ml_found.config.loader import params_sections, parse_overrides
+
+    loaded = OmegaConf.create(text) if text.strip() else OmegaConf.create({})
+    if not isinstance(loaded, DictConfig):
+        raise ValueError(
+            "experiment の config が「項目: 値」の形ではありません"
+        )
+    override = parse_overrides(overrides)
+    for section in params_sections(OmegaConf.merge(loaded, override)):
+        name = OmegaConf.select(override, f"{section}.name", default=None)
+        old = OmegaConf.select(loaded, f"{section}.name", default=None)
+        if name is not None and name != old and OmegaConf.select(
+            loaded, f"{section}.params", default=None
+        ) is not None:
+            OmegaConf.select(loaded, section).params = {}
+    merged = OmegaConf.to_yaml(OmegaConf.merge(loaded, override))
+
+    return merged
+
+
+def newer_than(path: Path, reference: Path) -> bool:
+    """
+    ファイルが基準のファイルより後に書き換えられたかを確かめる関数
+
+    Parameters
+    ----------
+    path: Path
+        確かめるファイル
+    reference: Path
+        基準のファイル (実験の source.yaml)
+
+    Returns
+    ----------
+    newer: bool
+        後に書き換えられたかどうか, 確かめられない場合は False
+    """
+    try:
+        newer = path.stat().st_mtime > reference.stat().st_mtime
+    except OSError:
+        newer = False
+
+    return newer
+
+
+def plan_relaunch(
+    project: Project, jobs_dir: Path, run_dir: Path
+) -> RelaunchPlan:
+    """
+    実験の起動のしかた (source.yaml) から, もう一度起動する設定をまとめる関数
+
+    Parameters
+    ----------
+    project: Project
+        プロジェクト
+    jobs_dir: Path
+        ダッシュボードのジョブの置き場
+    run_dir: Path
+        実験のディレクトリ
+
+    Returns
+    ----------
+    plan: RelaunchPlan
+        スクリプト, default と experiment の config, 起動できない理由
+    """
+    # 起動のしかたが分からない実験は, 理由だけを返却
+    project_dir = Path(project.path)
+    source = read_source(run_dir)
+    if source is None:
+        return RelaunchPlan(
+            reason="起動のしかた (source.yaml) が記録されていない実験です "
+            "(古い版の ML-Found で流した実験など)"
+        )
+    if source.script is None:
+        return RelaunchPlan(
+            reason="実行したスクリプトが記録されていません (ノートブックや "
+            "python -c で流した実験など)"
+        )
+    if source.script not in list_scripts(project_dir):
+        return RelaunchPlan(
+            reason=f"学習のスクリプト {source.script} がプロジェクトの学習の"
+            "スクリプト (train で始まる Python のファイル) にありません"
+        )
+    if source.experiment is None or source.default is None:
+        return RelaunchPlan(
+            script=source.script,
+            reason="config の読み込み方が記録されていません (ML-Found の "
+            "load_config などを使わずに作った config の実験)"
+        )
+
+    # experiment の config の今の中身に, 上書きを重ねた中身
+    reference = run_dir / "source.yaml"
+    notes = []
+    try:
+        config_path, path = find_run_experiment(
+            project_dir, jobs_dir, source.experiment
+        )
+        text = path.read_text(encoding="utf-8")
+        if source.overrides:
+            text = apply_overrides(text, source.overrides)
+            notes.append(
+                f"上書き ({' '.join(source.overrides)}) を experiment の "
+                "config に重ねました (元の YAML のコメントは消えます)"
+            )
+        # 中身を渡して起動する場合だけ, 起動と同じく出力先の変更を拒否
+        if config_path is None or source.overrides:
+            check_output_dir(
+                OmegaConf.create(text) if text.strip() else {}
+            )
+    except Exception as error:
+        return RelaunchPlan(script=source.script, reason=describe(error))
+    if newer_than(path, reference):
+        notes.append(
+            f"experiment の config ({source.experiment}) はこの実験の後に"
+            "書き換えられています. 今の中身を使います"
+        )
+
+    # 起動の前の確認は, 実験が元にした default を使用 (無ければスクリプトから)
+    default_config = None
+    if source.default in list_default_configs(project_dir):
+        default_config = source.default
+        if newer_than(project_dir / source.default, reference):
+            notes.append(
+                f"default の config ({source.default}) はこの実験の後に"
+                "書き換えられています"
+            )
+    else:
+        notes.append(
+            f"実験が元にした default の config ({source.default}) が "
+            "configs/default に無いので, 起動の前の確認はスクリプトから選んだ "
+            "default で行います"
+        )
+    plan = RelaunchPlan(
+        script=source.script, default_config=default_config,
+        config_path=config_path, config_text=text, notes=notes
+    )
+
+    return plan
+
+
+@router.get(RUN_PATH + "/relaunch", responses=NOT_FOUND)
+def read_relaunch(
+    request: Request, project_id: str, name: str, date: str, time: str
+) -> RelaunchPlan:
+    """
+    実験と同じ設定でもう一度起動するための設定を返す関数
+
+    Parameters
+    ----------
+    request: Request
+        リクエスト
+    project_id: str
+        プロジェクトの ID
+    name: str
+        実験の名前
+    date: str
+        日付のディレクトリ名
+    time: str
+        時刻のディレクトリ名
+
+    Returns
+    ----------
+    plan: RelaunchPlan
+        スクリプト, default と experiment の config, 起動できない理由
+    """
+    data = get_run_data(request, project_id, name, date, time)
+    plan = plan_relaunch(
+        get_project(request, project_id), get_jobs(request).jobs_dir,
+        data.run_dir
+    )
+
+    return plan
 
 
 @router.post("/jobs/{job_id}/stop", responses=NOT_FOUND)

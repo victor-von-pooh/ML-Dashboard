@@ -1,7 +1,9 @@
+import os
 import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from omegaconf import OmegaConf
 
 from ml_dashboard.api.jobs import describe_missing_path
 
@@ -790,3 +792,195 @@ def test_validate_missing_paths(
     assert describe_missing_path(
         "trainer.resume_from", "missing/last.pt", project_dir
     ) is None
+
+
+def test_relaunch_plan(
+    client: TestClient, project_dir: Path, tmp_path: Path
+) -> None:
+    """
+    実験の起動のしかたから, もう一度起動する設定をまとめることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    project_id = register(client, project_dir)
+    run_dir = project_dir / "outputs" / "demo" / "2026-11-08" / "10-00-00"
+    url = (
+        f"/api/projects/{project_id}/runs/demo/2026-11-08/10-00-00/relaunch"
+    )
+    source = run_dir / "source.yaml"
+
+    def plan(text: str) -> dict:
+        source.write_text(text)
+        # 後から書き換えたファイルと区別できるように, 古い時刻に設定
+        os.utime(source, (0, 0))
+        result: dict = client.get(url).json()
+        return result
+
+    # source.yaml の無い古い実験は, 理由だけ
+    old = client.get(url).json()
+    assert old["script"] is None
+    assert "source.yaml" in old["reason"]
+    missing = client.get(
+        f"/api/projects/{project_id}/runs/demo/2026-11-08/12-00-00/relaunch"
+    )
+    assert missing.status_code == 404
+
+    # プロジェクトの config と上書き: config を選び, 上書きを重ねた中身
+    examples = project_dir / "configs" / "experiment" / "examples"
+    (examples / "a.yaml").write_text(
+        "# 例\noptimizer:\n  name: Adam\n  params:\n    lr: 0.1\n"
+    )
+    result = plan(
+        "script: train.py\ndefault: configs/default/train.yaml\n"
+        "experiment: configs/experiment/examples/a.yaml\n"
+        "overrides:\n- trainer.epochs=3\n- optimizer.name=SGD\n"
+    )
+    assert result["reason"] is None
+    assert result["script"] == "train.py"
+    assert result["default_config"] == "configs/default/train.yaml"
+    assert result["config_path"] == "configs/experiment/examples/a.yaml"
+    # クラスを変える上書きは, ML-Found と同じく experiment の引数を捨てる
+    assert OmegaConf.to_container(OmegaConf.create(result["config_text"])) == {
+        "optimizer": {"name": "SGD", "params": {}},
+        "trainer": {"epochs": 3}
+    }
+    assert any("trainer.epochs=3" in note for note in result["notes"])
+    assert any("書き換えられています" in note for note in result["notes"])
+
+    # 上書きが無ければ, ファイルの中身そのまま
+    result = plan(
+        "script: train.py\ndefault: configs/default/train.yaml\n"
+        "experiment: configs/experiment/train.yaml\noverrides: []\n"
+    )
+    assert result["config_text"] == "{}\n"
+    assert result["config_path"] == "configs/experiment/train.yaml"
+
+    # 画面から起動した学習の config (ジョブの置き場) は中身だけ
+    job_config = tmp_path / "home" / "jobs" / "0123456789ab" / "a.yaml"
+    job_config.parent.mkdir(parents=True)
+    job_config.write_text("trainer:\n  epochs: 2\n")
+    result = plan(
+        f"script: train.py\ndefault: configs/default/train.yaml\n"
+        f"experiment: {job_config.resolve()}\noverrides: []\n"
+    )
+    assert result["reason"] is None
+    assert result["config_path"] is None
+    assert result["config_text"] == "trainer:\n  epochs: 2\n"
+
+    # プロジェクトとジョブの置き場の外, 無いファイル, 出力先の変更は理由
+    outside = tmp_path / "outside.yaml"
+    outside.write_text("{}\n")
+    for experiment, message in (
+        (str(outside), "だけを読みます"),
+        ("../outside.yaml", "だけを読みます"),
+        ("train.py", "だけを読みます"),
+        ("configs/experiment/gone.yaml", "見つかりません")
+    ):
+        result = plan(
+            f"script: train.py\ndefault: configs/default/train.yaml\n"
+            f"experiment: {experiment}\n"
+        )
+        assert message in result["reason"]
+        assert result["config_text"] is None
+    result = plan(
+        "script: train.py\ndefault: configs/default/train.yaml\n"
+        "experiment: configs/experiment/train.yaml\n"
+        "overrides:\n- experiment.output_dir=elsewhere\n"
+    )
+    assert "output_dir" in result["reason"]
+
+    # 無いスクリプト, 記録の無いスクリプトと config も理由
+    result = plan("script: train_gone.py\n")
+    assert "train_gone.py" in result["reason"]
+    result = plan("script: null\ndefault: configs/default/train.yaml\n")
+    assert "スクリプト" in result["reason"]
+    result = plan("script: train.py\ndefault: null\nexperiment: null\n")
+    assert result["script"] == "train.py"
+    assert "load_config" in result["reason"]
+
+    # configs/default に無い default は使わず, お知らせ
+    result = plan(
+        "script: train.py\ndefault: /elsewhere/train.yaml\n"
+        "experiment: configs/experiment/train.yaml\n"
+    )
+    assert result["reason"] is None
+    assert result["default_config"] is None
+    assert any("/elsewhere/train.yaml" in note for note in result["notes"])
+
+
+def test_launch_with_default_config(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    起動の前の確認に, 指定した default の config を使うことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # train.py の名前からは train.yaml を選ぶが, hf.yaml を指定して確認
+    (project_dir / "configs" / "default" / "hf.yaml").write_text(
+        "experiment:\n  name: demo_hf\n  output_dir: outputs_hf\n"
+        "data:\n  n_train: 10\n"
+    )
+    (project_dir / "train.py").write_text("print('done')\n")
+    project_id = register(client, project_dir)
+    url = f"/api/projects/{project_id}/validate"
+    text = "data:\n  n_train: 20\n"
+    body = {"text": text, "script": "train.py"}
+    assert client.post(url, json=body).json()["ok"] is False
+    hf = client.post(
+        url, json=body | {"default_config": "configs/default/hf.yaml"}
+    ).json()
+    assert hf["ok"] is True
+    assert hf["default_config"] == "configs/default/hf.yaml"
+
+    # configs/default の外と, 無いファイルは受け付けない
+    for bad in (
+        "configs/experiment/train.yaml", "../outside.yaml",
+        "configs/default/gone.yaml"
+    ):
+        rejected = client.post(url, json=body | {"default_config": bad})
+        assert rejected.status_code == 400
+    rejected = client.post(
+        f"/api/projects/{project_id}/jobs",
+        json={
+            "script": "train.py", "config_text": text,
+            "default_config": "../train.yaml"
+        }
+    )
+    assert rejected.status_code == 400
+
+    # 起動したジョブに記録し, もう一度起動しても同じ default で確認
+    created = client.post(
+        f"/api/projects/{project_id}/jobs",
+        json={
+            "script": "train.py", "config_text": text,
+            "default_config": "configs/default/hf.yaml"
+        }
+    )
+    assert created.status_code == 201
+    assert created.json()["default_config"] == "configs/default/hf.yaml"
+    wait_for(client, created.json()["id"], "status", "finished")
+    again = client.post(f"/api/jobs/{created.json()['id']}/rerun")
+    assert again.status_code == 201
+    assert again.json()["default_config"] == "configs/default/hf.yaml"
+    wait_for(client, again.json()["id"], "status", "finished")
