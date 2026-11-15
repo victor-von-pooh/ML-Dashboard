@@ -3,6 +3,8 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from ml_dashboard.api.jobs import describe_missing_path
+
 from test_api import register
 
 # ML-Found の学習の代わりに, 状態のファイルを書いて STOP を待つスクリプト
@@ -705,3 +707,86 @@ def test_validate_named_optimizers(
     ).json()
     assert result["ok"] is False
     assert "optimizers.<名前>" in result["error"]
+
+
+def test_validate_missing_paths(
+    client: TestClient, project_dir: Path, tmp_path: Path
+) -> None:
+    """
+    パスの項目のファイルが無い場合に, 起動を止めずに注意することを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    project_id = register(client, project_dir)
+    url = f"/api/projects/{project_id}/validate"
+    (project_dir / "data").mkdir()
+    (project_dir / "data" / "train.csv").write_text("x\n")
+    outside = tmp_path / "absent.csv"
+
+    # default の項目も対象 (experiment で書き換えた値で確認)
+    (project_dir / "configs" / "default" / "train.yaml").write_text(
+        "experiment:\n  name: demo\n  output_dir: outputs\n"
+        "data:\n"
+        "  train_path: data/train.csv\n"
+        "  valid_path: data/train.csv\n"
+        "  cache_dir: cache\n"
+        "  Vocab_FILE: ''\n"
+        "  test_file: null\n"
+        "  remote_path: https://example.com/train.csv\n"
+        "  ref_path: ${data.valid_path}\n"
+        "  sizes_path: 3\n"
+        "  splits: [missing.csv]\n"
+        "  data_dir: data\n"
+        "  profile: simple\n"
+        "  model_name_or_path: org/model\n"
+        "  home_dir: '~'\n"
+        "  user_dir: ~no_such_user_for_test/data\n"
+    )
+    text = (
+        "data:\n"
+        "  valid_path: data/valid.csv\n"
+        f"  test_file: {outside}\n"
+    )
+    result = client.post(url, json={"text": text}).json()
+
+    # 無いものだけを注意, 相対パスにはプロジェクトのディレクトリからと明記
+    assert result["ok"] is True, result["error"]
+    assert result["warnings"] == [
+        "data.cache_dir のディレクトリが見つかりません: cache "
+        "(プロジェクトのディレクトリから)",
+        f"data.test_file のファイルが見つかりません: {outside}",
+        "data.user_dir のディレクトリが見つかりません: "
+        "~no_such_user_for_test/data (プロジェクトのディレクトリから)",
+        "data.valid_path のファイルが見つかりません: data/valid.csv "
+        "(プロジェクトのディレクトリから)"
+    ]
+
+    # ML-Found が作る出力先と, ML-Found が確かめる再開元は対象外
+    (project_dir / "configs" / "default" / "train.yaml").write_text(
+        "experiment:\n  name: demo\n  output_dir: not_yet\n"
+    )
+    result = client.post(url, json={"text": "{}\n"}).json()
+    assert result["ok"] is True
+    assert result["warnings"] == []
+    resume = client.post(
+        url, json={"text": "trainer:\n  resume_from: missing/last.pt\n"}
+    ).json()
+    assert resume["ok"] is False
+    assert "resume_from" in resume["error"]
+
+    # 再開元はファイルが無くても, パスの確認では注意にしない
+    assert describe_missing_path(
+        "trainer.resume_from", "missing/last.pt", project_dir
+    ) is None
