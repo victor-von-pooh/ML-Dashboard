@@ -1,6 +1,6 @@
 # ML-Dashboard 操作ガイド
 
-ML-Dashboard の使い方を, 画面の順に説明する. 各章の「やってみる」は, ML-Dashboard の `demo` と [ML_tester](https://github.com/victor-von-pooh/ML_tester) のタスク (ML-Found を使った 12 の学習の例) の実験で試す手順.
+ML-Dashboard の使い方を, 画面の順に説明する. 各章の「やってみる」は, ML-Dashboard に同梱した `demo` (2 本の渦巻きを分ける小さなモデル. CPU で数秒で学習する) だけで試せる. より多くの種類の学習で試す場合は, 10 章の ML_tester のタスクを使う.
 
 ## 目次
 
@@ -14,8 +14,9 @@ ML-Dashboard の使い方を, 画面の順に説明する. 各章の「やって
 7. [画面から学習を起動する](#7-画面から学習を起動する)
 8. [進み具合を見て止める](#8-進み具合を見て止める)
 9. [困ったとき](#9-困ったとき)
+10. [ML_tester のタスクで試す](#10-ml_tester-のタスクで試す)
 
-画面の図は, 例として ML-Dashboard と ML_tester を `~/work` に clone し, 多くの実験を流した環境で撮った. 実験の数や一覧の中身は, 手元とは違う.
+画面の図の多くは, `demo` に加えて ML_tester のタスク (10 章) を登録し, 多くの実験を流した環境で撮った. 実験の数や一覧の中身は, 手元とは違う.
 
 ## 準備
 
@@ -24,21 +25,14 @@ ML-Found の用語のうち, この手順書でよく使うもの.
 - **default と experiment の config**: ML-Found のプロジェクトは, 基準の設定 `configs/default/train.yaml` と, そこから変えたい項目だけを書いた `configs/experiment/*.yaml` を持つ. 学習のときに 2 つを重ねる. ダッシュボードの「default との差分」は, 実験ごとに default から変わった項目
 - **実験**: 1 回の学習で ML-Found が `outputs/<名前>/<日付>/<時刻>/` に残すディレクトリ (学習の記録 `history.csv`, config, ログ, モデルなど)
 
-「やってみる」の前に, 次を済ませておく. `demo` だけで試す場合は 1 だけでよい (3 章と 5 から 8 章は `demo` で試せる. ML_tester は 4 章の「やってみる」と 5 章の一部で使う).
+「やってみる」の前に, ML-Dashboard を README の「導入と起動」の手順で導入し, `make demo` で `demo` の実験を 4 つ作っておく (CPU で数秒). 作る実験は次の 4 つ.
 
-1. ML-Dashboard を README の「導入と起動」の手順で導入し, `make demo` で `demo` の実験を 3 つ作る (CPU で数秒)
-2. (ML_tester を使う場合) ML_tester を, その README の「導入」の手順で導入する (`.venv` を作り, 依存を入れる). `.venv` は, ダッシュボードにプロジェクトを登録する**前**に作っておく. 登録したときに見つかった仮想環境の Python が, 画面から起動する学習に使われる
-3. (ML_tester を使う場合) ML_tester の root で `.venv` を有効にして, 次の実験を流す
-
-| 章 | 実験を流すコマンド | 時間の目安 |
+| 実験の名前 | default との差分 | 見るもの |
 | --- | --- | --- |
-| 4 | `python tasks/03_imbalanced_cls/train.py --experiment configs/experiment/examples/eval_train.yaml` | 数秒 |
-| 4 | `python tasks/12_quantum_nn/train.py` | 約 2 分 (CPU) |
-| 5 | `python tasks/11_diffusion/train.py` | 約 35 分 (GPU) |
-| 5 | `python tasks/11_diffusion/train.py --experiment configs/experiment/examples/no_ema.yaml` | 約 35 分 (GPU) |
-| 5 | `python tasks/11_diffusion/train.py --experiment configs/experiment/examples/ema_eval.yaml` | 約 35 分 (GPU) |
-
-時間は Apple Silicon の Mac で 1 つずつ流した場合の目安. 11 は GPU (CUDA か Apple Silicon の mps) が無いと, かなり長くかかる. 02 と 08 から 11 は, 最初の学習で MNIST などのデータを取得するのでネットワークが要る. 5 章は, 11 の代わりに `demo` の 3 つの実験でも試せる. 3 章と 6 章は `demo` の実験で, 7 章と 8 章は画面から起動する `demo` の学習で試す.
+| `spiral` | なし | 基準 (Adam) |
+| `spiral_sgd` | Optimizer を SGD に | Optimizer の違い |
+| `spiral_small` | 隠れ層の大きさを 4 に | 表現力の不足 |
+| `spiral_dropout` | Dropout を 0.3 にし, 学習用データを評価し直す (`trainer.eval_train`) | 学習中の値と評価し直した値の違い |
 
 ## 1. 起動する
 
@@ -62,11 +56,12 @@ make serve
 プロジェクトは, ML-Found を使っているディレクトリ (`configs/default/train.yaml` を持つもの). 親のディレクトリを指定すると, まとめて登録できる.
 
 1. 「プロジェクトを追加」を押す
-2. パスの欄に ML_tester を clone したディレクトリのパスを入れて (`~` から書ける) 「探す」を押す. 3 階層下までのプロジェクトが並ぶ (`outputs` や `data`, submodule の中は探さない)
-3. 全て選ばれた状態で「12 件を追加」を押すと, 左の「PROJECTS」に 12 のタスクが並ぶ. 数字は実験の数
-4. 同じように, ML-Dashboard を clone したディレクトリの中の `demo` を登録する
+2. パスの欄に, ML-Dashboard を clone したディレクトリの中の `demo` のパスを入れて (`~` から書ける. 例: `~/ML-Dashboard/demo`) 「探す」を押す
+3. 選ばれた状態で「1 件を追加」を押すと, 左の「PROJECTS」に `demo` が並ぶ. 数字は実験の数
 
-![プロジェクトを探した結果の 12 件](images/guide/scan.jpg)
+親のディレクトリを入れると, 3 階層下までのプロジェクトが並び, まとめて登録できる (`outputs` や `data`, submodule の中は探さない). 図は ML_tester (10 章) の 12 のタスクを探した例.
+
+![ML_tester を探した結果の 12 件](images/guide/scan.jpg)
 
 一度登録したプロジェクトは, ダッシュボードを起動し直しても残る.
 
@@ -75,7 +70,7 @@ make serve
 
 ## 3. 実験の一覧
 
-左でプロジェクトを選ぶと, そのプロジェクトの実験が新しい順に並ぶ. `demo` を選ぶと, `make demo` で作った 3 つの実験が並ぶ.
+左でプロジェクトを選ぶと, そのプロジェクトの実験が新しい順に並ぶ. `demo` を選ぶと, `make demo` で作った 4 つの実験が並ぶ.
 
 ![11_diffusion の実験の一覧](images/guide/runs.jpg)
 
@@ -114,22 +109,22 @@ make serve
 
 ### やってみる 1: 学習用データの評価し直しを見る (3 分)
 
-- [ ] `03_imbalanced_cls` を開き, 差分が `trainer.eval_train=true` の実験 (`examples/eval_train.yaml`) を開く
-- [ ] 学習曲線の `auc` で, `train/auc`, `train_eval/auc`, `valid/auc` の 3 本を見比べる
-- [ ] 「モデル」のタブで, モデルの構造, Optimizer, パラメータの一覧と要素数の合計を見る
+- [ ] `demo` を開き, `spiral_dropout` の実験 (差分が `model.dropout=0.3` と `trainer.eval_train=true`) を開く
+- [ ] 学習曲線の `acc` で, `train/acc`, `train_eval/acc`, `valid/acc` の 3 本を見比べる
+- [ ] 「モデル」のタブで, モデルの構造 (`Dropout` の層), Optimizer, パラメータの一覧と要素数の合計を見る
 
-**見どころ**: 学習中の値 (`train/auc`) は Dropout が効いた状態の予測なので, 推論モードで評価し直した値 (`train_eval/auc`) より低く出やすい. 評価し直した値と検証用の値を比べると, 過学習しているかどうかが分かる.
+**見どころ**: 学習中の値 (`train/acc`) は Dropout が効いた状態の予測なので, 推論モードで評価し直した値 (`train_eval/acc`) より低く出やすい (この例では最後のエポックで 0.96 と 0.97). 評価し直した値と検証用の値を比べると, 過学習しているかどうかが分かる (この例ではほぼ重なり, 過学習していない).
 
-### やってみる 2: 量子回路の層の重みを見る (2 分)
+### やってみる 2: 決定境界の移り変わりを見る (2 分)
 
-- [ ] `12_quantum_nn` の default の実験 (差分が `なし`) を開き, 「モデル」のタブを開く
-- [ ] モデルの構造では `TorchConnector()` としか出ない層が, パラメータの一覧では重み 6 個として出ることを確かめる
+- [ ] `spiral` の実験 (差分が `なし`) を開き, 「画像の推移」のタブを開く
+- [ ] スライダーか再生で, エポック 1 から 40 までの決定境界の画像を順に見る
 
-**見どころ**: 2 行目に「qnn.qnn_est.weight と共有」と出る. 同じ重みを 2 つの名前で持っているので, 学習するパラメータ数は 6 (2 回は数えない).
+**見どころ**: `demo` の学習は, 検証のたびに `boundary/epoch_001.png` のように決定境界の画像を保存する. 最初は直線に近い境界が, エポックが進むと 2 本の渦巻きに沿って曲がっていく. 番号の付いた画像を保存するだけで, 学習のコードに他の処理を足さなくても見られる.
 
 ## 5. 実験を比べる
 
-一覧で 2 つ以上の実験の行のチェックを入れ, 上の「比較 (n)」を押す. 8 つまで選べる. 11 の実験が無い場合は, `demo` の 3 つの実験 (Adam, SGD, 小さなモデル) で試せる.
+一覧で 2 つ以上の実験の行のチェックを入れ, 上の「比較 (n)」を押す. 8 つまで選べる. 図は ML_tester の 11 (拡散モデル) の 3 つの実験を比べた例.
 
 ![11 の 3 つの実験の比較](images/guide/compare.jpg)
 
@@ -139,15 +134,16 @@ make serve
 - 全てのエポックで同じ値の実験は線が完全に重なり, 下の線が見えなくなるので, グラフの下に「線が重なっています」と実験の名前を出す
 - config の違いの表の `—` は, その実験の config にその項目が無いことを表す (Optimizer を変えて引数の種類が違う場合 (Adam には `momentum` が無いなど) や, 古い版の ML-Found で流した場合)
 
-### やってみる 3: EMA で検証した効果を比べる (5 分)
+### やってみる 3: Optimizer とモデルの大きさの違いを比べる (5 分)
 
-- [ ] `11_diffusion` の一覧で, 差分が `なし` (default), `ema.use=false` (`no_ema.yaml`), `ema.eval=true` (`ema_eval.yaml`) の 3 つにチェックを入れて「比較 (3)」を押す
-- [ ] `valid/loss` のグラフで, EMA の重みで検証した実験は最初が高く, その後はなめらかに下がることを見る (縦軸を対数にすると分かりやすい). default は EMA を生成画像にだけ使い, 検証は学習中の重みで行うので, `ema.use=false` と学習も検証も同じになり, 線が重なる (学習用の指標と `lr` は 3 つとも重なる)
-- [ ] 画像の比較で, エポック 10 の生成画像を 3 つ並べて見る
+- [ ] `demo` の一覧で, `spiral`, `spiral_sgd`, `spiral_small` の 3 つにチェックを入れて「比較 (3)」を押す
+- [ ] `valid/acc` のグラフで, 隠れ層を 4 にした `spiral_small` だけが低いところで止まることを見る
+- [ ] config の違いの表で, 3 つの実験の違う項目 (`optimizer.name`, `model.hidden_dim` など) だけが並ぶことを見る
+- [ ] 画像の比較で, エポック 40 の決定境界を 3 つ並べて見る (`spiral_small` は渦巻きに沿って曲がりきらない)
 
 ## 6. ハイパーパラメータの分析
 
-一覧の「分析」から開く. 同じ名前の実験で値を変えた config の項目と, 結果 (ベストや最後の指標) の関係を散布図と値ごとの表で見る. `demo` の 3 つの実験では, Optimizer と隠れ層の大きさの違いが出る. 値を変えた実験が多いほど役に立つ.
+一覧の「分析」から開く. 同じ名前の実験で値を変えた config の項目と, 結果 (ベストや最後の指標) の関係を散布図と値ごとの表で見る. `demo` の実験では, Optimizer, 隠れ層の大きさ, Dropout の違いが出る. 値を変えた実験が多いほど役に立つ.
 
 ![01_tabular_cls の分析](images/guide/analysis.jpg)
 
@@ -161,7 +157,7 @@ make serve
 
 ![学習の起動の画面](images/guide/launch.jpg)
 
-1. **学習のスクリプト** と **experiment の config** を選ぶ. 学習は, プロジェクトの Python (ML_tester なら clone したディレクトリの `.venv`) で別のプロセスとして動く
+1. **学習のスクリプト** と **experiment の config** を選ぶ. 学習は, プロジェクトの Python (登録したときに, プロジェクトのディレクトリから上に向かって探して見つかった仮想環境) で別のプロセスとして動く
 2. **フォーム** でエポック数, Optimizer と Scheduler とその引数を変える. 引数には ML-Found の登録簿の説明と範囲が付き, `*` は必須. 数の欄には `auto` とも書ける (学習全体のステップ数で補う引数だけ). フォームで変えた値は YAML の欄にも書き込まれる
 3. フォームに無い項目 (warmup, `trainer.eval_train` など) は, 右の YAML の欄に直接書く
 4. 「ML-Found で config を確かめる」を押す. 結果は 3 種類で出る
@@ -250,3 +246,22 @@ scheduler:
 | ダッシュボードを止めたい | `make serve` を動かしている端末で Ctrl-C を押す. 画面から起動した学習は, 先にジョブの画面で止めておく |
 | 実験の一覧に新しい実験が出ない | ブラウザを再読み込みする. 学習中の実験は自動で更新される |
 | 登録したプロジェクトを外したい | 「プロジェクト」の画面で, カードの「登録を外す」のボタンを押す. 実験のファイルは消えない |
+
+## 10. ML_tester のタスクで試す
+
+[ML_tester](https://github.com/victor-von-pooh/ML_tester) は, ML-Found を使った 12 の学習の例 (表形式の分類, 画像, グラフ, 拡散モデル, 量子回路など) を持つ動作確認の場. `demo` より多くの種類の学習で画面を試したい場合に使える. ダッシュボードを使うのに ML_tester は要らない.
+
+1. ML_tester を, その README の「導入」の手順で導入する (`.venv` を作り, 依存を入れる). `.venv` は, ダッシュボードにプロジェクトを登録する**前**に作っておく. 登録したときに見つかった仮想環境の Python が, 画面から起動する学習に使われる
+2. ML_tester の root で `.venv` を有効にして, 次の実験を流す
+3. 2 章の手順で, ML_tester を clone したディレクトリを入れて「探す」を押し, 「12 件を追加」で登録する
+
+| 試すこと | コマンド | 時間 |
+| --- | --- | --- |
+| 学習用データの評価し直し (4 章) | `python tasks/03_imbalanced_cls/train.py --experiment configs/experiment/examples/eval_train.yaml` | 数秒 |
+| 外部ライブラリの層の重み (4 章) | `python tasks/12_quantum_nn/train.py` | 約 2 分 (CPU) |
+| EMA で検証した効果の比較 (5 章) | `python tasks/11_diffusion/train.py` と, `--experiment configs/experiment/examples/no_ema.yaml`, `--experiment configs/experiment/examples/ema_eval.yaml` を付けたもの | それぞれ約 35 分 (GPU) |
+
+時間は Apple Silicon の Mac で 1 つずつ流した場合の目安. 11 は GPU (CUDA か Apple Silicon の mps) が無いと, かなり長くかかる. 02 と 08 から 11 は, 最初の学習で MNIST などのデータを取得するのでネットワークが要る.
+
+- **外部ライブラリの層の重み**: `12_quantum_nn` の default の実験の「モデル」のタブで, モデルの構造では `TorchConnector()` としか出ない層が, パラメータの一覧では重み 6 個として出る. 2 行目に「qnn.qnn_est.weight と共有」と出て, 同じ重みを 2 つの名前で持っているので, 学習するパラメータ数は 6 (2 回は数えない)
+- **EMA で検証した効果**: `11_diffusion` の 3 つの実験 (差分が `なし`, `ema.use=false`, `ema.eval=true`) を比べると, `valid/loss` のグラフで, EMA の重みで検証した実験は最初が高く, その後はなめらかに下がる (縦軸を対数にすると分かりやすい). default は EMA を生成画像にだけ使い, 検証は学習中の重みで行うので, `ema.use=false` と線が重なる

@@ -40,9 +40,9 @@ check:
 	cd backend && uv run ruff check . && uv run mypy src && uv run pytest -q
 	cd frontend && pnpm lint && pnpm format:check && pnpm typecheck && pnpm test
 
-# デモのプロジェクトで, config を変えた 3 つの実験を作る
+# デモのプロジェクトで, config を変えた 4 つの実験を作る
 demo:
-	cd backend && for config in train.yaml examples/sgd.yaml examples/small.yaml; do \
+	cd backend && for config in train.yaml examples/sgd.yaml examples/small.yaml examples/eval_train.yaml; do \
 		uv run python ../demo/train.py --experiment configs/experiment/$$config || exit 1; \
 	done
 

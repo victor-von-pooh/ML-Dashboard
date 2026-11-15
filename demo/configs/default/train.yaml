@@ -25,3 +25,5 @@ data:
 
 model:
   hidden_dim: 64
+  # 隠れ層の後の Dropout の割合 (0 で使わない)
+  dropout: 0.0

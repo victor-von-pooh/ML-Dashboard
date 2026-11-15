@@ -66,17 +66,17 @@ make serve   # 画面をビルドして http://127.0.0.1:8765 で起動 (端末�
 
 ダッシュボードを止めても, 画面から起動した学習は別のプロセスなので止まらずに続く. 学習も止める場合は, 先にジョブの画面で止める.
 
-画面ごとの使い方と, ML_tester のタスクで試す手順は [docs/GUIDE.md](docs/GUIDE.md) にまとめた.
+画面ごとの使い方は [docs/GUIDE.md](docs/GUIDE.md) にまとめた (`demo` だけで試せる).
 
 ### デモのプロジェクト
 
 手元に ML-Found のプロジェクトが無い場合は, `demo/` で試せる. 2 本の渦巻きを分ける小さなモデルを CPU で数秒ずつ学習し, エポックごとの決定境界の画像 (`boundary/epoch_001.png` など) も保存する.
 
-1. `make serve` の前か別の端末で `make demo` を実行し, config を変えた 3 つの実験 (Adam, SGD, 小さなモデル) を作る
+1. `make serve` の前か別の端末で `make demo` を実行し, config を変えた 4 つの実験 (Adam, SGD, 小さなモデル, Dropout と学習用データの評価し直し) を作る
 2. 画面の「プロジェクトを追加」で, clone したディレクトリの中の `demo` を絶対パスか `~` からのパス (例: `~/ML-Dashboard/demo`) で登録する
 3. 学習曲線, 決定境界の画像の推移, 実験の比較を確かめる. 画面から学習を起動する場合は `configs/experiment/examples/quick.yaml` (3 エポック) が手軽
 
-`make demo` を実行するたびに実験が 3 つずつ増える. 消す場合は `demo/outputs/` を削除する.
+`make demo` を実行するたびに実験が 4 つずつ増える. 消す場合は `demo/outputs/` を削除する.
 
 ### 自分のプロジェクトを使う
 
