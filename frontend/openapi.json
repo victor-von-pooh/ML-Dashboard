@@ -2132,6 +2132,16 @@
             ],
             "title": "Error"
           },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "config": {
             "additionalProperties": true,
             "type": "object",
@@ -2468,6 +2478,59 @@
         ],
         "title": "RunParams"
       },
+      "RunSource": {
+        "properties": {
+          "script": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Script"
+          },
+          "default": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default"
+          },
+          "experiment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Experiment"
+          },
+          "overrides": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overrides"
+          }
+        },
+        "type": "object",
+        "title": "RunSource"
+      },
       "RunSummary": {
         "properties": {
           "id": {
@@ -2579,6 +2642,16 @@
               }
             ],
             "title": "Error"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",

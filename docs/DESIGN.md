@@ -78,7 +78,7 @@ ML-Found の今の出力から, 次のように読み取る.
 | 情報 | 読むもの |
 | --- | --- |
 | 指標の推移 | `history.csv` (列 `epoch`, `train/*`, `valid/*`, `lr`. ML-Found の `trainer.eval_train: true` では, 学習用データを推論モードで評価し直した `train_eval/*` も). 学習中や失敗した実験は `train.log` のエポックごとの指標から作る. `lr_steps.csv` があれば, 更新ごとの学習率も読む. ML-Found の `optimizers` (名前付きの複数の Optimizer) の実験は, 学習率の列が `lr_<名前>` になるので, 列ごとに読んで同じ名前の学習率のグラフに重ねる |
-| config | `config.yaml` (全体), `diff.yaml` (default との差分) |
+| config | `config.yaml` (全体), `diff.yaml` (default との差分), `source.yaml` (起動のしかた: 実行したスクリプト, 元にした default と experiment の config, 上書き. 差分の見出しに元にした default を出し, 標準の `configs/default/train.yaml` でない default を元にした実験は一覧の差分の欄に印を付ける. 書いていない古い実験は今までどおり) |
 | ログ | `train.log` (警告とエラーを行ごとに区別) |
 | 画像 | 実験のディレクトリの中の画像 (学習曲線, 生成画像など) |
 | 未コミットの変更 | `git_diff.patch` |

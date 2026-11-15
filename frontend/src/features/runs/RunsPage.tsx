@@ -210,7 +210,13 @@ function RunsPage({ projectId }: { projectId: string }) {
       if (starredOnly && !note?.starred) return false
       if (tag && !note?.tags.includes(tag)) return false
       // メモとタグの文字でも絞り込めるように対象に追加
-      const text = [run.id, ...summarizeDiff(run.diff), note?.note ?? '', ...(note?.tags ?? [])]
+      const text = [
+        run.id,
+        ...summarizeDiff(run.diff),
+        run.source?.default ?? '',
+        note?.note ?? '',
+        ...(note?.tags ?? []),
+      ]
         .join(' ')
         .toLowerCase()
       return words.every((word) => text.includes(word))
@@ -539,6 +545,10 @@ function RunRow({
   onToggle: () => void
 }) {
   const diff = summarizeDiff(run.diff)
+  // 標準 (configs/default/train.yaml) でない default を元にした実験は, 差分の
+  // 基準が違うことを示す
+  const base = run.source?.default
+  const otherBase = base && base !== 'configs/default/train.yaml' ? base : null
   const progress = run.progress
   return (
     <tr
@@ -612,6 +622,14 @@ function RunRow({
       </td>
       <td className="max-w-80 px-3 py-2.5">
         <div className="flex flex-wrap gap-1">
+          {otherBase && (
+            <span
+              className="max-w-full truncate rounded border border-line px-1.5 py-0.5 font-mono text-[11px] text-ink-3"
+              title={`default: ${otherBase} からの差分`}
+            >
+              default: {otherBase.split('/').pop()}
+            </span>
+          )}
           {diff.slice(0, 4).map((item) => (
             <span
               key={item}

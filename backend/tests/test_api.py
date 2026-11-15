@@ -568,3 +568,42 @@ def test_move_project(
     assert client.patch(
         "/api/projects/missing", json={"path": str(moved_dir)}
     ).status_code == 404
+
+
+def test_run_source(client: TestClient, project_dir: Path) -> None:
+    """
+    実験の起動のしかた (source.yaml) を一覧と詳細で返すことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    project_id = register(client, project_dir)
+    base = f"/api/projects/{project_id}/runs/demo/2026-11-08/10-00-00"
+    run_dir = project_dir / "outputs/demo/2026-11-08/10-00-00"
+
+    # 書いていない古い実験は None
+    assert client.get(base).json()["source"] is None
+
+    # 書いた値を返し, 文字でない値は分からないもの
+    (run_dir / "source.yaml").write_text(
+        "script: train_hf.py\ndefault: configs/default/hf.yaml\n"
+        "experiment: 3\noverrides: [trainer.epochs=2]\n"
+    )
+    source = client.get(base).json()["source"]
+    assert source == {
+        "script": "train_hf.py", "default": "configs/default/hf.yaml",
+        "experiment": None, "overrides": ["trainer.epochs=2"]
+    }
+    runs = client.get(f"/api/projects/{project_id}/runs").json()
+    assert any(
+        run["source"] and run["source"]["script"] == "train_hf.py"
+        for run in runs
+    )

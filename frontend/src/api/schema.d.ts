@@ -1058,6 +1058,7 @@ export interface components {
             progress: components["schemas"]["Progress"] | null;
             /** Error */
             error: string | null;
+            source?: components["schemas"]["RunSource"] | null;
             /** Config */
             config: {
                 [key: string]: unknown;
@@ -1150,6 +1151,17 @@ export interface components {
                 [key: string]: boolean | number | string | null;
             };
         };
+        /** RunSource */
+        RunSource: {
+            /** Script */
+            script?: string | null;
+            /** Default */
+            default?: string | null;
+            /** Experiment */
+            experiment?: string | null;
+            /** Overrides */
+            overrides?: string[] | null;
+        };
         /** RunSummary */
         RunSummary: {
             /** Id */
@@ -1183,6 +1195,7 @@ export interface components {
             progress: components["schemas"]["Progress"] | null;
             /** Error */
             error: string | null;
+            source?: components["schemas"]["RunSource"] | null;
         };
         /** ScanRequest */
         ScanRequest: {
