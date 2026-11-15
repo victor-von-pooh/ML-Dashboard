@@ -540,7 +540,7 @@ function SourceLine({ source }: { source: NonNullable<RunDetail['source']> }) {
   if (source.script) items.push(['スクリプト', source.script])
   if (source.experiment) items.push(['experiment', source.experiment])
   if (source.overrides && source.overrides.length > 0) {
-    items.push(['上書き', source.overrides.join(' ')])
+    items.push(['上書き', source.overrides.join(', ')])
   }
   if (items.length === 0) return null
   return (

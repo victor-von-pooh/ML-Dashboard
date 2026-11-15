@@ -635,10 +635,16 @@ def read_source(run_dir: Path) -> Optional[RunSource]:
     source: Optional[RunSource]
         起動のしかた, ファイルが無いか読めない場合は None
     """
-    # 文字でない値は分からないものとして扱う
-    data = load_yaml(run_dir / "source.yaml")
-    if not data:
+    # 追加の情報なので, 読めないファイルは無いものとして扱い, 実験の他の
+    # 表示を妨げない設定
+    try:
+        data = load_yaml(run_dir / "source.yaml")
+    except Exception:
         return None
+    if not isinstance(data, dict) or not data:
+        return None
+
+    # 文字でない値は分からないもの (None) としての読み込み
     text = {
         key: value if isinstance(value, str) else None
         for key, value in data.items()
@@ -650,6 +656,8 @@ def read_source(run_dir: Path) -> Optional[RunSource]:
         overrides=[str(item) for item in overrides]
         if isinstance(overrides, list) else None
     )
+    if not any(source.model_dump().values()):
+        return None
 
     return source
 

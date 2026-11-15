@@ -190,6 +190,9 @@ function RunsPage({ projectId }: { projectId: string }) {
   }
 
   const all = useMemo(() => runs.data ?? [], [runs.data])
+  // 実験の元にした default のうち一番多いもの (違う default が 2 種類以上の
+  // 場合だけ. 違うものに印を付ける)
+  const commonDefault = useMemo(() => mostCommonDefault(all), [all])
   const latest = useMemo(
     () =>
       all.reduce<RunSummary | undefined>(
@@ -213,7 +216,7 @@ function RunsPage({ projectId }: { projectId: string }) {
       const text = [
         run.id,
         ...summarizeDiff(run.diff),
-        run.source?.default ?? '',
+        otherDefault(run, commonDefault) ?? '',
         note?.note ?? '',
         ...(note?.tags ?? []),
       ]
@@ -500,6 +503,7 @@ function RunsPage({ projectId }: { projectId: string }) {
                 <RunRow
                   key={run.id}
                   run={run}
+                  commonDefault={commonDefault}
                   note={notes.data?.[run.id]}
                   onSaveNote={(note) => saveNote.mutate({ runId: run.id, note })}
                   projectId={projectId}
@@ -527,6 +531,7 @@ function RunsPage({ projectId }: { projectId: string }) {
 
 function RunRow({
   run,
+  commonDefault,
   note,
   onSaveNote,
   projectId,
@@ -536,6 +541,8 @@ function RunRow({
   onToggle,
 }: {
   run: RunSummary
+  /** 一覧で一番多い default (印を付けない場合は null) */
+  commonDefault: string | null
   note: RunNote | undefined
   onSaveNote: (note: RunNote) => void
   projectId: string
@@ -545,10 +552,9 @@ function RunRow({
   onToggle: () => void
 }) {
   const diff = summarizeDiff(run.diff)
-  // 標準 (configs/default/train.yaml) でない default を元にした実験は, 差分の
-  // 基準が違うことを示す
-  const base = run.source?.default
-  const otherBase = base && base !== 'configs/default/train.yaml' ? base : null
+  // 一覧で一番多い default と違う default を元にした実験は, 差分の基準が
+  // 違うことを示す
+  const otherBase = otherDefault(run, commonDefault)
   const progress = run.progress
   return (
     <tr
@@ -679,4 +685,28 @@ function RunRow({
       </td>
     </tr>
   )
+}
+
+/** パスの書き方をそろえる (区切りを / にし, 先頭の ./ を除く) */
+function normalizePath(path: string): string {
+  return path.replace(/\\/g, '/').replace(/^(\.\/)+/, '')
+}
+
+/** 実験の元にした default のうち一番多いもの (2 種類以上ある場合だけ) */
+function mostCommonDefault(runs: RunSummary[]): string | null {
+  const counts = new Map<string, number>()
+  for (const run of runs) {
+    if (!run.source?.default) continue
+    const path = normalizePath(run.source.default)
+    counts.set(path, (counts.get(path) ?? 0) + 1)
+  }
+  if (counts.size < 2) return null
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]![0]
+}
+
+/** 一番多い default と違う default を元にした実験の, その default */
+function otherDefault(run: RunSummary, common: string | null): string | null {
+  if (!common || !run.source?.default) return null
+  const path = normalizePath(run.source.default)
+  return path !== common ? path : null
 }

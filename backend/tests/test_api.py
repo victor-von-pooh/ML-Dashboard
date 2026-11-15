@@ -607,3 +607,11 @@ def test_run_source(client: TestClient, project_dir: Path) -> None:
         run["source"] and run["source"]["script"] == "train_hf.py"
         for run in runs
     )
+
+    # 読めないファイルと, 中身の無いファイルは無いものとし, 実験は読める
+    for text in ["script: [unclosed\n", "hello\n"]:
+        (run_dir / "source.yaml").write_text(text)
+        response = client.get(base)
+        assert response.status_code == 200
+        assert response.json()["source"] is None
+
