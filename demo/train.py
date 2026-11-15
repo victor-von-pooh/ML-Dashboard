@@ -91,16 +91,22 @@ def make_loaders(cfg: DictConfig) -> tuple[DataLoader, DataLoader]:
 
 
 class SpiralClassifier(nn.Module):
-    def __init__(self, hidden_dim: int):
+    def __init__(self, hidden_dim: int, dropout: float):
         # 親クラスのコンストラクタを呼び出す
         super(SpiralClassifier, self).__init__()
+
+        # 引数の保存
+        self.hidden_dim = hidden_dim
+        self.dropout = dropout
 
         # 2 次元の座標から 2 クラスのスコアを出す多層パーセプトロン
         self.model = nn.Sequential(
             nn.Linear(2, hidden_dim),
             nn.ReLU(),
+            nn.Dropout(dropout),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
+            nn.Dropout(dropout),
             nn.Linear(hidden_dim, 2)
         )
 
@@ -269,7 +275,7 @@ experiment = start_experiment(cfg, diff, str(project_dir))
 # データとモデルを用意して学習
 train_loader, valid_loader = make_loaders(cfg)
 valid_x, valid_y = valid_loader.dataset.tensors
-model = SpiralClassifier(cfg.model.hidden_dim)
+model = SpiralClassifier(cfg.model.hidden_dim, cfg.model.dropout)
 trainer = SpiralTrainer(model, experiment, valid_x, valid_y)
 trainer.fit(train_loader, valid_loader)
 print(f"保存先: {experiment.run_dir}")

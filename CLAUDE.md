@@ -7,7 +7,7 @@ ML-Dashboard で作業するときの方針をまとめる.
 ML-Found で行った実験の結果を確かめ, 学習を起動するローカルの Web アプリ. 設計は [docs/DESIGN.md](docs/DESIGN.md) にまとめる.
 
 - ML-Found は submodule. ダッシュボードに必要な汎用の仕組み (実験の状態の書き出し, 中断など) は ML-Found に足す. 画面と API に固有のものはこのリポジトリに置く
-- 動作確認には ML_tester の各タスク (ML-Found のプロジェクト) を使う
+- 動作確認には同梱の `demo` を使う. 多くの種類の学習で確かめる場合は, ML_tester の各タスク (ML-Found のプロジェクト) も使える. 手順書とテストは ML_tester が無くても通るようにする
 
 ## コードの書き方
 

@@ -1,0 +1,9 @@
+# Dropout を入れ, 学習用データを推論モードで評価し直す (train_eval/ の指標)
+experiment:
+  name: spiral_dropout
+
+trainer:
+  eval_train: true
+
+model:
+  dropout: 0.3
