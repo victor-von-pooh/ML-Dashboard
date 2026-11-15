@@ -15,7 +15,7 @@ ML-Found で行った実験の結果を確かめ, 学習を起動するローカ
 - TypeScript: Prettier と oxlint に従い, `strict` で型検査を通す. コメントは日本語で書く
 - API を変えたら `make api` で画面の型を作り直し, `openapi.json` と `src/api/schema.d.ts` もコミットする
 - 画面の色は `src/index.css` の役割ごとの変数を使う. グラフの系列の色は `--series-1` から固定の順で使い, 状態の色 (`--good` など) は系列に使わない. 状態は色だけでなくアイコンと文字も付ける
-- ドキュメントとコードのコメントでは, 「機械学習を全て GUI 上で行う」という目的のために開発しているリポジトリ (今は ML-Found, ML-Dashboard, ML-ModelControl, ML-CreateArchitecture, ML_tester) 以外に触れない. ローカルのディレクトリ構成やパスも書かない
+- ドキュメントとコードのコメントでは, 「機械学習を全て GUI 上で行う」という目的のために開発しているリポジトリ (今は ML-Found, ML-Dashboard, ML-ModelControl, ML-CreateArchitecture, ML-EDA, ML-Fathom, ML_tester) 以外に触れない. ローカルのディレクトリ構成やパスも書かない
 
 ## 進める流れ
 
