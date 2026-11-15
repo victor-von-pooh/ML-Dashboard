@@ -95,6 +95,8 @@ ML-Found の今の出力から, 次のように読み取る.
 ML-Found が書く `run.json` (下の「ML-Found に加えたもの」) がある実験では, 状態, ベストのエポック, 環境の情報をそこから読む.
 無い古い実験でも, 上の表の情報で見られるようにする.
 
+読むファイルの形は ML-Found の約束 (ML-Found の `docs/FORMAT.md`) に従う. 知らない項目は無視する. `run.json` と `source.yaml` の `format_version` が, ダッシュボードの知っている版 (どちらも 1) より新しい場合は, 読める項目だけで表示し, 実験の詳細に「新しい版の ML-Found の出力なので, 一部が正しく表示されない場合がある」と注意を出す.
+
 プロジェクトの実験は, `configs/default/` と `configs/experiment/` の config の `experiment.output_dir` の下を探して見つける.
 
 ## 学習の起動

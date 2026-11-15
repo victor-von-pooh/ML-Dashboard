@@ -595,6 +595,9 @@ def read_history(run_dir: Path, entries: list[LogEntry]) -> History:
     return history
 
 
+# ダッシュボードが読める ML-Found の出力の形式の版 (ML-Found の docs/FORMAT.md)
+KNOWN_FORMAT_VERSIONS = {"run.json": 1, "source.yaml": 1}
+
 def load_yaml(path: Path) -> dict[str, Any]:
     """
     YAML のファイルを辞書で読み込む関数
@@ -974,6 +977,34 @@ class RunData:
 
         return best
 
+    def newer_formats(self) -> list[str]:
+        """
+        ダッシュボードの知っている版より新しい形式で書かれたファイルを
+        集める関数
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        ----------
+        names: list[str]
+            新しい版のファイルの名前 (run.json, source.yaml)
+        """
+        # 版の無いファイルと読めないファイルは, 版を確かめない設定
+        try:
+            source = load_yaml(self.run_dir / "source.yaml")
+        except Exception:
+            source = {}
+        names = []
+        for name, data in (("run.json", self.status), ("source.yaml", source)):
+            version = data.get("format_version")
+            known = KNOWN_FORMAT_VERSIONS[name]
+            if isinstance(version, int) and version > known:
+                names.append(f"{name} (版 {version})")
+
+        return names
+
     def notices(self) -> list[str]:
         """
         読めなかったファイルなど, 表示の値が確かでない理由を集める関数
@@ -997,6 +1028,13 @@ class RunData:
         if (self.run_dir / "config.yaml").is_file() and not self.config:
             notices.append(
                 "config.yaml を読めません. config の差分と分析には出ません"
+            )
+        newer = self.newer_formats()
+        if newer:
+            notices.append(
+                f"{', '.join(newer)} は, このダッシュボードが知っている版より"
+                "新しい ML-Found の出力です. 一部が正しく表示されない場合が"
+                "あります (ダッシュボードを更新してください)"
             )
 
         return notices
