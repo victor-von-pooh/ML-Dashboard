@@ -38,6 +38,16 @@ BAD_REQUEST: dict[int | str, dict[str, str]] = {
     400: {"description": "受け付けられないリクエスト"}
 }
 
+# 起動の前にあるかを確かめるパスの項目の名前の最後の語 (_ か - で区切った語.
+# 大文字と小文字は区別なし. profile などの語の一部とは不一致)
+PATH_KEY_WORDS = frozenset({"path", "dir", "file"})
+
+# Hugging Face の model_name_or_path などの, パスでなくてもよい項目の名前の末尾
+NAME_OR_PATH_SUFFIX = "name_or_path"
+
+# パスの確認から外す項目 (ML-Found が作る出力先と, ML-Found が確かめる再開元)
+SKIPPED_PATH_KEYS = frozenset({"experiment.output_dir", "trainer.resume_from"})
+
 
 # ML-Found のモジュールを初めて読み込むときの排他
 # ML-Found のモジュールは互いに読み込み合うので, 別々のスレッドの要求が
@@ -444,6 +454,97 @@ def check_one_cycle_epochs(cfg: Any) -> tuple[Optional[str], Optional[str]]:
     return None, warning
 
 
+def find_missing_paths(cfg: Any, project_dir: Path) -> list[str]:
+    """
+    config のパスの項目のうち, ファイルやディレクトリが無いものを注意にする関数
+
+    名前の最後の語が path, dir, file の項目の, 空でない文字列の値を対象にする.
+    学習のスクリプトが作るものもあるので, エラーにはしない
+
+    Parameters
+    ----------
+    cfg: Any
+        学習に使う config
+    project_dir: Path
+        プロジェクトのディレクトリ (相対パスの基準)
+
+    Returns
+    ----------
+    warnings: list[str]
+        見つからないパスごとの注意
+    """
+    # 値の参照 (${...}) は解決せずに対象外にするので, 解決しない形で走査
+    container = OmegaConf.to_container(cfg, resolve=False)
+    warnings: list[str] = []
+    stack: list[tuple[str, Any]] = [("", container)]
+    while stack:
+        prefix, node = stack.pop()
+        if not isinstance(node, dict):
+            continue
+        for key, value in node.items():
+            name = f"{prefix}{key}"
+            if isinstance(value, dict):
+                stack.append((f"{name}.", value))
+                continue
+            message = describe_missing_path(name, value, project_dir)
+            if message is not None:
+                warnings.append(message)
+    warnings.sort()
+
+    return warnings
+
+
+def describe_missing_path(
+    name: str, value: Any, project_dir: Path
+) -> Optional[str]:
+    """
+    1 つの項目のパスが無い場合に, 注意の文を作る関数
+
+    Parameters
+    ----------
+    name: str
+        項目の名前 (data.train_path など)
+    value: Any
+        項目の値
+    project_dir: Path
+        プロジェクトのディレクトリ (相対パスの基準)
+
+    Returns
+    ----------
+    message: Optional[str]
+        パスが無い場合の注意, 対象外かパスがある場合は None
+    """
+    # 名前の最後の語がパスを表す, 空でない文字列の項目だけが対象
+    key = name.rsplit(".", 1)[-1].lower()
+    word = key.replace("-", "_").rsplit("_", 1)[-1]
+    if word not in PATH_KEY_WORDS or key.endswith(NAME_OR_PATH_SUFFIX):
+        return None
+    if not isinstance(value, str) or not value.strip():
+        return None
+    # ML-Found が作るもの, 確かめるもの, URL, 値の参照, 必須の印は対象外
+    if name in SKIPPED_PATH_KEYS or value == "???":
+        return None
+    if "://" in value or "${" in value:
+        return None
+
+    # 相対パスは ML-Found の出力先や再開元と同じくプロジェクトのディレクトリ
+    # から (ダッシュボードの学習もプロジェクトのディレクトリで起動)
+    given = Path(value)
+    try:
+        given = given.expanduser()
+        resolved = given if given.is_absolute() else project_dir / given
+        if resolved.exists():
+            return None
+    except (OSError, RuntimeError, ValueError):
+        # 無いユーザーの ~ や NUL 文字など, 確かめられない値も見つからない扱い
+        pass
+    kind = "ディレクトリ" if word == "dir" else "ファイル"
+    base = "" if given.is_absolute() else " (プロジェクトのディレクトリから)"
+    message = f"{name} の{kind}が見つかりません: {value}{base}"
+
+    return message
+
+
 def check_config(
     project: Project, path: Path, script: Optional[str] = None
 ) -> CheckedConfig:
@@ -535,6 +636,9 @@ def check_config(
                 value_error = f"{prefix}{mismatch}"
             if note is not None:
                 warnings.append(f"{prefix}{note}")
+
+        # データなどのパスの書き誤りは, 起動を止めずに注意
+        warnings += find_missing_paths(cfg, project_dir)
     finally:
         sys.path.remove(str(project_dir))
     config = OmegaConf.to_container(cfg, resolve=True)
