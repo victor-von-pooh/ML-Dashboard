@@ -889,6 +889,76 @@
         }
       }
     },
+    "/api/projects/{project_id}/runs/{name}/{date}/{time}/relaunch": {
+      "get": {
+        "summary": "Read Relaunch",
+        "description": "実験と同じ設定でもう一度起動するための設定を返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\nname: str\n    実験の名前\ndate: str\n    日付のディレクトリ名\ntime: str\n    時刻のディレクトリ名\n\nReturns\n----------\nplan: RelaunchPlan\n    スクリプト, default と experiment の config, 起動できない理由",
+        "operationId": "read_relaunch",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "date",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Date"
+            }
+          },
+          {
+            "name": "time",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelaunchPlan"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "プロジェクトか実験が見つからない"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobs/{job_id}/stop": {
       "post": {
         "summary": "Stop Job",
@@ -1334,6 +1404,17 @@
               }
             ],
             "title": "Config Text"
+          },
+          "default_config": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Config"
           }
         },
         "type": "object",
@@ -1458,6 +1539,17 @@
               }
             ],
             "title": "Config Text"
+          },
+          "default_config": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Config"
           }
         },
         "type": "object",
@@ -2019,6 +2111,75 @@
           "schedulers"
         ],
         "title": "Registry"
+      },
+      "RelaunchPlan": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "script": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Script"
+          },
+          "default_config": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Config"
+          },
+          "config_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config Path"
+          },
+          "config_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config Text"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes",
+            "default": []
+          }
+        },
+        "type": "object",
+        "title": "RelaunchPlan"
       },
       "RunDetail": {
         "properties": {
@@ -2717,6 +2878,17 @@
               }
             ],
             "title": "Script"
+          },
+          "default_config": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Config"
           }
         },
         "type": "object",

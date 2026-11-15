@@ -12,6 +12,8 @@ export const keys = {
   history: (projectId: string, runId: string) => ['projects', projectId, 'history', runId] as const,
   log: (projectId: string, runId: string) => ['projects', projectId, 'log', runId] as const,
   config: (projectId: string, path: string) => ['projects', projectId, 'config', path] as const,
+  relaunch: (projectId: string, runId: string) =>
+    ['projects', projectId, 'relaunch', runId] as const,
   params: (projectId: string) => ['projects', projectId, 'params'] as const,
   notes: (projectId: string) => ['projects', projectId, 'notes'] as const,
   jobs: ['jobs'] as const,
@@ -124,10 +126,30 @@ export function useConfig(projectId: string, path: string | null) {
   })
 }
 
+/** 実験と同じ設定でもう一度起動するための設定. runId が null の間は読まない */
+export function useRelaunch(projectId: string, runId: string | null) {
+  return useQuery({
+    queryKey: keys.relaunch(projectId, runId ?? ''),
+    queryFn: () => api.getRelaunch(projectId, runId ?? ''),
+    enabled: runId !== null,
+    // config のファイルを書き換えたらすぐに反映するように, 開くたびに読み直す
+    // (起動の画面は開いたときの結果だけを使うので, 画面に戻ったときは読まない)
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+  })
+}
+
 export function useValidateConfig(projectId: string) {
   return useMutation({
-    mutationFn: ({ text, script }: { text: string; script: string }) =>
-      api.validateConfig(projectId, text, script),
+    mutationFn: ({
+      text,
+      script,
+      defaultConfig,
+    }: {
+      text: string
+      script: string
+      defaultConfig?: string
+    }) => api.validateConfig(projectId, text, script, defaultConfig),
   })
 }
 

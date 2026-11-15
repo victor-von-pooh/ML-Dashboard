@@ -85,6 +85,29 @@ test('2 つの実験を比べ, config の違いと同じエポックの画像を
   await expect(page.getByRole('img', { name: /boundary \(epoch 3\)/ })).toHaveCount(2)
 })
 
+test('実験の詳細から, 同じ設定を入れた学習の起動の画面を開く', async ({ page, request }) => {
+  // quick_sgd.yaml で流した実験 (ML-Found の source.yaml から探す)
+  const listed = await request.get(`/api/projects/${projectId}/runs`)
+  const runs = (await listed.json()) as { id: string; source: { experiment?: string } | null }[]
+  const run = runs.find((item) => item.source?.experiment?.endsWith('quick_sgd.yaml'))
+  expect(run).toBeDefined()
+  await page.goto(`/projects/${projectId}/runs/${run!.id}`)
+  await page.getByRole('link', { name: 'この設定でもう一度起動' }).click()
+
+  // スクリプトと config を選んだ状態で開き, URL に実験を残す
+  await expect(page).toHaveURL(/\/launch\?run=/)
+  await expect(page.getByText(/のスクリプトと experiment の config を入れました/)).toBeVisible()
+  await expect(page.getByLabel('experiment の config')).toHaveValue(
+    'configs/experiment/examples/quick_sgd.yaml',
+  )
+  await expect(page.getByLabel('config の中身')).toHaveValue(/name: SGD/)
+
+  // 起動の前の確認は, 実験が元にした default で行う
+  await page.getByRole('button', { name: 'ML-Found で config を確かめる' }).click()
+  await expect(page.getByText(/読み込めました/)).toBeVisible()
+  await expect(page.getByText('default: configs/default/train.yaml')).toBeVisible()
+})
+
 test('フォームで config を変え, 学習を起動して完了まで見届ける', async ({ page, request }) => {
   // 学習のプロセスの起動 (PyTorch の読み込み) を含むので長めに待機
   test.setTimeout(90_000)

@@ -684,3 +684,33 @@ def list_experiment_configs(project_dir: Path) -> list[str]:
     )
 
     return configs
+
+
+def list_default_configs(project_dir: Path) -> list[str]:
+    """
+    プロジェクトの default の config を列挙する関数
+
+    Parameters
+    ----------
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    configs: list[str]
+        configs/default の中の YAML の, プロジェクトのディレクトリからの
+        相対パス
+    """
+    root = project_dir / DEFAULT_DIR
+    if not root.is_dir():
+        return []
+
+    # スクリプトの本文から探すときと同じく, .yml も対象
+    configs = sorted(
+        path.relative_to(project_dir).as_posix()
+        for pattern in ("*.yaml", "*.yml")
+        for path in root.rglob(pattern)
+        if path.is_file()
+    )
+
+    return configs

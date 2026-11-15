@@ -22,6 +22,7 @@ type ProjectCreate = Schemas['ProjectCreate']
 export type JobInfo = Schemas['JobInfo']
 export type ValidateResult = Schemas['ValidateResult']
 export type ConfigText = Schemas['ConfigText']
+export type RelaunchPlan = Schemas['RelaunchPlan']
 type JobCreate = Schemas['JobCreate']
 
 // ML-Found の登録簿 (describe_optimizers と describe_schedulers の形)
@@ -125,11 +126,20 @@ export const api = {
         .map(encodeURIComponent)
         .join('/')}`,
     ),
+  getRelaunch: (projectId: string, runId: string) =>
+    request<RelaunchPlan>(
+      `/api/projects/${encodeURIComponent(projectId)}/runs/${encodeRunId(runId)}/relaunch`,
+    ),
   // script は元にする default の config を選ぶのに使う (train_hf.py なら configs/default/hf.yaml)
-  validateConfig: (projectId: string, text: string, script?: string) =>
+  // defaultConfig を渡すと, スクリプトから選ばずにその default で確かめる
+  validateConfig: (projectId: string, text: string, script?: string, defaultConfig?: string) =>
     request<ValidateResult>(`/api/projects/${encodeURIComponent(projectId)}/validate`, {
       method: 'POST',
-      body: JSON.stringify({ text, script: script || undefined }),
+      body: JSON.stringify({
+        text,
+        script: script || undefined,
+        default_config: defaultConfig || undefined,
+      }),
     }),
   rerunJob: (jobId: string) =>
     request<JobInfo>(`/api/jobs/${encodeURIComponent(jobId)}/rerun`, { method: 'POST' }),

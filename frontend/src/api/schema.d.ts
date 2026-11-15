@@ -561,6 +561,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/runs/{name}/{date}/{time}/relaunch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Relaunch
+         * @description 実験と同じ設定でもう一度起動するための設定を返す関数
+         *
+         *     Parameters
+         *     ----------
+         *     request: Request
+         *         リクエスト
+         *     project_id: str
+         *         プロジェクトの ID
+         *     name: str
+         *         実験の名前
+         *     date: str
+         *         日付のディレクトリ名
+         *     time: str
+         *         時刻のディレクトリ名
+         *
+         *     Returns
+         *     ----------
+         *     plan: RelaunchPlan
+         *         スクリプト, default と experiment の config, 起動できない理由
+         */
+        get: operations["read_relaunch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/{job_id}/stop": {
         parameters: {
             query?: never;
@@ -809,6 +847,8 @@ export interface components {
             config_path?: string | null;
             /** Config Text */
             config_text?: string | null;
+            /** Default Config */
+            default_config?: string | null;
         };
         /** JobInfo */
         JobInfo: {
@@ -845,6 +885,8 @@ export interface components {
             progress: components["schemas"]["Progress"] | null;
             /** Config Text */
             config_text: string | null;
+            /** Default Config */
+            default_config?: string | null;
         };
         /** JobOutput */
         JobOutput: {
@@ -1024,6 +1066,24 @@ export interface components {
             optimizers: components["schemas"]["ClassSpec"][];
             /** Schedulers */
             schedulers: components["schemas"]["ClassSpec"][];
+        };
+        /** RelaunchPlan */
+        RelaunchPlan: {
+            /** Reason */
+            reason?: string | null;
+            /** Script */
+            script?: string | null;
+            /** Default Config */
+            default_config?: string | null;
+            /** Config Path */
+            config_path?: string | null;
+            /** Config Text */
+            config_text?: string | null;
+            /**
+             * Notes
+             * @default []
+             */
+            notes: string[];
         };
         /** RunDetail */
         RunDetail: {
@@ -1221,6 +1281,8 @@ export interface components {
             text: string;
             /** Script */
             script?: string | null;
+            /** Default Config */
+            default_config?: string | null;
         };
         /** ValidateResult */
         ValidateResult: {
@@ -1930,6 +1992,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobInfo"];
+                };
+            };
+            /** @description プロジェクトか実験が見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_relaunch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                name: string;
+                date: string;
+                time: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelaunchPlan"];
                 };
             };
             /** @description プロジェクトか実験が見つからない */

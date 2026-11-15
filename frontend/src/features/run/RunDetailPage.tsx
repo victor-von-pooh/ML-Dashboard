@@ -1,9 +1,17 @@
-import { TriangleAlert } from 'lucide-react'
+import { Play, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
-import { useHistory, useLog, useProject, useRun } from '../../api/hooks'
-import { ErrorBox, PageHeader, Spinner, StatTile, StatusBadge, Tabs } from '../../components/ui'
+import { useHistory, useLog, useProject, useRelaunch, useRun } from '../../api/hooks'
+import {
+  Button,
+  ErrorBox,
+  PageHeader,
+  Spinner,
+  StatTile,
+  StatusBadge,
+  Tabs,
+} from '../../components/ui'
 import { tabPanelProps, useStableId } from '../../lib/a11y'
 import { formatDateTime, formatDuration, formatMetric } from '../../lib/format'
 import { groupImageSeries } from '../../lib/images'
@@ -56,6 +64,8 @@ export function RunDetailPage() {
   const requestedTab = toTab(params.get('tab'))
   const log = useLog(projectId, runId, requestedTab === 'log')
   const idBase = useStableId('run')
+  const relaunch = useRelaunch(projectId, runId)
+  const relaunchHintId = useStableId('relaunch')
 
   // 再読み込みやリンクで同じタブを開けるように, タブは URL に保存
   const setTab = (id: TabId) => setParams(id === 'charts' ? {} : { tab: id }, { replace: true })
@@ -118,7 +128,29 @@ export function RunDetailPage() {
             {formatDateTime(data.started_at)} · {data.id}
           </span>
         }
+        actions={
+          // 起動できない実験 (source.yaml が無い古い実験など) は押せなくし, 理由を出す
+          // 読めなかった場合は, 起動の画面でエラーを出すのでそのまま開ける
+          !relaunch.data?.reason ? (
+            <Link
+              to={`/projects/${projectId}/launch?${new URLSearchParams({ run: data.id }).toString()}`}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              <Play className="size-4" aria-hidden />
+              この設定でもう一度起動
+            </Link>
+          ) : (
+            <Button icon={Play} disabled aria-describedby={relaunchHintId}>
+              この設定でもう一度起動
+            </Button>
+          )
+        }
       />
+      {relaunch.data?.reason && (
+        <p id={relaunchHintId} className="-mt-4 mb-4 text-right text-xs text-ink-3">
+          もう一度起動できません: {relaunch.data.reason}
+        </p>
+      )}
       {data.error && <ErrorBox error={data.error} live={false} />}
       {data.notices.map((notice) => (
         <p key={notice} className="mb-4 flex items-start gap-1.5 text-sm text-warning-text">

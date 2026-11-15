@@ -1,27 +1,82 @@
 import clsx from 'clsx'
 import { CheckCircle2, Info, Play, RotateCcw, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 
-import { useConfig, useCreateJob, useProject, useValidateConfig } from '../../api/hooks'
+import { encodeRunId, type RelaunchPlan } from '../../api/client'
+import {
+  useConfig,
+  useCreateJob,
+  useProject,
+  useRelaunch,
+  useValidateConfig,
+} from '../../api/hooks'
 import { Button, Card, ErrorBox, PageHeader, Spinner } from '../../components/ui'
 import { formatValue } from '../../lib/format'
 import { configForScript } from '../../lib/scripts'
 import { ConfigForm } from './ConfigForm'
 
-/** config とスクリプトを選び, 必要なら書き換えて学習を起動する画面 */
+// 実験の config の中身 (プロジェクトの experiment の config の一覧に無いもの) を
+// 選んでいることを表す, config の選択の値
+const RUN_CONFIG = 'run:'
+
+/**
+ * 学習を起動する画面. URL に ?run=<実験の ID> があれば, その実験の起動のしかた
+ * (source.yaml) を入れた状態で開く
+ */
 export function LaunchPage() {
   const { projectId = '' } = useParams()
+  const [params] = useSearchParams()
+  const runId = params.get('run') || null
+  const plan = useRelaunch(projectId, runId)
+
+  // 実験の詳細で読んだ古い結果で始めないように, 開いてから読み直すまで待つ
+  if (runId !== null && !plan.isFetchedAfterMount) return <Spinner />
+  // 実験の設定を読めない場合も, 理由を出して空の画面で起動できるようにする
+  return (
+    <LaunchForm
+      // 別の実験から開き直したら, 選んだものと書き換えた中身を作り直す
+      key={runId ?? ''}
+      projectId={projectId}
+      runId={runId}
+      plan={plan.data ?? null}
+      planError={plan.error}
+    />
+  )
+}
+
+/** config とスクリプトを選び, 必要なら書き換えて学習を起動するフォーム */
+function LaunchForm({
+  projectId,
+  runId,
+  plan: initialPlan,
+  planError,
+}: {
+  projectId: string
+  runId: string | null
+  plan: RelaunchPlan | null
+  planError: Error | null
+}) {
+  // 開いたときの結果に固定し, 後から読み直した結果で選んだものを変えない
+  const [plan] = useState(initialPlan)
   const project = useProject(projectId)
   const navigate = useNavigate()
   const scriptId = useId()
   const configId = useId()
   const editorId = useId()
 
-  const [script, setScript] = useState<string | null>(null)
-  const [chosenPath, setChosenPath] = useState<string | null>(null)
+  // 実験から開いた場合は, その実験のスクリプトと config を最初に選択
+  const fromRun = plan !== null && plan.reason == null ? plan : null
+  const runText = fromRun?.config_text ?? ''
+  const [script, setScript] = useState<string | null>(fromRun?.script ?? null)
+  const [chosenPath, setChosenPath] = useState<string | null>(
+    fromRun ? (fromRun.config_path ?? RUN_CONFIG) : null,
+  )
   // 書き換えた中身は, どの config を書き換えたかと組で保存
-  const [draft, setDraft] = useState<{ path: string | null; text: string } | null>(null)
+  // 実験の上書き (overrides) を重ねた中身は, 選んだ config を書き換えたものとして扱う
+  const [draft, setDraft] = useState<{ path: string | null; text: string } | null>(
+    fromRun?.config_path ? { path: fromRun.config_path, text: runText } : null,
+  )
   const validate = useValidateConfig(projectId)
   const create = useCreateJob(projectId)
 
@@ -38,14 +93,27 @@ export function LaunchPage() {
     configs.find((path) => !path.includes('/examples/')) ??
     configs[0] ??
     null
-  const config = useConfig(projectId, configPath)
+  // 実験の config の中身を選んでいる間は, プロジェクトのファイルを読まない
+  const usingRunConfig = fromRun !== null && configPath === RUN_CONFIG
+  const filePath = usingRunConfig ? null : configPath
+  const config = useConfig(projectId, filePath)
+  // 起動の前の確認は, 実験のスクリプトのままなら実験が元にした default で行う
+  const defaultConfig =
+    fromRun?.default_config && selectedScript === fromRun.script
+      ? fromRun.default_config
+      : undefined
 
   // 選んだ config を書き換えていればその中身, いなければ読み込んだ中身
   // 元と同じ中身に戻した場合は書き換えていないものとして扱い
-  const original = config.data?.text ?? ''
-  const edited = draft !== null && draft.path === configPath && draft.text !== original
+  const original = usingRunConfig ? runText : (config.data?.text ?? '')
+  // 読み込みの間は, 元の中身が分からないので書き換えていないものとして扱い
+  const edited =
+    draft !== null &&
+    draft.path === configPath &&
+    (usingRunConfig || config.data !== undefined) &&
+    draft.text !== original
   const text = draft !== null && draft.path === configPath ? draft.text : original
-  const loadingConfig = configPath !== null && config.isPending
+  const loadingConfig = filePath !== null && config.isPending
 
   // 書き換えたまま再読み込みやタブを閉じる場合はブラウザで確認
   useEffect(() => {
@@ -112,9 +180,9 @@ export function LaunchPage() {
     }
     setFormError(null)
     create.mutate(
-      edited || !configPath
-        ? { script: selectedScript, config_text: text }
-        : { script: selectedScript, config_path: configPath },
+      edited || !filePath
+        ? { script: selectedScript, config_text: text, default_config: defaultConfig }
+        : { script: selectedScript, config_path: filePath, default_config: defaultConfig },
       { onSuccess: (job) => navigate(`/jobs/${job.id}`) },
     )
   }
@@ -139,6 +207,16 @@ export function LaunchPage() {
         title="学習を起動"
         subtitle="プロジェクトの Python で学習のスクリプトを別のプロセスとして動かします"
       />
+
+      {runId !== null && (
+        <RunSourceNotice
+          projectId={projectId}
+          runId={runId}
+          plan={plan}
+          error={planError}
+          defaultConfig={defaultConfig}
+        />
+      )}
 
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
         <div className="space-y-4">
@@ -182,7 +260,16 @@ export function LaunchPage() {
                   onChange={(event) => selectConfig(event.target.value)}
                   className="h-9 w-full rounded-lg border border-line bg-bg px-2 font-mono text-xs"
                 >
-                  {configs.map((item) => (
+                  {fromRun && !fromRun.config_path && (
+                    <option value={RUN_CONFIG}>実験 {runId} の config</option>
+                  )}
+                  {/* 一覧を読んだ後に作られた config も選べるように追加 */}
+                  {[
+                    ...configs,
+                    ...(fromRun?.config_path && !configs.includes(fromRun.config_path)
+                      ? [fromRun.config_path]
+                      : []),
+                  ].map((item) => (
                     <option key={item} value={item}>
                       {item.replace('configs/experiment/', '')}
                     </option>
@@ -216,7 +303,7 @@ export function LaunchPage() {
             <div className="space-y-3 text-sm">
               <Button
                 icon={ShieldCheck}
-                onClick={() => validate.mutate({ text, script: selectedScript })}
+                onClick={() => validate.mutate({ text, script: selectedScript, defaultConfig })}
                 disabled={validate.isPending || loadingConfig}
               >
                 ML-Found で config を確かめる
@@ -286,7 +373,7 @@ export function LaunchPage() {
         <Card
           title={<label htmlFor={editorId}>config の中身</label>}
           actions={
-            edited && config.data ? (
+            edited && (usingRunConfig || config.data) ? (
               <Button
                 variant="ghost"
                 icon={RotateCcw}
@@ -315,5 +402,70 @@ export function LaunchPage() {
         </Card>
       </div>
     </>
+  )
+}
+
+/** 実験から開いた場合に, 何を入れたかと, 入れられない理由を出す */
+function RunSourceNotice({
+  projectId,
+  runId,
+  plan,
+  error,
+  defaultConfig,
+}: {
+  projectId: string
+  runId: string
+  plan: RelaunchPlan | null
+  error: Error | null
+  defaultConfig: string | undefined
+}) {
+  const runLink = (
+    <Link
+      to={`/projects/${projectId}/runs/${encodeRunId(runId)}`}
+      className="font-mono break-all text-accent-text hover:underline"
+    >
+      {runId}
+    </Link>
+  )
+  if (error) {
+    return (
+      <div className="mb-4">
+        <ErrorBox error={error}>
+          <p className="mt-1">実験 {runId} の設定を読めませんでした.</p>
+        </ErrorBox>
+      </div>
+    )
+  }
+  if (plan?.reason) {
+    return (
+      <p className="mb-4 flex items-start gap-1.5 text-sm text-warning-text">
+        <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+        <span>
+          実験 {runLink} の設定は入れられません: {plan.reason}
+        </span>
+      </p>
+    )
+  }
+  return (
+    <div className="mb-4 space-y-1 text-sm text-ink-2">
+      <p className="flex items-start gap-1.5">
+        <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
+        <span>
+          実験 {runLink} のスクリプトと experiment の config を入れました
+          {defaultConfig && (
+            <>
+              . 起動の前の確認は, 実験が元にした default (
+              <span className="font-mono">{defaultConfig}</span>) で行います
+            </>
+          )}
+        </span>
+      </p>
+      {(plan?.notes ?? []).map((note) => (
+        <p key={note} className="flex items-start gap-1.5 text-xs text-ink-3">
+          <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          {note}
+        </p>
+      ))}
+    </div>
   )
 }

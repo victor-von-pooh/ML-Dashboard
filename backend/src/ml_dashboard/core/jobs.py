@@ -62,6 +62,9 @@ class Job:
     stop_requested: bool
     force_count: int = 0
     hostname: str = field(default_factory=socket.gethostname)
+    # 起動の前の確認に使った default の config (プロジェクトからの相対パス).
+    # None はスクリプトから選んだもの
+    default_config: Optional[str] = None
 
 
 def now_iso() -> str:
@@ -211,7 +214,8 @@ class JobManager:
             shutil.rmtree(self.job_dir(job_id), ignore_errors=True)
 
     def start(
-        self, job_id: str, project: Project, script: str, config_path: Path
+        self, job_id: str, project: Project, script: str, config_path: Path,
+        default_config: Optional[str] = None
     ) -> Job:
         """
         学習のスクリプトを別のプロセスで起動する関数
@@ -226,6 +230,9 @@ class JobManager:
             プロジェクトのディレクトリにある学習のスクリプトの名前
         config_path: Path
             experiment の config のパス
+        default_config: Optional[str] = None
+            起動の前の確認に使った default の config, None はスクリプトから
+            選んだもの
 
         Returns
         ----------
@@ -254,7 +261,8 @@ class JobManager:
             id=job_id, project_id=project.id, script=script,
             config=str(config_path), created_at=created_at, pid=process.pid,
             status="running", return_code=None, run_id=None,
-            finished_at=None, stop_requested=False
+            finished_at=None, stop_requested=False,
+            default_config=default_config
         )
         with self.lock:
             self.processes[job_id] = process
