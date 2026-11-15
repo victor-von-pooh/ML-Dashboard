@@ -95,6 +95,8 @@ ML-Found の今の出力から, 次のように読み取る.
 ML-Found が書く `run.json` (下の「ML-Found に加えたもの」) がある実験では, 状態, ベストのエポック, 環境の情報をそこから読む.
 無い古い実験でも, 上の表の情報で見られるようにする.
 
+読むファイルの形は ML-Found の約束 (ML-Found の `docs/FORMAT.md`) に従う. 知らない項目は無視する. `run.json` と `source.yaml` の `format_version` が, ダッシュボードの知っている版 (どちらも 1) より新しい場合は, 読める項目だけで表示し, 実験の詳細に「新しい版の ML-Found の出力なので, 一部が正しく表示されない場合がある」と注意を出す.
+
 プロジェクトの実験は, `configs/default/` と `configs/experiment/` の config の `experiment.output_dir` の下を探して見つける.
 
 ## 学習の起動
@@ -108,7 +110,7 @@ ML-Found が書く `run.json` (下の「ML-Found に加えたもの」) があ�
 - 学習に使う config (default と合わせたもの) のうち, 項目の名前の最後の語 (`_` か `-` で区切った語. 大文字と小文字は区別しない) が `path`, `dir`, `file` で, 値が空でない文字列のもの (`train_path`, `cache_dir` など. `profile` のような語の一部は対象外)は, そのファイルやディレクトリがあるかを確かめ, 無ければ注意にする (データのパスの書き誤りを起動の前に見つけるため. 学習のスクリプトが作るものもあるので, 誤りにはしない)
     - 相対パスはプロジェクトのディレクトリから辿る. ML-Found は自分で使わない項目のパスを読まないが, `experiment.output_dir` と `trainer.resume_from` を同じくプロジェクトのディレクトリから辿り, ダッシュボードも学習をプロジェクトのディレクトリで起動するため. ダッシュボードは `~` をホームディレクトリに展開して確かめる (展開するかは学習のスクリプトによる)
     - URL (`://` を含む), 値の参照 (`${` を含む), 必須の印 (`???`), Hugging Face のモデルの名前も書ける `name_or_path` で終わる項目 (`model_name_or_path` など), ML-Found が作る `experiment.output_dir`, ML-Found が既に確かめる `trainer.resume_from` は対象外. リストの中の値も対象外
-- 1 つのプロジェクトに学習のスクリプトが複数あり, それぞれ別の default の config を使う場合は, スクリプトの本文に書かれた `configs/default/<名前>.yaml` (1 種類だけの場合) を使い, 無ければ名前で選ぶ (`train_<名前>.py` は `configs/default/<名前>.yaml`, 次に `train_<名前>.yaml`, どちらも無ければ `train.yaml`). 本文はパスの文字を探すだけで, 実行はしない. 実験の出力先も, 全ての default の config から集める
+- 1 つのプロジェクトに学習のスクリプトが複数あり, それぞれ別の default の config を使う場合は (この選び方は ML-Found の `docs/FORMAT.md` の「プロジェクトの形」にも約束として書いてある), スクリプトの本文に書かれた `configs/default/<名前>.yaml` (1 種類だけの場合) を使い, 無ければ名前で選ぶ (`train_<名前>.py` は `configs/default/<名前>.yaml`, 次に `train_<名前>.yaml`, どちらも無ければ `train.yaml`). 本文はパスの文字を探すだけで, 実行はしない. 実験の出力先も, 全ての default の config から集める
 - 実験の詳細の「この設定でもう一度起動」は, 実験の `source.yaml` (起動のしかた) から学習の起動の画面を開き, スクリプト, experiment の config, 上書きを入れた状態にする. 状態は URL (`/projects/<ID>/launch?run=<実験の ID>`) に持ち, 再読み込みしても同じ実験から入れ直す. 何を入れるかはバックエンドがまとめて返し, 実験の詳細のボタンも同じ結果で押せるかを決める
     - スクリプトは `source.script` がプロジェクトの学習のスクリプトの一覧にあるもの. 無ければ起動できない理由を出す
     - experiment の config は, `source.experiment` のファイルの今の中身に, 上書き (`overrides`) を ML-Found と同じ規則 (上書きでクラスを変える場合は experiment の引数を捨てる) で重ねたもの. プロジェクトの experiment の config の一覧にあればそれを選んだ状態にし (上書きがあれば, 書き換えた状態), 画面で書き換えて起動した学習 (ダッシュボードの置き場の config) とプロジェクトの `configs/` の中の他の YAML は中身だけを使う. それ以外の場所と, 無くなったファイルは起動できない理由にする. 中身を渡して起動する場合は, 画面からの起動と同じく `experiment.output_dir` を変えたものも起動できない理由にする. 上書きを重ねた場合は YAML を書き直すので, 元のコメントは消える

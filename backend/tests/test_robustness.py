@@ -483,3 +483,50 @@ def test_unreadable_run_json_notice(
     (run_dir / "run.json").write_text('{"status": "comp', encoding="utf-8")
     notices = client.get(base).json()["notices"]
     assert any("run.json を読めません" in notice for notice in notices)
+
+
+def test_newer_format_notice(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    知らない新しい版の run.json と source.yaml の実験に, 注意を出しつつ
+    表示することを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 知っている版 (1) では注意なし
+    project_id = register(client, project_dir)
+    base = f"/api/projects/{project_id}/runs/demo/2026-11-08/10-00-00"
+    run_dir = project_dir / "outputs/demo/2026-11-08/10-00-00"
+    status = {
+        "format_version": 1, "status": "completed", "completed_epochs": 10
+    }
+    (run_dir / "run.json").write_text(json.dumps(status), encoding="utf-8")
+    (run_dir / "source.yaml").write_text(
+        "format_version: 1\nscript: train.py\n", encoding="utf-8"
+    )
+    assert client.get(base).json()["notices"] == []
+
+    # 新しい版で知らない項目があっても, 読める項目で表示して注意
+    status["format_version"] = 2
+    status["unknown_key"] = {"nested": True}
+    (run_dir / "run.json").write_text(json.dumps(status), encoding="utf-8")
+    (run_dir / "source.yaml").write_text(
+        "format_version: 3\nscript: train.py\nnew_key: 1\n", encoding="utf-8"
+    )
+    detail = client.get(base).json()
+    assert detail["status"] == status["status"]
+    assert detail["source"]["script"] == "train.py"
+    notices = detail["notices"]
+    assert len(notices) == 1
+    assert "run.json (版 2)" in notices[0]
+    assert "source.yaml (版 3)" in notices[0]
