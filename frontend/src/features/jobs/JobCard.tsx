@@ -52,7 +52,7 @@ export function ProgressBar({
 /** エポックとバッチの進捗バー */
 export function ProgressBars({ progress }: { progress: Progress }) {
   const remaining = estimateRemaining(progress, progress.start_epoch)
-  const phase = phaseLabel(progress.phase)
+  const phase = phaseLabel(progress.phase, progress.stage)
   return (
     <div className="space-y-3">
       <ProgressBar

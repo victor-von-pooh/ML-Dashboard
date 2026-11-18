@@ -10,11 +10,10 @@ export function progressRatio(progress: Progress): number {
   return Math.min(1, progress.batch / progress.total_batches)
 }
 
-/** 進み具合のフェーズの表示名 */
-export function phaseLabel(phase: string): string {
-  if (phase === 'valid') return '検証'
-  if (phase === 'train_eval') return '学習用データの評価'
-  return '学習'
+/** 進み具合のフェーズの表示名 (エポックの終わりの処理の間は, その旨も) */
+export function phaseLabel(phase: string, stage?: string | null): string {
+  const name = phase === 'valid' ? '検証' : phase === 'train_eval' ? '学習用データの評価' : '学習'
+  return stage === 'epoch_end' ? `${name}の終わりの評価中` : name
 }
 
 /** これまでの速さから, 予定のエポックを終えるまでの残りの秒数を見積もる */

@@ -154,6 +154,8 @@ def test_job_lifecycle(client: TestClient, project_dir: Path) -> None:
     job = wait_for(client, job_id, "run_id", ...)
     assert job["run"]["status"] == "running"
     assert job["progress"]["batch"] == 3
+    # 段階を書かない前の版の progress.json は, バッチを回している間と読む
+    assert job["progress"]["stage"] == "batches"
     assert job["project_name"] == "demo_task"
 
     # 中断の要求で止まり, 実験は中断として残る
