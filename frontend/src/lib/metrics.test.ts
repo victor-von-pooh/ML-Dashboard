@@ -5,6 +5,7 @@ import {
   flattenConfig,
   groupMetrics,
   identicalSeries,
+  pointStyle,
   summarizeDiff,
   toPoints,
 } from './metrics'
@@ -115,5 +116,48 @@ describe('identicalSeries', () => {
         },
       ]),
     ).toEqual([['a', 'b']])
+  })
+})
+
+describe('pointStyle', () => {
+  it('毎エポックの系列は孤立した点が無く, 値の無い点で途切れさせる', () => {
+    const style = pointStyle([
+      [1, 0.9],
+      [2, 0.5],
+      [3, 0.3],
+    ])
+    expect([...style.isolated]).toEqual([])
+    expect(style.sparse).toBe(false)
+  })
+
+  it('何エポックかおきに記録する系列は, 全ての点を孤立した点としてつなぐ', () => {
+    const points: [number, number | null][] = Array.from({ length: 30 }, (_, index) => {
+      const epoch = index + 1
+      return [epoch, epoch % 10 === 0 ? 80 - epoch : null]
+    })
+    const style = pointStyle(points)
+    expect([...style.isolated]).toEqual([9, 19, 29])
+    expect(style.sparse).toBe(true)
+  })
+
+  it('途中の欠けで孤立した点だけに記号を付け, 線はつながない', () => {
+    const style = pointStyle([
+      [1, 0.9],
+      [2, 0.8],
+      [3, null],
+      [4, 0.6],
+      [5, null],
+    ])
+    expect([...style.isolated]).toEqual([3])
+    expect(style.sparse).toBe(false)
+  })
+
+  it('値のある点が 1 つだけの系列は記号で描き, つなぐ相手は無い', () => {
+    const style = pointStyle([
+      [1, null],
+      [2, 0.5],
+    ])
+    expect([...style.isolated]).toEqual([1])
+    expect(style.sparse).toBe(false)
   })
 })

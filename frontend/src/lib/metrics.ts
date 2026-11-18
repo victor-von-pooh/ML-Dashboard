@@ -99,3 +99,24 @@ export function identicalSeries(
   }
   return groups.filter((group) => group.names.length > 1).map((group) => group.names)
 }
+
+/** 系列の点の描き方 (孤立した点の記号と, 値の無い点を飛ばしてつなぐか) */
+export interface PointStyle {
+  /** 前後の点がどちらも値を持たない, 値のある点 (線を引けないので記号で描く) の位置 */
+  isolated: Set<number>
+  /** 値のある点が 2 つ以上で全て孤立した系列 (何エポックかおきに記録する指標) */
+  sparse: boolean
+}
+
+/** 値の無い点で途切れる線では見えない点を探し, 系列の描き方を決める */
+export function pointStyle(points: [number, number | null][]): PointStyle {
+  const has = (index: number) => points[index] !== undefined && points[index]![1] != null
+  const isolated = new Set<number>()
+  let valued = 0
+  points.forEach((_, index) => {
+    if (!has(index)) return
+    valued += 1
+    if (!has(index - 1) && !has(index + 1)) isolated.add(index)
+  })
+  return { isolated, sparse: valued >= 2 && isolated.size === valued }
+}

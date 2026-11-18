@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { cssVar } from '../lib/colors'
 import { formatAxis, formatMetric } from '../lib/format'
+import { pointStyle } from '../lib/metrics'
 import { useTheme } from '../lib/themeContext'
 
 echarts.use([
@@ -184,13 +185,17 @@ export function LineChart({
         series: [
           ...series.map((s) => {
             const color = cssVar(s.color)
+            // 値の無い点で線を途切れさせると, 前後に値の無い点は見えないので記号で描く.
+            // 何エポックかおきにだけ記録する系列は, 値の無い点を飛ばしてつなぐ
+            const { isolated, sparse } = pointStyle(s.points)
             return {
               type: 'line',
               name: s.name,
               data: s.points,
-              showSymbol: s.points.length <= 1,
-              symbolSize: 8,
-              connectNulls: false,
+              showSymbol: isolated.size > 0,
+              symbolSize: (_: unknown, params: { dataIndex: number }) =>
+                isolated.has(params.dataIndex) ? 8 : 0,
+              connectNulls: sparse,
               lineStyle: { width: 2, color, type: s.dashed ? 'dashed' : 'solid' },
               itemStyle: { color },
               emphasis: { focus: 'series', lineStyle: { width: 2.5 } },
