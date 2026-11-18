@@ -48,6 +48,8 @@ class Progress(BaseModel):
     total_epochs: int
     batch: int
     total_batches: Optional[int]
+    # フェーズの中の段階 (batches か epoch_end. 前の版の ML-Found は書かない)
+    stage: str = "batches"
     elapsed_sec: float
     updated_at: str
     start_epoch: int = 1

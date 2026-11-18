@@ -9,6 +9,7 @@ const base: Progress = {
   total_epochs: 10,
   batch: 5,
   total_batches: 10,
+  stage: 'batches',
   elapsed_sec: 25,
   updated_at: '2026-11-13T01:00:00+09:00',
   start_epoch: 1,
@@ -27,6 +28,8 @@ describe('progress', () => {
     expect(phaseLabel('train')).toBe('学習')
     expect(phaseLabel('train_eval')).toBe('学習用データの評価')
     expect(phaseLabel('valid')).toBe('検証')
+    expect(phaseLabel('valid', 'epoch_end')).toBe('検証の終わりの評価中')
+    expect(phaseLabel('train', 'batches')).toBe('学習')
   })
 
   it('これまでの速さから残りの時間を見積もる', () => {

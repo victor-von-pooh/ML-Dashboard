@@ -983,6 +983,11 @@ export interface components {
             batch: number;
             /** Total Batches */
             total_batches: number | null;
+            /**
+             * Stage
+             * @default batches
+             */
+            stage: string;
             /** Elapsed Sec */
             elapsed_sec: number;
             /** Updated At */

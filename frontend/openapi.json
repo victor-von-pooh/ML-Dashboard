@@ -1845,6 +1845,11 @@
             ],
             "title": "Total Batches"
           },
+          "stage": {
+            "type": "string",
+            "title": "Stage",
+            "default": "batches"
+          },
           "elapsed_sec": {
             "type": "number",
             "title": "Elapsed Sec"
