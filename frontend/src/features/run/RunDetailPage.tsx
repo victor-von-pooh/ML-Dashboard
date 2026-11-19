@@ -2,7 +2,7 @@ import { Play, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
-import { useHistory, useLog, useProject, useRelaunch, useRun } from '../../api/hooks'
+import { useHistory, useLog, useProject, useRelaunch, useResults, useRun } from '../../api/hooks'
 import {
   Button,
   ErrorBox,
@@ -17,10 +17,13 @@ import { formatDateTime, formatDuration, formatMetric } from '../../lib/format'
 import { groupImageSeries } from '../../lib/images'
 import { validInterval } from '../../lib/metrics'
 import type { RunFile } from '../../api/client'
+import { EvaluationsTab } from './EvaluationsTab'
 import { ImageTimeline } from './ImageTimeline'
 import { MetricCharts } from './MetricCharts'
 import { NotePanel } from './NotePanel'
 import { ConfigTab, EnvTab, FilesTab, LogTab, ModelTab } from './RunTabs'
+import { SamplesTab } from './SamplesTab'
+import { TaskPanel } from './TaskPanel'
 
 // 同じファイルの一覧からは同じ並びを返し, 描画のたびに作り直さないようにする
 const seriesCache = new WeakMap<RunFile[], ReturnType<typeof groupImageSeries>>()
@@ -32,7 +35,17 @@ function seriesOf(files: RunFile[]) {
   return series
 }
 
-const TAB_IDS = ['charts', 'images', 'config', 'model', 'env', 'log', 'files'] as const
+const TAB_IDS = [
+  'charts',
+  'evaluations',
+  'samples',
+  'images',
+  'config',
+  'model',
+  'env',
+  'log',
+  'files',
+] as const
 type TabId = (typeof TAB_IDS)[number]
 
 /** URL の値を画面のタブに直す */
@@ -53,14 +66,20 @@ export function RunDetailPage() {
   const run = useRun(projectId, runId)
   const running = run.data?.status === 'running'
   const history = useHistory(projectId, runId, running)
+  // task.yaml, evaluations/, samples/ (無い実験は空で, 画面も今までどおり)
+  const results = useResults(projectId, runId, running)
 
-  // 学習が終わったら, 最後のエポックの記録を読むためにもう一度読み直す
+  // 学習が終わったら, 最後のエポックの記録と学習の後の評価と見本を読み直す
   const wasRunning = useRef(false)
   const refetchHistory = history.refetch
+  const refetchResults = results.refetch
   useEffect(() => {
-    if (wasRunning.current && !running) void refetchHistory()
+    if (wasRunning.current && !running) {
+      void refetchHistory()
+      void refetchResults()
+    }
     wasRunning.current = running
-  }, [running, refetchHistory])
+  }, [running, refetchHistory, refetchResults])
   const [params, setParams] = useSearchParams()
   const requestedTab = toTab(params.get('tab'))
   const log = useLog(projectId, runId, requestedTab === 'log')
@@ -104,7 +123,15 @@ export function RunDetailPage() {
   // 番号の付いた画像 (エポックごとの生成画像など) の並び. 無い実験で画像のタブを
   // 開いた場合 (共有したリンクなど) は学習曲線を表示
   const series = seriesOf(data.files)
-  const tab: TabId = requestedTab === 'images' && series.length === 0 ? 'charts' : requestedTab
+  const evaluations = results.data?.evaluations ?? []
+  const samples = results.data?.samples ?? []
+  // 評価と見本は, 読み終えて無いと分かった場合だけ学習曲線に戻す (読む間は待つ)
+  const missing =
+    (requestedTab === 'images' && series.length === 0) ||
+    (requestedTab === 'evaluations' && !results.isPending && evaluations.length === 0) ||
+    (requestedTab === 'samples' && !results.isPending && samples.length === 0)
+  const tab: TabId = missing ? 'charts' : requestedTab
+  const sampleNames = new Set(samples.map((sample) => sample.name)).size
 
   // 学習中 (running) は「経過」と「最新」(終わってからの学習時間と最終の値の
   // 代わり)
@@ -218,6 +245,18 @@ export function RunDetailPage() {
         />
       </div>
 
+      {results.data?.task && (
+        <div className="mb-6">
+          <TaskPanel task={results.data.task} />
+        </div>
+      )}
+      {results.data?.notices.map((notice) => (
+        <p key={notice} className="mb-4 flex items-start gap-1.5 text-sm text-warning-text">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+          {notice}
+        </p>
+      ))}
+
       <div className="mb-6">
         <NotePanel key={data.id} projectId={projectId} runId={data.id} />
       </div>
@@ -229,6 +268,12 @@ export function RunDetailPage() {
         onChange={setTab}
         items={[
           { id: 'charts', label: '学習曲線' },
+          ...(evaluations.length > 0
+            ? [{ id: 'evaluations' as const, label: '評価', count: evaluations.length }]
+            : []),
+          ...(sampleNames > 0
+            ? [{ id: 'samples' as const, label: '見本', count: sampleNames }]
+            : []),
           ...(series.length > 0
             ? [{ id: 'images' as const, label: '画像の推移', count: series.length }]
             : []),
@@ -252,6 +297,22 @@ export function RunDetailPage() {
             <ErrorBox error={history.error} />
           ) : (
             <Spinner />
+          ))}
+        {tab === 'evaluations' &&
+          (results.error ? (
+            <ErrorBox error={results.error} />
+          ) : results.isPending ? (
+            <Spinner />
+          ) : (
+            <EvaluationsTab evaluations={evaluations} />
+          ))}
+        {tab === 'samples' &&
+          (results.error ? (
+            <ErrorBox error={results.error} />
+          ) : results.isPending ? (
+            <Spinner />
+          ) : (
+            <SamplesTab samples={samples} projectId={projectId} runId={data.id} />
           ))}
         {tab === 'images' && (
           <ImageTimeline series={series} projectId={projectId} runId={data.id} />

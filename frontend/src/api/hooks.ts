@@ -11,6 +11,7 @@ export const keys = {
   run: (projectId: string, runId: string) => ['projects', projectId, 'run', runId] as const,
   history: (projectId: string, runId: string) => ['projects', projectId, 'history', runId] as const,
   log: (projectId: string, runId: string) => ['projects', projectId, 'log', runId] as const,
+  results: (projectId: string, runId: string) => ['projects', projectId, 'results', runId] as const,
   config: (projectId: string, path: string) => ['projects', projectId, 'config', path] as const,
   relaunch: (projectId: string, runId: string) =>
     ['projects', projectId, 'relaunch', runId] as const,
@@ -59,6 +60,15 @@ export function useHistory(projectId: string, runId: string, live = false) {
 }
 
 /** 複数の実験の指標の推移をまとめて取得する. live に含む (学習中の) 実験は一定の間隔で読み直す */
+/** 実験の任意のファイル (task.yaml, evaluations/, samples/). 学習中は見本が増えるので読み直す */
+export function useResults(projectId: string, runId: string, live = false) {
+  return useQuery({
+    queryKey: keys.results(projectId, runId),
+    queryFn: () => api.getResults(projectId, runId),
+    refetchInterval: live ? LIVE_INTERVAL * 4 : false,
+  })
+}
+
 export function useHistories(projectId: string, runIds: string[], live: Set<string> = new Set()) {
   return useQueries({
     queries: runIds.map((runId) => ({

@@ -54,6 +54,8 @@ interface Props {
   xMax?: number
   /** 読み上げ用のグラフの説明 */
   label: string
+  /** 横軸が整数 (エポックなど) か. 評価の曲線 (しきい値など) では false */
+  integerX?: boolean
 }
 
 // 毎回の描画で新しい配列にならないように, 既定値は共通の空の配列
@@ -71,6 +73,7 @@ export function LineChart({
   xLabel,
   xMax,
   label,
+  integerX = true,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const chartRef = useRef<echarts.ECharts | null>(null)
@@ -163,7 +166,7 @@ export function LineChart({
               : value.min === value.max
                 ? value.max + 1
                 : value.max,
-          minInterval: 1,
+          minInterval: integerX ? 1 : undefined,
           axisLine: { lineStyle: { color: grid } },
           axisLabel: { color: ink3, fontSize: 11 },
           splitLine: { show: false },
@@ -235,7 +238,7 @@ export function LineChart({
       },
       { replaceMerge: ['series'] },
     )
-  }, [series, markers, logScale, xLabel, xMax, theme])
+  }, [series, markers, logScale, xLabel, xMax, integerX, theme])
 
   const reset = () => {
     chartRef.current?.dispatchAction({ type: 'dataZoom', start: 0, end: 100 })

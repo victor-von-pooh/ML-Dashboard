@@ -45,6 +45,8 @@ TIME_PATTERN = re.compile(r"^(\d{2})-(\d{2})-(\d{2})(?:_(\d+))?$")
 
 # ファイルの種類の判定に使う拡張子
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+# 画面の <audio> で再生する音のファイル
+AUDIO_SUFFIXES = {".wav", ".mp3", ".ogg", ".flac", ".m4a"}
 CHECKPOINT_SUFFIXES = {".pt", ".pth", ".ckpt", ".safetensors"}
 TEXT_SUFFIXES = {".yaml", ".yml", ".csv", ".log", ".patch", ".json", ".txt"}
 

@@ -293,6 +293,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/runs/{name}/{date}/{time}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Results
+         * @description 実験の任意のファイル (task.yaml, evaluations/, samples/) を返す関数
+         *
+         *     Parameters
+         *     ----------
+         *     request: Request
+         *         リクエスト
+         *     project_id: str
+         *         プロジェクトの ID
+         *     name: str
+         *         実験の名前
+         *     date: str
+         *         日付のディレクトリ名
+         *     time: str
+         *         時刻のディレクトリ名
+         *
+         *     Returns
+         *     ----------
+         *     results: RunResults
+         *         何の実験か, データ全体の評価, 見本. 無い実験は空
+         */
+        get: operations["get_results"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}/runs/{name}/{date}/{time}/files/{file_path}": {
         parameters: {
             query?: never;
@@ -813,6 +851,38 @@ export interface components {
                 [key: string]: string;
             };
         };
+        /** Evaluation */
+        Evaluation: {
+            /** Name */
+            name: string;
+            /** Split */
+            split?: string | null;
+            /** Kind */
+            kind: string;
+            /** X */
+            x?: string | null;
+            /** Columns */
+            columns: string[];
+            /** Rows */
+            rows: {
+                [key: string]: boolean | number | string | null;
+            }[];
+            /** Description */
+            description?: string | null;
+            /** Baseline */
+            baseline?: string | null;
+            /**
+             * Guard
+             * @default false
+             */
+            guard: boolean;
+            /** Epoch */
+            epoch?: number | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Total Rows */
+            total_rows: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1178,6 +1248,13 @@ export interface components {
              */
             kind: "image" | "checkpoint" | "text" | "other";
         };
+        /** RunLink */
+        RunLink: {
+            /** Project Id */
+            project_id: string;
+            /** Run Id */
+            run_id: string;
+        };
         /** RunNote */
         RunNote: {
             /**
@@ -1215,6 +1292,25 @@ export interface components {
             params: {
                 [key: string]: boolean | number | string | null;
             };
+        };
+        /** RunResults */
+        RunResults: {
+            task?: components["schemas"]["RunTask"] | null;
+            /**
+             * Evaluations
+             * @default []
+             */
+            evaluations: components["schemas"]["Evaluation"][];
+            /**
+             * Samples
+             * @default []
+             */
+            samples: components["schemas"]["Sample"][];
+            /**
+             * Notices
+             * @default []
+             */
+            notices: string[];
         };
         /** RunSource */
         RunSource: {
@@ -1262,6 +1358,57 @@ export interface components {
             error: string | null;
             source?: components["schemas"]["RunSource"] | null;
         };
+        /** RunTask */
+        RunTask: {
+            /** Format Version */
+            format_version: number;
+            /**
+             * Newer Version
+             * @default false
+             */
+            newer_version: boolean;
+            /** Role */
+            role?: string | null;
+            /** Output */
+            output?: string | null;
+            /** What */
+            what?: string | null;
+            /** Target Kind */
+            target_kind?: string | null;
+            origin: components["schemas"]["TaskOrigin"];
+            /** Origin Note */
+            origin_note: string;
+            /** Method */
+            method?: string | null;
+            /** Base Experiment */
+            base_experiment?: string | null;
+            /** Base Weights */
+            base_weights?: string | null;
+            base_run?: components["schemas"]["RunLink"] | null;
+            /** Dataset Name */
+            dataset_name?: string | null;
+            /** Dataset Path */
+            dataset_path?: string | null;
+        };
+        /** Sample */
+        Sample: {
+            /** Name */
+            name: string;
+            /** Epoch */
+            epoch?: number | null;
+            /** Kind */
+            kind: string;
+            /** Path */
+            path: string;
+            /** Size */
+            size: number;
+            /** Split */
+            split?: string | null;
+            /** Caption */
+            caption?: string | null;
+            /** Created At */
+            created_at?: string | null;
+        };
         /** ScanRequest */
         ScanRequest: {
             /** Path */
@@ -1279,6 +1426,15 @@ export interface components {
              * @default false
              */
             now: boolean;
+        };
+        /** TaskOrigin */
+        TaskOrigin: {
+            /** Type */
+            type: string;
+            /** Name */
+            name?: string | null;
+            /** Settings */
+            settings?: unknown;
         };
         /** ValidateRequest */
         ValidateRequest: {
@@ -1686,6 +1842,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LogEntry"][];
+                };
+            };
+            /** @description プロジェクトか実験が見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_results: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                name: string;
+                date: string;
+                time: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunResults"];
                 };
             };
             /** @description プロジェクトか実験が見つからない */

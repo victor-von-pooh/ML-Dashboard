@@ -68,6 +68,29 @@ test('プロジェクトから実験の一覧と詳細を開く', async ({ page 
   await expect(page.getByRole('img', { name: /boundary の epoch 2/ })).toBeVisible()
 })
 
+test('何の実験か, データ全体の評価, 見本を見る', async ({ page, request }) => {
+  // デモの学習は, 学習の後に task.yaml, evaluations/, samples/ を書く
+  const listed = await request.get(`/api/projects/${projectId}/runs`)
+  const runs = (await listed.json()) as { id: string }[]
+  await page.goto(`/projects/${projectId}/runs/${runs[0]!.id}`)
+
+  await expect(page.getByRole('heading', { name: '何の実験か' })).toBeVisible()
+  await expect(page.getByText('予測する (predict)')).toBeVisible()
+  await expect(page.getByText('作った正確な正解 (synthetic)')).toBeVisible()
+
+  // 評価: 守る指標の表を先頭に, しきい値の曲線
+  await page.getByRole('tab', { name: /評価/ }).click()
+  await expect(page.getByText('守る指標')).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'acc' })).toBeVisible()
+  await expect(page.getByRole('img', { name: /threshold の曲線/ })).toBeVisible()
+
+  // 見本: 点群を上から見た図と, 学習の後の要約の文
+  await page.getByRole('tab', { name: /見本/ }).click()
+  await expect(page.getByRole('img', { name: 'points の点群を上から見た図' })).toBeVisible()
+  await expect(page.getByText(/を正しく分けた/)).toBeVisible()
+  await expect(page.getByText('学習の後の予測の要約')).toBeVisible()
+})
+
 test('2 つの実験を比べ, config の違いと同じエポックの画像を並べる', async ({ page }) => {
   await page.goto(`/projects/${projectId}`)
   const checkboxes = page.getByRole('checkbox', { name: /を比較に選ぶ/ })
