@@ -1,3 +1,4 @@
+import clsx from 'clsx'
 import { CircleHelp, Info } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
@@ -19,9 +20,17 @@ function settingsText(settings: unknown): string | null {
   return JSON.stringify(settings, null, 2)
 }
 
-function Item({ label, children }: { label: string; children: ReactNode }) {
+function Item({
+  label,
+  children,
+  className,
+}: {
+  label: string
+  children: ReactNode
+  className?: string
+}) {
   return (
-    <div className="min-w-0">
+    <div className={clsx('min-w-0', className)}>
       <dt className="text-xs text-ink-3">{label}</dt>
       <dd className="mt-0.5 text-sm break-words text-ink">{children ?? '—'}</dd>
     </div>
@@ -123,9 +132,9 @@ export function TaskPanel({ task }: { task: RunTask }) {
         <Item label="出力">{labelOf(OUTPUT_LABELS, task.output)}</Item>
         <Item label="正解の種類">{task.target_kind}</Item>
         <Item label="作り方">{labelOf(METHOD_LABELS, task.method)}</Item>
-        <div className="sm:col-span-2 lg:col-span-4">
-          <Item label="出力の意味">{task.what}</Item>
-        </div>
+        <Item label="出力の意味" className="sm:col-span-2 lg:col-span-4">
+          {task.what}
+        </Item>
         <div className="sm:col-span-2">
           <dt className="text-xs text-ink-3">正解の出どころ</dt>
           <dd className="mt-1">

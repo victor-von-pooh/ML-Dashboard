@@ -130,7 +130,7 @@ export function EvaluationsTab({ evaluations }: { evaluations: Evaluation[] }) {
       {evaluations.map((evaluation) => (
         <Card
           key={evaluation.name}
-          className={clsx(evaluation.guard && 'border-2 border-accent')}
+          className={clsx(evaluation.guard && 'border-2 border-accent!')}
           title={
             <span className="flex items-center gap-2">
               <span className="font-mono">{evaluation.name}</span>

@@ -250,8 +250,8 @@ export function RunDetailPage() {
           <TaskPanel task={results.data.task} />
         </div>
       )}
-      {results.data?.notices.map((notice) => (
-        <p key={notice} className="mb-4 flex items-start gap-1.5 text-sm text-warning-text">
+      {results.data?.notices.map((notice, index) => (
+        <p key={index} className="mb-4 flex items-start gap-1.5 text-sm text-warning-text">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
           {notice}
         </p>
@@ -268,11 +268,24 @@ export function RunDetailPage() {
         onChange={setTab}
         items={[
           { id: 'charts', label: '学習曲線' },
-          ...(evaluations.length > 0
-            ? [{ id: 'evaluations' as const, label: '評価', count: evaluations.length }]
+          // 読む間に URL で開いたタブは, 選んだ状態を保つために数なしで出す
+          ...(evaluations.length > 0 || (results.isPending && tab === 'evaluations')
+            ? [
+                {
+                  id: 'evaluations' as const,
+                  label: '評価',
+                  count: results.isPending ? undefined : evaluations.length,
+                },
+              ]
             : []),
-          ...(sampleNames > 0
-            ? [{ id: 'samples' as const, label: '見本', count: sampleNames }]
+          ...(sampleNames > 0 || (results.isPending && tab === 'samples')
+            ? [
+                {
+                  id: 'samples' as const,
+                  label: '見本',
+                  count: results.isPending ? undefined : sampleNames,
+                },
+              ]
             : []),
           ...(series.length > 0
             ? [{ id: 'images' as const, label: '画像の推移', count: series.length }]
@@ -298,21 +311,22 @@ export function RunDetailPage() {
           ) : (
             <Spinner />
           ))}
+        {/* 読み直しに失敗しても, 前に読めた中身を出し続ける */}
         {tab === 'evaluations' &&
-          (results.error ? (
-            <ErrorBox error={results.error} />
-          ) : results.isPending ? (
-            <Spinner />
-          ) : (
+          (results.data ? (
             <EvaluationsTab evaluations={evaluations} />
+          ) : results.error ? (
+            <ErrorBox error={results.error} />
+          ) : (
+            <Spinner />
           ))}
         {tab === 'samples' &&
-          (results.error ? (
-            <ErrorBox error={results.error} />
-          ) : results.isPending ? (
-            <Spinner />
-          ) : (
+          (results.data ? (
             <SamplesTab samples={samples} projectId={projectId} runId={data.id} />
+          ) : results.error ? (
+            <ErrorBox error={results.error} />
+          ) : (
+            <Spinner />
           ))}
         {tab === 'images' && (
           <ImageTimeline series={series} projectId={projectId} runId={data.id} />

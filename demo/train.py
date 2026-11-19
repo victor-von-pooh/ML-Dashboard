@@ -331,6 +331,7 @@ def write_results(
 
     # しきい値ごとのクラス 1 の適合率と再現率の曲線
     curve = []
+    positives = int((valid_y == 1).sum())
     for index in range(1, 10):
         threshold = index / 10
         chosen = probs >= threshold
@@ -338,7 +339,7 @@ def write_results(
         curve.append({
             "threshold": threshold,
             "precision": hits / int(chosen.sum()) if chosen.any() else None,
-            "recall": hits / int((valid_y == 1).sum())
+            "recall": hits / positives if positives else None
         })
     save_evaluation(
         experiment, "threshold", curve, split="valid", kind="curve",

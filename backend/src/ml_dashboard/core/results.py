@@ -1,8 +1,9 @@
+import json
 import math
-import warnings
 from pathlib import Path
 from typing import Any, Optional
 
+from ml_dashboard.core.loader import import_ml_found
 from ml_dashboard.core.models import (
     CellValue,
     Evaluation,
@@ -12,7 +13,12 @@ from ml_dashboard.core.models import (
     Sample,
     TaskOrigin,
 )
-from ml_dashboard.core.projects import Project, ProjectError, get_output_dirs
+from ml_dashboard.core.projects import (
+    Project,
+    ProjectError,
+    ProjectStore,
+    get_output_dirs,
+)
 from ml_dashboard.core.runs import (
     RunNotFoundError,
     is_run_dir,
@@ -55,12 +61,73 @@ def has_results(run_dir: Path) -> bool:
         どれかを持つかどうか. 持たない実験では ML-Found を読み込まない
     """
     found = (
-        (run_dir / TASK_FILE).is_file()
-        or (run_dir / EVALUATIONS_DIR).is_dir()
-        or (run_dir / SAMPLES_DIR / SAMPLES_INDEX).is_file()
+        is_plain_file(run_dir / TASK_FILE)
+        or is_plain_dir(run_dir / EVALUATIONS_DIR)
+        or has_samples_index(run_dir)
     )
 
     return found
+
+
+def has_samples_index(run_dir: Path) -> bool:
+    """
+    見本の一覧 (samples/index.json) を持つかを判定する関数
+
+    Parameters
+    ----------
+    run_dir: Path
+        実験のディレクトリ
+
+    Returns
+    ----------
+    found: bool
+        samples/ と index.json がどちらもシンボリックリンクでなく, 一覧が
+        あるかどうか
+    """
+    folder = run_dir / SAMPLES_DIR
+    found = is_plain_dir(folder) and is_plain_file(folder / SAMPLES_INDEX)
+
+    return found
+
+
+def is_plain_file(path: Path) -> bool:
+    """
+    シンボリックリンクでないファイルかを判定する関数
+
+    実験のディレクトリの外を読まないため (ファイルを返す API と同じ方針)
+
+    Parameters
+    ----------
+    path: Path
+        判定するパス
+
+    Returns
+    ----------
+    plain: bool
+        リンクでない, 普通のファイルかどうか
+    """
+    plain = not path.is_symlink() and path.is_file()
+
+    return plain
+
+
+def is_plain_dir(path: Path) -> bool:
+    """
+    シンボリックリンクでないディレクトリかを判定する関数
+
+    Parameters
+    ----------
+    path: Path
+        判定するパス
+
+    Returns
+    ----------
+    plain: bool
+        リンクでない, 普通のディレクトリかどうか
+    """
+    plain = not path.is_symlink() and path.is_dir()
+
+    return plain
 
 
 def text_or_none(value: Any) -> Optional[str]:
@@ -124,7 +191,7 @@ def dict_or_empty(value: Any) -> dict[str, Any]:
 
 
 def find_base_run(
-    base: str, project: Project, projects: list[Project]
+    base: str, project: Project, store: ProjectStore
 ) -> Optional[RunLink]:
     """
     元にした実験のパスから, 登録したプロジェクトの実験を探す関数
@@ -135,8 +202,8 @@ def find_base_run(
         task.yaml の base.experiment (プロジェクトからの相対パスか絶対パス)
     project: Project
         task.yaml を持つ実験のプロジェクト
-    projects: list[Project]
-        登録した全てのプロジェクト
+    store: ProjectStore
+        登録したプロジェクト (同じプロジェクトに無い場合だけ読む)
 
     Returns
     ----------
@@ -149,37 +216,67 @@ def find_base_run(
         path = Path(project.path) / path
     try:
         target = path.resolve()
-    except (OSError, RuntimeError):
+    except (OSError, RuntimeError, ValueError):
         return None
 
-    # 同じプロジェクトを先に探し, 出力先の名前, 日付, 時刻の 3 階層の実験
-    ordered = [project] + [item for item in projects if item.id != project.id]
-    for candidate in ordered:
-        try:
-            output_dirs = get_output_dirs(Path(candidate.path))
-        except ProjectError:
+    # 同じプロジェクトを先に探し, 無ければ他の登録したプロジェクト
+    link = find_in_project(target, project)
+    if link is not None:
+        return link
+    try:
+        projects = store.load()
+    except ProjectError:
+        return None
+    for candidate in projects:
+        if candidate.id == project.id:
             continue
-        for output_dir in output_dirs:
-            try:
-                root = output_dir.resolve()
-            except (OSError, RuntimeError):
-                continue
-            if not target.is_relative_to(root):
-                continue
-            if len(target.relative_to(root).parts) != 3:
-                continue
-            if is_run_dir(target, root):
-                link = RunLink(
-                    project_id=candidate.id,
-                    run_id=make_run_id(root, target)
-                )
-                return link
+        link = find_in_project(target, candidate)
+        if link is not None:
+            return link
+
+    return None
+
+
+def find_in_project(target: Path, candidate: Project) -> Optional[RunLink]:
+    """
+    1 つのプロジェクトの出力先から実験のディレクトリを探す関数
+
+    Parameters
+    ----------
+    target: Path
+        探す実験のディレクトリ (解決した絶対パス)
+    candidate: Project
+        探すプロジェクト
+
+    Returns
+    ----------
+    link: Optional[RunLink]
+        出力先の名前, 日付, 時刻の 3 階層の実験なら, そのつなぎ
+    """
+    try:
+        output_dirs = get_output_dirs(Path(candidate.path))
+    except ProjectError:
+        return None
+    for output_dir in output_dirs:
+        try:
+            root = output_dir.resolve()
+        except (OSError, RuntimeError, ValueError):
+            continue
+        if not target.is_relative_to(root):
+            continue
+        if len(target.relative_to(root).parts) != 3:
+            continue
+        if is_run_dir(target, root):
+            link = RunLink(
+                project_id=candidate.id, run_id=make_run_id(root, target)
+            )
+            return link
 
     return None
 
 
 def read_task(
-    run_dir: Path, project: Project, projects: list[Project],
+    run_dir: Path, project: Project, store: ProjectStore,
     notices: list[str]
 ) -> Optional[RunTask]:
     """
@@ -191,8 +288,8 @@ def read_task(
         実験のディレクトリ
     project: Project
         実験のプロジェクト
-    projects: list[Project]
-        登録した全てのプロジェクト (元にした実験を探すため)
+    store: ProjectStore
+        登録したプロジェクト (元にした実験を探すため)
     notices: list[str]
         読めなかった場合の注意を足すリスト
 
@@ -203,18 +300,23 @@ def read_task(
     """
     from ml_found.experiment.task import describe_origin, load_task
 
-    # 新しい版の警告は返す値 (newer_version) で知らせるので記録しない
-    if not (run_dir / TASK_FILE).is_file():
+    # 新しい版は返す値 (newer_version) で画面に知らせる. ML-Found の警告は
+    # サーバーのログに残るだけ (警告の抑止はプロセス全体に効くので使わない)
+    if not is_plain_file(run_dir / TASK_FILE):
         return None
     try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            data = load_task(run_dir)
+        data = load_task(run_dir)
     except Exception as error:
-        notices.append(f"task.yaml を読めませんでした: {error}")
+        notices.append(
+            "task.yaml を読めませんでした: "
+            f"{str(error).replace(str(run_dir), '<実験>')}"
+        )
         return None
     if data is None:
-        notices.append("task.yaml を読めませんでした (YAML の辞書ではない)")
+        notices.append(
+            "task.yaml を読めませんでした (YAML として読めないか, 辞書で"
+            "ない)"
+        )
         return None
 
     # 正解の出どころ. 知らない種類は分からないもの
@@ -243,7 +345,7 @@ def read_task(
         base_experiment=base_experiment,
         base_weights=text_or_none(base.get("weights")),
         base_run=(
-            find_base_run(base_experiment, project, projects)
+            find_base_run(base_experiment, project, store)
             if base_experiment else None
         ),
         dataset_name=text_or_none(dataset.get("name")),
@@ -273,7 +375,7 @@ def to_cell(value: Any) -> CellValue:
     elif isinstance(value, float):
         cell = value if math.isfinite(value) else None
     else:
-        cell = str(value)
+        cell = json.dumps(value, ensure_ascii=False, default=str)
 
     return cell
 
@@ -371,14 +473,17 @@ def read_evaluations(run_dir: Path, notices: list[str]) -> list[Evaluation]:
 
     evaluations: list[Evaluation] = []
     folder = run_dir / EVALUATIONS_DIR
-    if not folder.is_dir():
+    if not is_plain_dir(folder):
         return evaluations
 
-    # 一時ファイル (. で始まる) を除いたファイルの数と, 読めた数を比べる
+    # 一時ファイル (. で始まる) を除いたファイル. シンボリックリンクの
+    # ファイル (実験のディレクトリの外を指しうる) の名前は出さない
     files = [
         path for path in folder.glob("*.json")
         if not path.name.startswith(".")
+        and (path.is_symlink() or path.is_file())
     ]
+    linked = {path.stem for path in files if path.is_symlink()}
     try:
         loaded = load_evaluations(run_dir)
     except Exception as error:
@@ -386,7 +491,7 @@ def read_evaluations(run_dir: Path, notices: list[str]) -> list[Evaluation]:
         return evaluations
     for data in loaded:
         evaluation = to_evaluation(data)
-        if evaluation is not None:
+        if evaluation is not None and evaluation.name not in linked:
             evaluations.append(evaluation)
     skipped = len(files) - len(evaluations)
     if skipped > 0:
@@ -459,15 +564,19 @@ def read_samples(run_dir: Path, notices: list[str]) -> list[Sample]:
         一覧の見本 (書いた順). 前からの形の直下の画像は, 画像の推移で
         見るので含めない
     """
-    from ml_found.experiment.results import load_samples
+    from ml_found.experiment.results import load_samples, read_samples_index
 
     samples: list[Sample] = []
-    if not (run_dir / SAMPLES_DIR / SAMPLES_INDEX).is_file():
+    index = run_dir / SAMPLES_DIR / SAMPLES_INDEX
+    if not has_samples_index(run_dir):
         return samples
+
+    # load_samples は壊れた一覧を空として読むので, 先に一覧だけを確かめ
     try:
+        read_samples_index(index)
         loaded = load_samples(run_dir)
     except Exception as error:
-        notices.append(f"samples/ を読めませんでした: {error}")
+        notices.append(f"samples/index.json を読めませんでした: {error}")
         return samples
     items = [
         item for item in loaded
@@ -488,7 +597,7 @@ def read_samples(run_dir: Path, notices: list[str]) -> list[Sample]:
 
 
 def read_results(
-    run_dir: Path, project: Project, projects: list[Project]
+    run_dir: Path, project: Project, store: ProjectStore
 ) -> RunResults:
     """
     実験の任意のファイル (task.yaml, evaluations/, samples/) を読む関数
@@ -499,8 +608,8 @@ def read_results(
         実験のディレクトリ
     project: Project
         実験のプロジェクト
-    projects: list[Project]
-        登録した全てのプロジェクト
+    store: ProjectStore
+        登録したプロジェクト (元にした実験を探すため)
 
     Returns
     ----------
@@ -512,8 +621,18 @@ def read_results(
         results = RunResults()
         return results
 
+    # 持つ実験だけ ML-Found (と PyTorch) を読み込み. 読み込めない環境は注意
+    try:
+        import_ml_found()
+    except Exception as error:
+        results = RunResults(notices=[
+            "ML-Found を読み込めないので, task.yaml, evaluations/, samples/ "
+            f"を出せません: {type(error).__name__}: {error}"
+        ])
+        return results
+
     results = RunResults(
-        task=read_task(run_dir, project, projects, notices),
+        task=read_task(run_dir, project, store, notices),
         evaluations=read_evaluations(run_dir, notices),
         samples=read_samples(run_dir, notices),
         notices=notices

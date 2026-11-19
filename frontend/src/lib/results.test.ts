@@ -150,12 +150,17 @@ describe('parseAsciiPly', () => {
     `ply\nformat ${format} 1.0\nelement vertex ${count}\nproperty float x\nproperty float y\nproperty float z\nend_header\n`
 
   it('ascii の頂点を読み, 多い場合は間引く', () => {
-    expect(parseAsciiPly(`${header(2)}0 1 2\n3 4 5\n`)).toEqual([
-      [0, 1, 2],
-      [3, 4, 5],
-    ])
+    expect(parseAsciiPly(`${header(2)}0 1 2\n3 4 5\n`)).toEqual({
+      points: [
+        [0, 1, 2],
+        [3, 4, 5],
+      ],
+      vertices: 2,
+    })
     const lines = Array.from({ length: 10 }, (_, index) => `${index} 0 0`).join('\n')
-    expect(parseAsciiPly(`${header(10)}${lines}\n`, 5)).toHaveLength(5)
+    const thinned = parseAsciiPly(`${header(10)}${lines}\n`, 4)
+    expect(thinned?.points).toHaveLength(4)
+    expect(thinned?.vertices).toBe(10)
   })
 
   it('バイナリと PLY でないファイルは null', () => {

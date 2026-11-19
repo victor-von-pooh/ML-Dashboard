@@ -126,11 +126,17 @@ export function formatCell(value: unknown): string {
 /** 点群の点 (x, y, z) */
 export type Point3 = [number, number, number]
 
+/** ascii の PLY から読んだ点と, ファイルの頂点の数 (間引いたかを示すため) */
+export interface PlyPoints {
+  points: Point3[]
+  vertices: number
+}
+
 /**
  * ascii の PLY から頂点の x, y, z を読む. バイナリの PLY と形の違うファイルは null.
  * 点が maxPoints より多い場合は等間隔に間引く
  */
-export function parseAsciiPly(text: string, maxPoints = 20000): Point3[] | null {
+export function parseAsciiPly(text: string, maxPoints = 20000): PlyPoints | null {
   const lines = text.split(/\r?\n/)
   if (lines[0]?.trim() !== 'ply') return null
   let format = ''
@@ -166,5 +172,5 @@ export function parseAsciiPly(text: string, maxPoints = 20000): Point3[] | null 
     const point = columns.map((column) => Number(words[column])) as Point3
     if (point.every(Number.isFinite)) points.push(point)
   }
-  return points.length > 0 ? points : null
+  return points.length > 0 ? { points, vertices } : null
 }

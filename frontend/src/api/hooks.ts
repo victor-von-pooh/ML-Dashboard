@@ -59,7 +59,6 @@ export function useHistory(projectId: string, runId: string, live = false) {
   })
 }
 
-/** 複数の実験の指標の推移をまとめて取得する. live に含む (学習中の) 実験は一定の間隔で読み直す */
 /** 実験の任意のファイル (task.yaml, evaluations/, samples/). 学習中は見本が増えるので読み直す */
 export function useResults(projectId: string, runId: string, live = false) {
   return useQuery({
@@ -69,6 +68,7 @@ export function useResults(projectId: string, runId: string, live = false) {
   })
 }
 
+/** 複数の実験の指標の推移をまとめて取得する. live に含む (学習中の) 実験は一定の間隔で読み直す */
 export function useHistories(projectId: string, runIds: string[], live: Set<string> = new Set()) {
   return useQueries({
     queries: runIds.map((runId) => ({

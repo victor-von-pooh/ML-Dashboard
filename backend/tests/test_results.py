@@ -2,7 +2,10 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
+
+from ml_dashboard.core import results as results_module
 
 from conftest import write_run
 from test_api import register
@@ -279,6 +282,7 @@ def test_results_legacy_and_missing(
     assert outside.status_code == 404
 
 
+@pytest.mark.filterwarnings("ignore::UserWarning")
 def test_results_task_versions(client: TestClient, project_dir: Path) -> None:
     """
     新しい版と壊れた版の task.yaml の扱いを確かめる関数
@@ -317,3 +321,72 @@ def test_results_task_versions(client: TestClient, project_dir: Path) -> None:
     data = client.get(results_url(project_id, RESULTS_RUN)).json()
     assert data["task"] is None
     assert any("task.yaml" in text for text in data["notices"])
+
+
+def test_results_guards(
+    client: TestClient, project_dir: Path, tmp_path: Path,
+    monkeypatch: Any
+) -> None:
+    """
+    シンボリックリンク, 壊れた一覧, NUL 文字の元の実験, 多い行の扱いを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: Any
+        pytest の書き換えの道具
+
+    Returns
+    ----------
+    None
+    """
+    run_dir = project_dir / "outputs" / RESULTS_RUN
+    project_id = register(client, project_dir)
+    monkeypatch.setattr(results_module, "MAX_EVALUATION_ROWS", 2)
+
+    # 外のファイルを指すリンクの評価と task.yaml は読まない
+    outside = tmp_path / "outside.json"
+    write_json(outside, {
+        "name": "outside", "split": "test", "kind": "table",
+        "columns": ["secret"], "rows": [{"secret": "外"}]
+    })
+    (run_dir / "evaluations").mkdir()
+    (run_dir / "evaluations" / "outside.json").symlink_to(outside)
+    write_json(run_dir / "evaluations" / "many.json", {
+        "name": "many", "split": "test", "kind": "table",
+        "columns": ["a"], "rows": [{"a": i} for i in range(5)]
+    })
+    outside_task = tmp_path / "task.yaml"
+    outside_task.write_text(TASK_TEXT, encoding="utf-8")
+    (run_dir / "task.yaml").symlink_to(outside_task)
+
+    # 壊れた見本の一覧は注意
+    (run_dir / "samples").mkdir()
+    (run_dir / "samples" / "index.json").write_text('{"samples": 3}')
+
+    data = client.get(results_url(project_id, RESULTS_RUN)).json()
+    assert data["task"] is None
+    assert [item["name"] for item in data["evaluations"]] == ["many"]
+    assert len(data["evaluations"][0]["rows"]) == 2
+    assert data["evaluations"][0]["total_rows"] == 5
+    assert data["samples"] == []
+    assert any("samples/index.json" in text for text in data["notices"])
+
+    # 元の実験のパスに NUL 文字があっても, 他は返す
+    (run_dir / "task.yaml").unlink()
+    (run_dir / "task.yaml").write_text(
+        TASK_TEXT.replace(
+            "experiment: outputs/demo/2026-11-08/09-00-00",
+            'experiment: "a\\0b"'
+        ),
+        encoding="utf-8"
+    )
+    response = client.get(results_url(project_id, RESULTS_RUN))
+    assert response.status_code == 200
+    assert response.json()["task"]["base_run"] is None

@@ -5,7 +5,6 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from ml_dashboard.core.loader import import_ml_found
 from ml_dashboard.core.models import (
     History,
     LogEntry,
@@ -26,7 +25,7 @@ from ml_dashboard.core.projects import (
     list_experiment_configs,
     list_scripts,
 )
-from ml_dashboard.core.results import has_results, read_results
+from ml_dashboard.core.results import read_results
 from ml_dashboard.core.runs import (
     AUDIO_SUFFIXES,
     IMAGE_SUFFIXES,
@@ -511,14 +510,7 @@ def get_results(
     except RunNotFoundError as error:
         raise HTTPException(404, str(error)) from error
 
-    # 持つ実験だけ ML-Found (と PyTorch) を読み込み
-    if has_results(run_dir):
-        import_ml_found()
-    try:
-        projects = get_store(request).load()
-    except ProjectError:
-        projects = [project]
-    results = read_results(run_dir, project, projects)
+    results = read_results(run_dir, project, get_store(request))
 
     return results
 

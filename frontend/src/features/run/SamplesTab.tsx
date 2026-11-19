@@ -47,7 +47,7 @@ function DownloadLink({ url, sample }: { url: string; sample: Sample }) {
 function TextSample({ url, sample }: { url: string; sample: Sample }) {
   const large = sample.size > MAX_TEXT_BYTES
   const text = useQuery({
-    queryKey: ['sample-text', url, sample.size],
+    queryKey: ['sample-text', url, sample.size, sample.created_at],
     queryFn: () => fetchText(url),
     enabled: !large,
     staleTime: Infinity,
@@ -115,24 +115,28 @@ function CloudView({ points, label }: { points: Point3[]; label: string }) {
 function PointCloudSample({ url, sample }: { url: string; sample: Sample }) {
   const drawable = sample.path.toLowerCase().endsWith('.ply') && sample.size <= MAX_CLOUD_BYTES
   const text = useQuery({
-    queryKey: ['sample-text', url, sample.size],
+    queryKey: ['sample-text', url, sample.size, sample.created_at],
     queryFn: () => fetchText(url),
     enabled: drawable,
     staleTime: Infinity,
   })
-  const points = useMemo(
+  const cloud = useMemo(
     () => (text.data ? parseAsciiPly(text.data, MAX_CLOUD_POINTS) : null),
     [text.data],
   )
   return (
     <div className="space-y-2">
       {drawable && text.data === undefined && !text.error && <Spinner />}
-      {points ? (
+      {text.error && <p className="text-xs text-ink-3">点群を読めなかったので図にしていません</p>}
+      {cloud ? (
         <figure className="space-y-1">
-          <CloudView points={points} label={`${sample.name} の点群を上から見た図`} />
+          <CloudView points={cloud.points} label={`${sample.name} の点群を上から見た図`} />
           <figcaption className="text-xs text-ink-3">
-            上から見た図 (x を横, y を縦. {points.length.toLocaleString()} 点
-            {points.length >= MAX_CLOUD_POINTS ? ' に間引いて描画' : ''})
+            上から見た図 (x を横, y を縦.{' '}
+            {cloud.vertices > cloud.points.length
+              ? `${cloud.vertices.toLocaleString()} 点を ${cloud.points.length.toLocaleString()} 点に間引いて描画`
+              : `${cloud.points.length.toLocaleString()} 点`}
+            )
           </figcaption>
         </figure>
       ) : (
@@ -197,9 +201,11 @@ function SampleCard({
 }) {
   const selectId = useId()
   const last = group.entries.length - 1
-  // null は最後の見本 (学習中に見本が増えたら追従)
-  const [index, setIndex] = useState<number | null>(null)
-  const current = index === null ? last : Math.min(index, last)
+  // 選んだ見本はパスで持つ (null は最後の見本. 学習中に見本が増えたら追従).
+  // 選んだ見本が一覧から消えた場合も最後の見本
+  const [selected, setSelected] = useState<string | null>(null)
+  const found = group.entries.findIndex((entry) => entry.path === selected)
+  const current = found >= 0 ? found : last
   const sample = group.entries[current]!
   return (
     <Card
@@ -215,7 +221,7 @@ function SampleCard({
               value={current}
               onChange={(event) => {
                 const next = Number(event.target.value)
-                setIndex(next === last ? null : next)
+                setSelected(next === last ? null : (group.entries[next]?.path ?? null))
               }}
               className="rounded-md border border-line bg-surface px-2 py-1 text-sm text-ink"
             >
