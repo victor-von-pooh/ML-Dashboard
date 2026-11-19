@@ -43,6 +43,82 @@ function useDebounced<T>(value: T, delay: number): T {
   return current
 }
 
+/**
+ * 1 以上の整数を書く trainer の欄 (エポック数, 検証の間隔). 確定 (Enter か欄を離れる)
+ * したときに YAML へ書き込み, 1 以上の整数でない値は書き込まずに理由を出す
+ */
+export function IntegerField({
+  label,
+  path,
+  config,
+  disabled,
+  onEdit,
+  hint,
+}: {
+  label: string
+  /** 書き換える点区切りの項目 (trainer.epochs など) */
+  path: string
+  config: Config
+  disabled: boolean
+  onEdit: (change: (current: string) => string) => void
+  /** 欄の下に添える説明 */
+  hint?: string
+}) {
+  const id = useId()
+  const value = getIn(config, path)
+  const [invalid, setInvalid] = useState(false)
+  // YAML の欄などで値が変わったら, 前の誤りの表示を消す
+  const [seen, setSeen] = useState(value)
+  if (seen !== value) {
+    setSeen(value)
+    setInvalid(false)
+  }
+  const commit = (raw: string) => {
+    const parsed = Number(raw)
+    if (raw.trim() === '' || !Number.isInteger(parsed) || parsed < 1) {
+      setInvalid(true)
+      return
+    }
+    setInvalid(false)
+    if (parsed !== value) onEdit((now) => setYamlValue(now, path, parsed))
+  }
+  const describedBy = [invalid ? `${id}-error` : '', hint ? `${id}-hint` : '']
+    .filter(Boolean)
+    .join(' ')
+
+  return (
+    <div className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] items-center gap-2">
+      <label htmlFor={id} className="text-sm font-semibold">
+        {label}
+      </label>
+      <input
+        id={id}
+        type="number"
+        min={1}
+        step={1}
+        defaultValue={String(value ?? '')}
+        key={String(value)}
+        onBlur={(event) => commit(event.target.value)}
+        onKeyDown={(event) => event.key === 'Enter' && commit(event.currentTarget.value)}
+        aria-invalid={invalid}
+        aria-describedby={describedBy || undefined}
+        disabled={disabled}
+        className="h-8 w-32 rounded-md border border-line bg-bg px-2 font-mono text-xs aria-[invalid=true]:border-critical"
+      />
+      {invalid && (
+        <span id={`${id}-error`} className="col-start-2 text-[11px] text-critical-text">
+          1 以上の整数にしてください
+        </span>
+      )}
+      {hint && (
+        <p id={`${id}-hint`} className="col-start-2 text-[11px] text-ink-3">
+          {hint}
+        </p>
+      )}
+    </div>
+  )
+}
+
 /** 1 つの引数の入力欄. 種類に合わせて真偽値か文字の欄を出し, 変えた場合だけ書き込む */
 function ParamField({
   spec,
@@ -298,7 +374,6 @@ export function ConfigForm({
   text: string
   onChange: (text: string) => void
 }) {
-  const epochsId = useId()
   const registry = useQuery({
     queryKey: ['registry'],
     queryFn: api.getRegistry,
@@ -341,24 +416,6 @@ export function ConfigForm({
     }
   }
 
-  const epochs = config ? getIn(config, 'trainer.epochs') : undefined
-  const [epochsInvalid, setEpochsInvalid] = useState(false)
-  // YAML の欄などで値が変わったら, 前の誤りの表示を消す
-  const [seenEpochs, setSeenEpochs] = useState(epochs)
-  if (seenEpochs !== epochs) {
-    setSeenEpochs(epochs)
-    setEpochsInvalid(false)
-  }
-  const commitEpochs = (raw: string) => {
-    const value = Number(raw)
-    if (!Number.isInteger(value) || value < 1) {
-      setEpochsInvalid(true)
-      return
-    }
-    setEpochsInvalid(false)
-    if (value !== epochs) onEdit((now) => setYamlValue(now, 'trainer.epochs', value))
-  }
-
   return (
     <Card title="フォームで設定">
       {registry.isPending || (!config && resolved.isPending) ? (
@@ -397,30 +454,24 @@ export function ConfigForm({
                 {warning}
               </p>
             ))}
-          <div className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] items-center gap-2">
-            <label htmlFor={epochsId} className="text-sm font-semibold">
-              エポック数
-            </label>
-            <input
-              id={epochsId}
-              type="number"
-              min={1}
-              step={1}
-              defaultValue={String(epochs ?? '')}
-              key={String(epochs)}
-              onBlur={(event) => commitEpochs(event.target.value)}
-              onKeyDown={(event) =>
-                event.key === 'Enter' && commitEpochs(event.currentTarget.value)
-              }
-              aria-invalid={epochsInvalid}
-              aria-describedby={epochsInvalid ? `${epochsId}-error` : undefined}
+          <div className="space-y-3">
+            <IntegerField
+              label="エポック数"
+              path="trainer.epochs"
+              config={config}
               disabled={stale}
-              className="h-8 w-32 rounded-md border border-line bg-bg px-2 font-mono text-xs aria-[invalid=true]:border-critical"
+              onEdit={onEdit}
             />
-            {epochsInvalid && (
-              <span id={`${epochsId}-error`} className="text-[11px] text-critical-text">
-                1 以上の整数にしてください
-              </span>
+            {/* 検証の間隔を知らない版の ML-Found の config では出さない */}
+            {getIn(config, 'trainer.valid_every_n_epochs') !== undefined && (
+              <IntegerField
+                label="検証の間隔"
+                path="trainer.valid_every_n_epochs"
+                config={config}
+                disabled={stale}
+                onEdit={onEdit}
+                hint="この値で割り切れるエポックと予定の最後のエポックだけ検証し, その中からベストモデルを選びます (1 なら毎エポック). Early Stopping と ReduceLROnPlateau の patience は検証の回数で数えます"
+              />
             )}
           </div>
           {/* 名前付きの複数の Optimizer (optimizers) は, 名前ごとに Optimizer と Scheduler */}

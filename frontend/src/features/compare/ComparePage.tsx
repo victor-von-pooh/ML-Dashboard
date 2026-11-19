@@ -18,7 +18,9 @@ import {
   flattenConfig,
   groupMetrics,
   identicalSeries,
+  judgedOnly,
   toPoints,
+  validInterval,
 } from '../../lib/metrics'
 import { ImageCompare } from './ImageCompare'
 
@@ -107,10 +109,15 @@ export function ComparePage() {
         name: shortLabel(slot.id),
         color: slot.color,
         points: toPoints(slot.history, column),
+        sparse: judgedOnly(column, validInterval(slot.run.config)) || undefined,
       }))
       return {
         column,
         series,
+        // 検証の間隔を空けた実験 (検証したエポックだけを点で示してつなぐ)
+        sparse: having
+          .filter((slot) => judgedOnly(column, validInterval(slot.run.config)))
+          .map((slot) => shortLabel(slot.id)),
         missing: missing.map((slot) => shortLabel(slot.id)),
         identical: identicalSeries(series),
       }
@@ -298,7 +305,7 @@ export function ComparePage() {
               </div>
             </div>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              {charts.map(({ column, series, missing, identical }) => (
+              {charts.map(({ column, series, missing, identical, sparse }) => (
                 <Card key={column} title={<span className="font-mono">{column}</span>}>
                   <LineChart
                     series={series}
@@ -310,6 +317,11 @@ export function ComparePage() {
                   {missing.length > 0 && (
                     <p className="mt-1 text-[11px] text-ink-3">
                       この指標が無い実験: {missing.join(', ')}
+                    </p>
+                  )}
+                  {sparse.length > 0 && (
+                    <p className="mt-1 text-[11px] text-ink-3">
+                      検証したエポックだけを点で示し, 間を線でつないだ実験: {sparse.join(', ')}
                     </p>
                   )}
                   {identical.map((names) => (

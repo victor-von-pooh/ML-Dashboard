@@ -160,3 +160,76 @@ test('フォームで config を変え, 学習を起動して完了まで見届�
   ).json()) as { config: { optimizer: { name: string } } }
   expect(detail.config.optimizer.name).toBe('SGD')
 })
+
+test('検証の間隔をフォームで変え, 検証したエポックだけを点で描く', async ({ page, request }) => {
+  // 学習のプロセスの起動 (PyTorch の読み込み) を含むので長めに待機
+  test.setTimeout(90_000)
+  await page.goto(`/projects/${projectId}/launch`)
+  await page
+    .getByLabel('experiment の config')
+    .selectOption('configs/experiment/examples/quick.yaml')
+  const editor = page.getByLabel('config の中身')
+  await expect(editor).toHaveValue(/epochs: 3/)
+
+  // 5 エポックで間隔 2 (エポック 2, 4, 5 を検証). 説明も欄に付く
+  const epochs = page.getByLabel('エポック数')
+  await epochs.fill('5')
+  await epochs.press('Enter')
+  await expect(editor).toHaveValue(/epochs: 5/)
+  const interval = page.getByLabel('検証の間隔')
+  await expect(interval).toHaveValue('1')
+  await expect(interval).toHaveAccessibleDescription(/patience は検証の回数/)
+
+  // 1 以上の整数でない値は書き込まず, 理由を表示
+  await interval.fill('0')
+  await interval.press('Enter')
+  await expect(page.getByText('1 以上の整数にしてください')).toBeVisible()
+  await expect(editor).not.toHaveValue(/valid_every_n_epochs/)
+  await interval.fill('2')
+  await interval.press('Enter')
+  await expect(editor).toHaveValue(/valid_every_n_epochs: 2/)
+
+  // YAML の欄で書き換えた値もフォームに戻る
+  await editor.fill(
+    (await editor.inputValue()).replace('valid_every_n_epochs: 2', 'valid_every_n_epochs: 3'),
+  )
+  await expect(interval).toHaveValue('3')
+  await editor.fill(
+    (await editor.inputValue()).replace('valid_every_n_epochs: 3', 'valid_every_n_epochs: 2'),
+  )
+  await expect(interval).toHaveValue('2')
+
+  await page.getByRole('button', { name: 'ML-Found で config を確かめる' }).click()
+  await expect(page.getByText(/読み込めました/)).toBeVisible()
+  await page.getByRole('button', { name: '学習を開始' }).click()
+  await expect(page).toHaveURL(/\/jobs\//)
+  await expect(page.getByText('完了', { exact: true }).first()).toBeVisible({ timeout: 45_000 })
+  await expect(page.getByText(/5 \/ 5 エポック/).first()).toBeVisible()
+
+  // 検証の値は検証したエポックだけにあり, ベストもその中から選ばれる
+  const runs = (await (await request.get(`/api/projects/${projectId}/runs`)).json()) as {
+    id: string
+    started_at: string
+  }[]
+  const newest = runs.toSorted((a, b) => b.started_at.localeCompare(a.started_at))[0]!
+  const base = `/api/projects/${projectId}/runs/${newest.id}`
+  const detail = (await (await request.get(base)).json()) as {
+    best: { epoch: number }
+    final_metrics: Record<string, number | null>
+  }
+  const history = (await (await request.get(`${base}/history`)).json()) as {
+    rows: Record<string, number | null>[]
+  }
+  const validated = history.rows.filter((row) => row['valid/acc'] != null).map((row) => row.epoch)
+  expect(validated).toEqual([2, 4, 5])
+  expect([2, 4, 5]).toContain(detail.best.epoch)
+  expect(detail.final_metrics['valid/acc']).not.toBeNull()
+
+  // 学習曲線には, 検証の値を点で描いた旨を添える
+  await page.goto(`/projects/${projectId}/runs/${newest.id}`)
+  await expect(page.getByRole('tab', { name: /学習曲線/ })).toBeVisible()
+  await expect(
+    page.getByText(/valid\/acc は記録のあるエポック .* を点で示し, 間を線でつないでいます/),
+  ).toBeVisible()
+  await expect(page.getByText(`エポック ${detail.best.epoch} (max)`)).toBeVisible()
+})

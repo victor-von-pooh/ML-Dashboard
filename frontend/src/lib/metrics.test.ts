@@ -5,9 +5,11 @@ import {
   flattenConfig,
   groupMetrics,
   identicalSeries,
+  judgedOnly,
   pointStyle,
   summarizeDiff,
   toPoints,
+  validInterval,
 } from './metrics'
 
 describe('groupMetrics', () => {
@@ -158,6 +160,35 @@ describe('pointStyle', () => {
       [2, 0.5],
     ])
     expect([...style.isolated]).toEqual([1])
+    expect(style.sparse).toBe(false)
+  })
+})
+
+describe('検証の間隔', () => {
+  it('config の trainer.valid_every_n_epochs を読み, 無いか読めなければ 1', () => {
+    expect(validInterval({ trainer: { valid_every_n_epochs: 3 } })).toBe(3)
+    expect(validInterval({ trainer: { epochs: 7 } })).toBe(1)
+    expect(validInterval({ trainer: { valid_every_n_epochs: '3' } })).toBe(1)
+    expect(validInterval({ trainer: [1, 2] })).toBe(1)
+    expect(validInterval(null)).toBe(1)
+  })
+
+  it('間隔が 2 以上の実験の valid/ と train_eval/ だけを, 検証したエポックだけの指標とする', () => {
+    expect(judgedOnly('valid/loss', 3)).toBe(true)
+    expect(judgedOnly('train_eval/acc', 2)).toBe(true)
+    expect(judgedOnly('train/loss', 3)).toBe(false)
+    expect(judgedOnly('lr', 3)).toBe(false)
+    expect(judgedOnly('valid/loss', 1)).toBe(false)
+  })
+
+  it('毎エポック検証する実験の途中の欠け (nan) は, 点の並びからは何エポックかおきとしない', () => {
+    // 間隔 3 で 7 エポック (3, 6, 7) と同じ並びに見えても, 推測ではつながない
+    const style = pointStyle([
+      [1, 0.9],
+      [2, null],
+      [3, 0.7],
+      [4, 0.6],
+    ])
     expect(style.sparse).toBe(false)
   })
 })

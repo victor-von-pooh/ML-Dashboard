@@ -120,3 +120,21 @@ export function pointStyle(points: [number, number | null][]): PointStyle {
   })
   return { isolated, sparse: valued >= 2 && isolated.size === valued }
 }
+
+/** config の ML-Found の検証の間隔 (trainer.valid_every_n_epochs. 無いか読めなければ 1) */
+export function validInterval(config: Record<string, unknown> | null | undefined): number {
+  const trainer = config?.trainer
+  const value =
+    trainer && typeof trainer === 'object'
+      ? (trainer as Record<string, unknown>).valid_every_n_epochs
+      : undefined
+  return typeof value === 'number' && Number.isInteger(value) && value > 1 ? value : 1
+}
+
+/**
+ * 検証の間隔を空けた実験で, 検証したエポックだけに値のある指標か (valid/ と train_eval/).
+ * 値の無いエポックを飛ばしてつなぎ, 記録した点に記号を付ける
+ */
+export function judgedOnly(key: string, interval: number): boolean {
+  return interval > 1 && (key.startsWith('valid/') || key.startsWith('train_eval/'))
+}
