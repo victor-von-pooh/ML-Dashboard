@@ -186,15 +186,18 @@ export function LineChart({
           ...series.map((s) => {
             const color = cssVar(s.color)
             // 値の無い点で線を途切れさせると, 前後に値の無い点は見えないので記号で描く.
-            // 何エポックかおきにだけ記録する系列は, 値の無い点を飛ばしてつなぐ
+            // 何エポックかおきにだけ記録する系列は, 値の無い点を飛ばしてつなぎ,
+            // 記録した全ての点に記号を付ける
             const { isolated, sparse } = pointStyle(s.points)
+            const marked = (index: number) =>
+              isolated.has(index) || (sparse && s.points[index]?.[1] != null)
             return {
               type: 'line',
               name: s.name,
               data: s.points,
-              showSymbol: isolated.size > 0,
+              showSymbol: isolated.size > 0 || sparse,
               symbolSize: (_: unknown, params: { dataIndex: number }) =>
-                isolated.has(params.dataIndex) ? 8 : 0,
+                marked(params.dataIndex) ? 8 : 0,
               connectNulls: sparse,
               lineStyle: { width: 2, color, type: s.dashed ? 'dashed' : 'solid' },
               itemStyle: { color },

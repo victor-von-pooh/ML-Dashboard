@@ -104,7 +104,11 @@ export function identicalSeries(
 export interface PointStyle {
   /** 前後の点がどちらも値を持たない, 値のある点 (線を引けないので記号で描く) の位置 */
   isolated: Set<number>
-  /** 値のある点が 2 つ以上で全て孤立した系列 (何エポックかおきに記録する指標) */
+  /**
+   * 何エポックかおきに記録する指標 (値のある点が 2 つ以上で, 間に値の無い点を挟み,
+   * 最後の 2 点を除いて孤立した系列). ML-Found の検証の間隔では予定の最後の
+   * エポックも検証するので, 最後の 2 点は隣り合ってよい (間隔 3 で 7 エポックなら 3, 6, 7)
+   */
   sparse: boolean
 }
 
@@ -112,11 +116,18 @@ export interface PointStyle {
 export function pointStyle(points: [number, number | null][]): PointStyle {
   const has = (index: number) => points[index] !== undefined && points[index]![1] != null
   const isolated = new Set<number>()
-  let valued = 0
+  const valued: number[] = []
   points.forEach((_, index) => {
     if (!has(index)) return
-    valued += 1
+    valued.push(index)
     if (!has(index - 1) && !has(index + 1)) isolated.add(index)
   })
-  return { isolated, sparse: valued >= 2 && isolated.size === valued }
+  const last = valued.length - 1
+  const sparse =
+    valued.length >= 2 &&
+    valued[last]! - valued[0]! + 1 > valued.length &&
+    valued.every((index, position) =>
+      position === last ? true : position === last - 1 ? !has(index - 1) : isolated.has(index),
+    )
+  return { isolated, sparse }
 }

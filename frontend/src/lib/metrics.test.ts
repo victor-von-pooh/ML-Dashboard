@@ -152,6 +152,33 @@ describe('pointStyle', () => {
     expect(style.sparse).toBe(false)
   })
 
+  it('検証の間隔で最後のエポックだけ隣り合う系列も, 何エポックかおきの系列としてつなぐ', () => {
+    // 7 エポックで間隔 3 (エポック 3, 6, 7 を検証)
+    const points: [number, number | null][] = Array.from({ length: 7 }, (_, index) => {
+      const epoch = index + 1
+      return [epoch, epoch % 3 === 0 || epoch === 7 ? 1 / epoch : null]
+    })
+    const style = pointStyle(points)
+    expect([...style.isolated]).toEqual([2])
+    expect(style.sparse).toBe(true)
+  })
+
+  it('間隔 2 で最後のエポックが奇数の系列も, 何エポックかおきの系列としてつなぐ', () => {
+    const points: [number, number | null][] = [1, 2, 3, 4, 5].map((epoch) => [
+      epoch,
+      epoch % 2 === 0 || epoch === 5 ? epoch : null,
+    ])
+    expect(pointStyle(points).sparse).toBe(true)
+  })
+
+  it('間に値の無い点を挟まない 2 点の系列は, 何エポックかおきの系列ではない', () => {
+    const style = pointStyle([
+      [1, 0.9],
+      [2, 0.5],
+    ])
+    expect(style.sparse).toBe(false)
+  })
+
   it('値のある点が 1 つだけの系列は記号で描き, つなぐ相手は無い', () => {
     const style = pointStyle([
       [1, null],

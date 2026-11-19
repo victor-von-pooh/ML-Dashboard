@@ -5,7 +5,8 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from ml_dashboard.app import create_app
-from ml_dashboard.core.runs import read_history_csv
+from ml_dashboard.core.models import History
+from ml_dashboard.core.runs import last_metrics, read_history_csv
 
 from conftest import write_run
 from test_api import register
@@ -530,3 +531,97 @@ def test_newer_format_notice(
     assert len(notices) == 1
     assert "run.json (版 2)" in notices[0]
     assert "source.yaml (版 3)" in notices[0]
+
+
+def test_last_metrics_with_valid_interval() -> None:
+    """
+    検証の間隔が 2 以上の実験で, 最後の検証の値を補うことを確かめる関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    None
+    """
+    # 間隔 2 の学習中 (エポック 3 は検証しない) の推移
+    history = History(
+        columns=["epoch", "train/loss", "valid/loss", "train_eval/loss"],
+        rows=[
+            {
+                "epoch": 1.0, "train/loss": 0.9, "valid/loss": None,
+                "train_eval/loss": None
+            },
+            {
+                "epoch": 2.0, "train/loss": 0.8, "valid/loss": 0.7,
+                "train_eval/loss": 0.75
+            },
+            {
+                "epoch": 3.0, "train/loss": 0.6, "valid/loss": None,
+                "train_eval/loss": None
+            },
+        ]
+    )
+
+    # 検証の値は最後に検証したエポック 2, 学習の値はエポック 3
+    metrics = last_metrics(history, 2)
+    assert metrics == {
+        "train/loss": 0.6, "valid/loss": 0.7, "train_eval/loss": 0.75
+    }
+
+    # 間隔が 1 (既定) と, 読めない値の場合は空のまま (nan などの欠け)
+    assert last_metrics(history)["valid/loss"] is None
+    assert last_metrics(history, "x")["valid/loss"] is None
+
+    # ログから作った推移 (検証しないエポックに valid/ の項目が無い)
+    logged = History(
+        columns=history.columns,
+        rows=[history.rows[1], {"epoch": 3.0, "train/loss": 0.6}]
+    )
+    assert last_metrics(logged, 2) == metrics
+
+    # 1 度も検証していない場合と, 推移が空の場合
+    first = History(columns=history.columns, rows=history.rows[:1])
+    assert last_metrics(first, 2)["valid/loss"] is None
+    assert last_metrics(History(columns=[], rows=[]), 2) == {}
+
+
+def test_valid_interval_summary(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    検証の間隔を空けた実験の最新の値とベストのエポックを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 間隔 2 で 3 エポックまで学習した途中 (run.json の無い学習中の実験)
+    run_dir = write_run(
+        project_dir, "12-30-00",
+        history=(
+            "epoch,train/loss,lr,valid/loss,valid/acc\n"
+            "1,0.9,0.1,,\n2,0.8,0.1,0.7,0.6\n3,0.6,0.1,,\n"
+        )
+    )
+    (run_dir / "config.yaml").write_text(
+        "experiment:\n  name: demo\ntrainer:\n  epochs: 10\n"
+        "  valid_every_n_epochs: 2\n  monitor: valid/acc\n  mode: max\n"
+    )
+    project_id = register(client, project_dir)
+    base = f"/api/projects/{project_id}/runs/demo/2026-11-08/12-30-00"
+    detail = client.get(base).json()
+
+    # 検証の値は最後に検証したエポック 2, ベストは検証したエポックから
+    assert detail["final_metrics"]["valid/acc"] == 0.6
+    assert detail["final_metrics"]["train/loss"] == 0.6
+    assert detail["best"]["epoch"] == 2
+    assert detail["best"]["value"] == 0.6

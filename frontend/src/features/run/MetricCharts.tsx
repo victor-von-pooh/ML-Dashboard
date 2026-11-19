@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import type { BestValue, History } from '../../api/client'
 import { LineChart, type ChartMarker, type ChartSeries } from '../../components/LineChart'
 import { Card } from '../../components/ui'
-import { groupMetrics, toPoints } from '../../lib/metrics'
+import { groupMetrics, pointStyle, toPoints } from '../../lib/metrics'
 import { seriesVar } from '../../lib/colors'
 
 /**
@@ -72,6 +72,8 @@ export function MetricCharts({
               ]
             : []),
         ],
+        // 何エポックかおきにだけ記録した系列 (グラフの下に点で描いた旨を添える)
+        sparse: group.keys.filter((key) => pointStyle(toPoints(history, key)).sparse),
       })),
     [groups, history, logScale],
   )
@@ -98,7 +100,7 @@ export function MetricCharts({
         </label>
       </div>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {charts.map(({ group, series }) => (
+        {charts.map(({ group, series, sparse }) => (
           <Card
             key={group.name}
             title={<span className="font-mono">{group.name}</span>}
@@ -121,6 +123,12 @@ export function MetricCharts({
                   : `${group.name} のエポックごとの推移`
               }
             />
+            {sparse.length > 0 && (
+              <p className="mt-2 text-[11px] text-ink-3">
+                {sparse.join(', ')} は記録のあるエポック (検証したエポックなど)
+                だけを点で描いています
+              </p>
+            )}
           </Card>
         ))}
       </div>

@@ -806,6 +806,50 @@ def value_at(history: History, monitor: str, epoch: float) -> Optional[float]:
     return value
 
 
+def last_metrics(
+    history: History, valid_every_n_epochs: Any = 1
+) -> dict[str, Optional[float]]:
+    """
+    最後のエポックの指標を取得する関数
+
+    Parameters
+    ----------
+    history: History
+        指標の推移
+    valid_every_n_epochs: Any
+        ML-Found の検証の間隔 (trainer.valid_every_n_epochs. 既定は 1)
+
+    Returns
+    ----------
+    metrics: dict[str, Optional[float]]
+        指標の名前と値 (epoch は除く). 検証の間隔が 2 以上の場合,
+        valid/ と train_eval/ は最後に検証したエポックの値
+    """
+    metrics = dict(history.rows[-1]) if history.rows else {}
+    metrics.pop("epoch", None)
+
+    # 検証の間隔が 2 以上の実験では, 検証しないエポックの valid/ と
+    # train_eval/ が空なので, 最後に検証したエポックの値で補完
+    # (間隔が 1 の実験の空の値は nan などの欠けなので, そのまま)
+    interval = to_float(valid_every_n_epochs)
+    if interval is None or interval <= 1:
+        return metrics
+    # 学習中 (ログから作った推移) の検証しないエポックには valid/ の
+    # 項目自体が無いので, 列の名前から選択
+    judged = [
+        key for key in history.columns
+        if key.startswith(("valid/", "train_eval/"))
+    ]
+    if any(metrics.get(key) is not None for key in judged):
+        return metrics
+    for row in reversed(history.rows):
+        if any(row.get(key) is not None for key in judged):
+            metrics.update({key: row.get(key) for key in judged})
+            break
+
+    return metrics
+
+
 def judge_status(entries: list[LogEntry]) -> RunStatus:
     """
     ログから実験の状態を判定する関数 (run.json が無い古い実験で使う)
@@ -1075,11 +1119,11 @@ class RunData:
         summary: RunSummary
             実験の概要
         """
-        # 最後のエポックの指標
-        final_metrics = (
-            dict(self.history.rows[-1]) if self.history.rows else {}
+        # 最後のエポックの指標 (検証の値は最後に検証したエポック)
+        trainer = section(self.config, "trainer")
+        final_metrics = last_metrics(
+            self.history, trainer.get("valid_every_n_epochs", 1)
         )
-        final_metrics.pop("epoch", None)
 
         # 学習時間と Early Stopping で止めたエポックは run.json を優先
         duration = to_float(self.status.get("duration_sec"))
@@ -1091,7 +1135,6 @@ class RunData:
                 find_message(self.entries, "Early Stopping (エポック")
             )
 
-        trainer = section(self.config, "trainer")
         experiment = section(self.config, "experiment")
         status = self.run_status()
         planned = to_float(
