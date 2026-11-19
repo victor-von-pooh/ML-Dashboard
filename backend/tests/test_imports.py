@@ -5,7 +5,7 @@ import sys
 # 初めて読み込む (import_ml_found を先に呼ぶ, ダッシュボードの API と同じ形)
 CHILD = """
 import sys, threading
-from ml_dashboard.api.jobs import import_ml_found
+from ml_dashboard.core.loader import import_ml_found
 assert "ml_found" not in sys.modules
 targets = [
     "ml_found.experiment.setup", "ml_found.training.registry",

@@ -15,6 +15,10 @@ export type HistoryRow = History['rows'][number]
 export type LogEntry = Schemas['LogEntry']
 export type RunFile = Schemas['RunFile']
 export type Progress = Schemas['Progress']
+export type RunResults = Schemas['RunResults']
+export type RunTask = Schemas['RunTask']
+export type Evaluation = Schemas['Evaluation']
+export type Sample = Schemas['Sample']
 // 既定値のある項目もサーバーは必ず返すので, 全て必須として扱う
 export type RunNote = Required<Schemas['RunNote']>
 export type RunParams = Schemas['RunParams']
@@ -114,6 +118,10 @@ export const api = {
   getHistory: (projectId: string, runId: string) =>
     request<History>(
       `/api/projects/${encodeURIComponent(projectId)}/runs/${encodeRunId(runId)}/history`,
+    ),
+  getResults: (projectId: string, runId: string) =>
+    request<RunResults>(
+      `/api/projects/${encodeURIComponent(projectId)}/runs/${encodeRunId(runId)}/results`,
     ),
   getLog: (projectId: string, runId: string) =>
     request<LogEntry[]>(

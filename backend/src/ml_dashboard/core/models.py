@@ -177,3 +177,84 @@ class RunParams(BaseModel):
     best: Optional[BestValue]
     final_metrics: dict[str, Optional[float]]
     params: dict[str, ParamValue]
+
+
+class TaskOrigin(BaseModel):
+    # 正解の出どころ (ML-Found の task.yaml の target.origin). type は
+    # process, annotation, measurement, synthetic, unknown のどれか
+    type: str
+    name: Optional[str] = None
+    settings: Any = None
+
+
+class RunLink(BaseModel):
+    # ダッシュボードの実験の詳細へのつなぎ
+    project_id: str
+    run_id: str
+
+
+class RunTask(BaseModel):
+    # 何の実験か (ML-Found の task.yaml). 分からない値は None
+    format_version: int
+    # 知っている版より新しい task.yaml (正解の出どころは unknown に置き換え)
+    newer_version: bool = False
+    role: Optional[str] = None
+    output: Optional[str] = None
+    what: Optional[str] = None
+    target_kind: Optional[str] = None
+    origin: TaskOrigin
+    # 指標が何との一致かの説明 (ML-Found の describe_origin)
+    origin_note: str
+    method: Optional[str] = None
+    base_experiment: Optional[str] = None
+    base_weights: Optional[str] = None
+    # 元にした実験が登録したプロジェクトにある場合のつなぎ
+    base_run: Optional[RunLink] = None
+    dataset_name: Optional[str] = None
+    dataset_path: Optional[str] = None
+
+
+# 評価の表の値 (nan と無限大は null)
+CellValue = Union[bool, int, float, str, None]
+
+
+class Evaluation(BaseModel):
+    # データ全体の評価 (ML-Found の evaluations/<名前>.json)
+    name: str
+    split: Optional[str] = None
+    kind: str
+    x: Optional[str] = None
+    columns: list[str]
+    rows: list[dict[str, CellValue]]
+    description: Optional[str] = None
+    baseline: Optional[str] = None
+    guard: bool = False
+    epoch: Optional[int] = None
+    created_at: Optional[str] = None
+    # 行が多く, 先頭だけを返した場合の全体の行数
+    total_rows: int
+
+
+class Sample(BaseModel):
+    # 見本の出力 (ML-Found の samples/index.json の 1 項目. 前からの形の
+    # samples/ の直下の番号付きの画像は, 画像の推移で見るので含めない)
+    name: str
+    # エポック, 学習の後は None
+    epoch: Optional[int] = None
+    kind: str
+    # 実験のディレクトリからの相対パス (samples/<名前>/epoch_0005.png など)
+    path: str
+    size: int
+    split: Optional[str] = None
+    caption: Optional[str] = None
+    created_at: Optional[str] = None
+
+
+class RunResults(BaseModel):
+    # 実験の任意のファイル (task.yaml, evaluations/, samples/). 無い実験は
+    # None と空のリスト
+    task: Optional[RunTask] = None
+    evaluations: list[Evaluation] = []
+    samples: list[Sample] = []
+    # 読めなかったファイルなど (画面に注意として出す)
+    notices: list[str] = []

@@ -13,6 +13,7 @@ from ml_dashboard.core.models import (
     ProjectInfo,
     RunDetail,
     RunParams,
+    RunResults,
     RunSummary,
 )
 from ml_dashboard.core.projects import (
@@ -24,7 +25,9 @@ from ml_dashboard.core.projects import (
     list_experiment_configs,
     list_scripts,
 )
+from ml_dashboard.core.results import read_results
 from ml_dashboard.core.runs import (
+    AUDIO_SUFFIXES,
     IMAGE_SUFFIXES,
     TEXT_SUFFIXES,
     RunData,
@@ -475,6 +478,43 @@ def get_log(
     return entries
 
 
+@router.get(RUN_PATH + "/results", responses=NOT_FOUND)
+def get_results(
+    request: Request, project_id: str, name: str, date: str, time: str
+) -> RunResults:
+    """
+    実験の任意のファイル (task.yaml, evaluations/, samples/) を返す関数
+
+    Parameters
+    ----------
+    request: Request
+        リクエスト
+    project_id: str
+        プロジェクトの ID
+    name: str
+        実験の名前
+    date: str
+        日付のディレクトリ名
+    time: str
+        時刻のディレクトリ名
+
+    Returns
+    ----------
+    results: RunResults
+        何の実験か, データ全体の評価, 見本. 無い実験は空
+    """
+    project = get_project(request, project_id)
+    output_dirs = get_project_output_dirs(project)
+    try:
+        run_dir = resolve_run_dir(output_dirs, f"{name}/{date}/{time}")
+    except RunNotFoundError as error:
+        raise HTTPException(404, str(error)) from error
+
+    results = read_results(run_dir, project, get_store(request))
+
+    return results
+
+
 @router.get(
     RUN_PATH + "/files/{file_path:path}", response_class=FileResponse,
     responses=NOT_FOUND
@@ -514,13 +554,14 @@ def get_file(
         raise HTTPException(404, str(error)) from error
 
     # 実験のファイルの中のスクリプトが API を呼べないように,
-    # 画像はそのまま, 文字のファイルは text/plain, それ以外は保存させる形で返却
+    # 画像と音はそのまま, 文字のファイルは text/plain, それ以外は保存させる
+    # 形で返却
     headers = {
         "X-Content-Type-Options": "nosniff",
         "Content-Security-Policy": "sandbox; default-src 'none'"
     }
     suffix = path.suffix.lower()
-    if suffix in IMAGE_SUFFIXES:
+    if suffix in IMAGE_SUFFIXES or suffix in AUDIO_SUFFIXES:
         response = FileResponse(path, headers=headers)
         return response
     if suffix in TEXT_SUFFIXES:

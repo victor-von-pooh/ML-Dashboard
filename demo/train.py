@@ -9,7 +9,8 @@ from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from ml_found import (
-    Experiment, Trainer, load_project_config, start_experiment
+    Experiment, Trainer, load_project_config, save_evaluation, save_sample,
+    start_experiment, write_task
 )
 
 # 決定境界の画像の大きさ (ピクセル) と, 描く範囲
@@ -266,6 +267,99 @@ class SpiralTrainer(Trainer):
         return {}
 
 
+def write_results(
+    experiment: Experiment, model: nn.Module, cfg: DictConfig,
+    valid_x: torch.Tensor, valid_y: torch.Tensor
+) -> None:
+    """
+    何の実験か, データ全体の評価, 見本を実験のディレクトリに書く関数
+
+    Parameters
+    ----------
+    experiment: Experiment
+        start_experiment が返した実験
+    model: nn.Module
+        学習したモデル
+    cfg: DictConfig
+        学習に使った config
+    valid_x: torch.Tensor
+        検証用の点の座標
+    valid_y: torch.Tensor
+        検証用の点の正解ラベル
+
+    Returns
+    ----------
+    None
+    """
+    # 何の実験か (正解は式で作った正確なもの)
+    write_task(experiment, {
+        "role": "predict",
+        "output": "class",
+        "what": "点ごとに, 2 本の渦巻きのどちらに属するか",
+        "target": {
+            "kind": "column",
+            "origin": {
+                "type": "synthetic",
+                "name": "渦巻きの式",
+                "settings": {"noise": float(cfg.data.noise)}
+            }
+        },
+        "method": "scratch"
+    })
+
+    # 検証用の点のクラス 1 の確率と予測
+    model.eval()
+    with torch.no_grad():
+        device = next(model.parameters()).device
+        probs = model(valid_x.to(device)).softmax(dim=1)[:, 1].cpu()
+    predicted = (probs >= 0.5).long()
+
+    # クラスごとの正解率 (どちらのクラスも落とさない守る指標)
+    rows = []
+    for label in (0, 1):
+        mask = valid_y == label
+        count = int(mask.sum())
+        correct = int((predicted[mask] == label).sum())
+        rows.append({
+            "class": label, "count": count,
+            "acc": correct / count if count else None
+        })
+    save_evaluation(
+        experiment, "by_class", rows, split="valid", guard=True,
+        description="クラスごとの正解率. どちらのクラスも落とさない"
+    )
+
+    # しきい値ごとのクラス 1 の適合率と再現率の曲線
+    curve = []
+    positives = int((valid_y == 1).sum())
+    for index in range(1, 10):
+        threshold = index / 10
+        chosen = probs >= threshold
+        hits = int((chosen & (valid_y == 1)).sum())
+        curve.append({
+            "threshold": threshold,
+            "precision": hits / int(chosen.sum()) if chosen.any() else None,
+            "recall": hits / positives if positives else None
+        })
+    save_evaluation(
+        experiment, "threshold", curve, split="valid", kind="curve",
+        x="threshold", description="クラス 1 と判定するしきい値ごとの値"
+    )
+
+    # 見本: 検証用の点 (z はクラス 1 の確率) と, 予測の要約の文
+    cloud = torch.cat([valid_x, probs[:, None]], dim=1)
+    save_sample(
+        experiment, "points", cloud, kind="point_cloud", split="valid",
+        caption="検証用の点. z はクラス 1 の確率"
+    )
+    accuracy = float((predicted == valid_y).float().mean())
+    save_sample(
+        experiment, "summary",
+        f"検証用の {len(valid_y)} 点のうち, {accuracy:.1%} を正しく分けた",
+        split="valid", caption="学習の後の予測の要約"
+    )
+
+
 # コマンドライン引数 (--experiment と「項目=値」の上書き) から config を
 # 読み込んで実験を開始 (ML-Dashboard から起動した場合も同じ引数)
 project_dir = Path(__file__).resolve().parent
@@ -278,4 +372,5 @@ valid_x, valid_y = valid_loader.dataset.tensors
 model = SpiralClassifier(cfg.model.hidden_dim, cfg.model.dropout)
 trainer = SpiralTrainer(model, experiment, valid_x, valid_y)
 trainer.fit(train_loader, valid_loader)
+write_results(experiment, model, cfg, valid_x, valid_y)
 print(f"保存先: {experiment.run_dir}")
