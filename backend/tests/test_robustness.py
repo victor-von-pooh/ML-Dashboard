@@ -625,3 +625,17 @@ def test_valid_interval_summary(
     assert detail["final_metrics"]["train/loss"] == 0.6
     assert detail["best"]["epoch"] == 2
     assert detail["best"]["value"] == 0.6
+
+    # config.yaml に間隔が無い場合は, ログの検証の間隔の行から
+    (run_dir / "config.yaml").write_text(
+        "experiment:\n  name: demo\ntrainer:\n  epochs: 10\n"
+        "  monitor: valid/acc\n  mode: max\n"
+    )
+    assert client.get(base).json()["final_metrics"]["valid/acc"] is None
+    (run_dir / "train.log").write_text(
+        (run_dir / "train.log").read_text()
+        + "2026-11-08 12:30:00,000 - ml_found - INFO - 検証の間隔: 2 "
+        "エポックごとと予定の最後のエポック (10). 判定もこのエポックだけ\n"
+    )
+    detail = client.get(base).json()
+    assert detail["final_metrics"]["valid/acc"] == 0.6

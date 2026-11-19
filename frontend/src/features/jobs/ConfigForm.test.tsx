@@ -17,7 +17,7 @@ function setup(text: string, config: Record<string, unknown>) {
       config={config}
       disabled={false}
       onEdit={onEdit}
-      hint="N エポックごとと最後のエポックで検証"
+      hint="この値で割り切れるエポックと予定の最後のエポックだけ検証"
     />,
   )
   return { state, view, onEdit }
@@ -28,7 +28,9 @@ describe('IntegerField (検証の間隔)', () => {
     const { state } = setup('trainer:\n  epochs: 7\n', { trainer: { valid_every_n_epochs: 1 } })
     const input = screen.getByLabelText('検証の間隔')
     expect(input).toHaveValue(1)
-    expect(input).toHaveAccessibleDescription('N エポックごとと最後のエポックで検証')
+    expect(input).toHaveAccessibleDescription(
+      'この値で割り切れるエポックと予定の最後のエポックだけ検証',
+    )
     fireEvent.change(input, { target: { value: '3' } })
     fireEvent.keyDown(input, { key: 'Enter' })
     expect(parse(state.text)).toEqual({ trainer: { epochs: 7, valid_every_n_epochs: 3 } })

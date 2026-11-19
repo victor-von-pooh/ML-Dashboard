@@ -43,7 +43,6 @@ function useDebounced<T>(value: T, delay: number): T {
   return current
 }
 
-/** 1 つの引数の入力欄. 種類に合わせて真偽値か文字の欄を出し, 変えた場合だけ書き込む */
 /**
  * 1 以上の整数を書く trainer の欄 (エポック数, 検証の間隔). 確定 (Enter か欄を離れる)
  * したときに YAML へ書き込み, 1 以上の整数でない値は書き込まずに理由を出す
@@ -120,6 +119,7 @@ export function IntegerField({
   )
 }
 
+/** 1 つの引数の入力欄. 種類に合わせて真偽値か文字の欄を出し, 変えた場合だけ書き込む */
 function ParamField({
   spec,
   value,
@@ -462,14 +462,17 @@ export function ConfigForm({
               disabled={stale}
               onEdit={onEdit}
             />
-            <IntegerField
-              label="検証の間隔"
-              path="trainer.valid_every_n_epochs"
-              config={config}
-              disabled={stale}
-              onEdit={onEdit}
-              hint="N エポックごとと最後のエポックで検証し, ベストモデルを判定します (1 なら毎エポック). Early Stopping の patience は判定の回数で数えます"
-            />
+            {/* 検証の間隔を知らない版の ML-Found の config では出さない */}
+            {getIn(config, 'trainer.valid_every_n_epochs') !== undefined && (
+              <IntegerField
+                label="検証の間隔"
+                path="trainer.valid_every_n_epochs"
+                config={config}
+                disabled={stale}
+                onEdit={onEdit}
+                hint="この値で割り切れるエポックと予定の最後のエポックだけ検証し, その中からベストモデルを選びます (1 なら毎エポック). Early Stopping と ReduceLROnPlateau の patience は検証の回数で数えます"
+              />
+            )}
           </div>
           {/* 名前付きの複数の Optimizer (optimizers) は, 名前ごとに Optimizer と Scheduler */}
           {(namedOptimizers(config).length > 0

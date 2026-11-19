@@ -5,9 +5,11 @@ import {
   flattenConfig,
   groupMetrics,
   identicalSeries,
+  judgedOnly,
   pointStyle,
   summarizeDiff,
   toPoints,
+  validInterval,
 } from './metrics'
 
 describe('groupMetrics', () => {
@@ -152,39 +154,41 @@ describe('pointStyle', () => {
     expect(style.sparse).toBe(false)
   })
 
-  it('検証の間隔で最後のエポックだけ隣り合う系列も, 何エポックかおきの系列としてつなぐ', () => {
-    // 7 エポックで間隔 3 (エポック 3, 6, 7 を検証)
-    const points: [number, number | null][] = Array.from({ length: 7 }, (_, index) => {
-      const epoch = index + 1
-      return [epoch, epoch % 3 === 0 || epoch === 7 ? 1 / epoch : null]
-    })
-    const style = pointStyle(points)
-    expect([...style.isolated]).toEqual([2])
-    expect(style.sparse).toBe(true)
-  })
-
-  it('間隔 2 で最後のエポックが奇数の系列も, 何エポックかおきの系列としてつなぐ', () => {
-    const points: [number, number | null][] = [1, 2, 3, 4, 5].map((epoch) => [
-      epoch,
-      epoch % 2 === 0 || epoch === 5 ? epoch : null,
-    ])
-    expect(pointStyle(points).sparse).toBe(true)
-  })
-
-  it('間に値の無い点を挟まない 2 点の系列は, 何エポックかおきの系列ではない', () => {
-    const style = pointStyle([
-      [1, 0.9],
-      [2, 0.5],
-    ])
-    expect(style.sparse).toBe(false)
-  })
-
   it('値のある点が 1 つだけの系列は記号で描き, つなぐ相手は無い', () => {
     const style = pointStyle([
       [1, null],
       [2, 0.5],
     ])
     expect([...style.isolated]).toEqual([1])
+    expect(style.sparse).toBe(false)
+  })
+})
+
+describe('検証の間隔', () => {
+  it('config の trainer.valid_every_n_epochs を読み, 無いか読めなければ 1', () => {
+    expect(validInterval({ trainer: { valid_every_n_epochs: 3 } })).toBe(3)
+    expect(validInterval({ trainer: { epochs: 7 } })).toBe(1)
+    expect(validInterval({ trainer: { valid_every_n_epochs: '3' } })).toBe(1)
+    expect(validInterval({ trainer: [1, 2] })).toBe(1)
+    expect(validInterval(null)).toBe(1)
+  })
+
+  it('間隔が 2 以上の実験の valid/ と train_eval/ だけを, 検証したエポックだけの指標とする', () => {
+    expect(judgedOnly('valid/loss', 3)).toBe(true)
+    expect(judgedOnly('train_eval/acc', 2)).toBe(true)
+    expect(judgedOnly('train/loss', 3)).toBe(false)
+    expect(judgedOnly('lr', 3)).toBe(false)
+    expect(judgedOnly('valid/loss', 1)).toBe(false)
+  })
+
+  it('毎エポック検証する実験の途中の欠け (nan) は, 点の並びからは何エポックかおきとしない', () => {
+    // 間隔 3 で 7 エポック (3, 6, 7) と同じ並びに見えても, 推測ではつながない
+    const style = pointStyle([
+      [1, 0.9],
+      [2, null],
+      [3, 0.7],
+      [4, 0.6],
+    ])
     expect(style.sparse).toBe(false)
   })
 })

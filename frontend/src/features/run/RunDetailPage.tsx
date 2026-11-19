@@ -15,6 +15,7 @@ import {
 import { tabPanelProps, useStableId } from '../../lib/a11y'
 import { formatDateTime, formatDuration, formatMetric } from '../../lib/format'
 import { groupImageSeries } from '../../lib/images'
+import { validInterval } from '../../lib/metrics'
 import type { RunFile } from '../../api/client'
 import { ImageTimeline } from './ImageTimeline'
 import { MetricCharts } from './MetricCharts'
@@ -245,6 +246,7 @@ export function RunDetailPage() {
               history={history.data}
               best={data.best}
               earlyStoppedEpoch={data.early_stopped_epoch}
+              validInterval={validInterval(data.config)}
             />
           ) : history.error ? (
             <ErrorBox error={history.error} />

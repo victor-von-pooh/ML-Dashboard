@@ -178,7 +178,7 @@ test('検証の間隔をフォームで変え, 検証したエポックだけを
   await expect(editor).toHaveValue(/epochs: 5/)
   const interval = page.getByLabel('検証の間隔')
   await expect(interval).toHaveValue('1')
-  await expect(interval).toHaveAccessibleDescription(/patience は判定の回数/)
+  await expect(interval).toHaveAccessibleDescription(/patience は検証の回数/)
 
   // 1 以上の整数でない値は書き込まず, 理由を表示
   await interval.fill('0')
@@ -229,7 +229,7 @@ test('検証の間隔をフォームで変え, 検証したエポックだけを
   await page.goto(`/projects/${projectId}/runs/${newest.id}`)
   await expect(page.getByRole('tab', { name: /学習曲線/ })).toBeVisible()
   await expect(
-    page.getByText(/valid\/acc は記録のあるエポック .* だけを点で描いています/),
+    page.getByText(/valid\/acc は記録のあるエポック .* を点で示し, 間を線でつないでいます/),
   ).toBeVisible()
   await expect(page.getByText(`エポック ${detail.best.epoch} (max)`)).toBeVisible()
 })

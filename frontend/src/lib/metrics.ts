@@ -104,11 +104,7 @@ export function identicalSeries(
 export interface PointStyle {
   /** 前後の点がどちらも値を持たない, 値のある点 (線を引けないので記号で描く) の位置 */
   isolated: Set<number>
-  /**
-   * 何エポックかおきに記録する指標 (値のある点が 2 つ以上で, 間に値の無い点を挟み,
-   * 最後の 2 点を除いて孤立した系列). ML-Found の検証の間隔では予定の最後の
-   * エポックも検証するので, 最後の 2 点は隣り合ってよい (間隔 3 で 7 エポックなら 3, 6, 7)
-   */
+  /** 値のある点が 2 つ以上で全て孤立した系列 (何エポックかおきに記録する指標) */
   sparse: boolean
 }
 
@@ -116,18 +112,29 @@ export interface PointStyle {
 export function pointStyle(points: [number, number | null][]): PointStyle {
   const has = (index: number) => points[index] !== undefined && points[index]![1] != null
   const isolated = new Set<number>()
-  const valued: number[] = []
+  let valued = 0
   points.forEach((_, index) => {
     if (!has(index)) return
-    valued.push(index)
+    valued += 1
     if (!has(index - 1) && !has(index + 1)) isolated.add(index)
   })
-  const last = valued.length - 1
-  const sparse =
-    valued.length >= 2 &&
-    valued[last]! - valued[0]! + 1 > valued.length &&
-    valued.every((index, position) =>
-      position === last ? true : position === last - 1 ? !has(index - 1) : isolated.has(index),
-    )
-  return { isolated, sparse }
+  return { isolated, sparse: valued >= 2 && isolated.size === valued }
+}
+
+/** config の ML-Found の検証の間隔 (trainer.valid_every_n_epochs. 無いか読めなければ 1) */
+export function validInterval(config: Record<string, unknown> | null | undefined): number {
+  const trainer = config?.trainer
+  const value =
+    trainer && typeof trainer === 'object'
+      ? (trainer as Record<string, unknown>).valid_every_n_epochs
+      : undefined
+  return typeof value === 'number' && Number.isInteger(value) && value > 1 ? value : 1
+}
+
+/**
+ * 検証の間隔を空けた実験で, 検証したエポックだけに値のある指標か (valid/ と train_eval/).
+ * 値の無いエポックを飛ばしてつなぎ, 記録した点に記号を付ける
+ */
+export function judgedOnly(key: string, interval: number): boolean {
+  return interval > 1 && (key.startsWith('valid/') || key.startsWith('train_eval/'))
 }

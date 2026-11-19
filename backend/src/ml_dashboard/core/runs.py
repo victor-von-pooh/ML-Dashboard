@@ -807,7 +807,7 @@ def value_at(history: History, monitor: str, epoch: float) -> Optional[float]:
 
 
 def last_metrics(
-    history: History, valid_every_n_epochs: Any = 1
+    history: History, valid_every_n_epochs: Any = None
 ) -> dict[str, Optional[float]]:
     """
     最後のエポックの指標を取得する関数
@@ -817,7 +817,7 @@ def last_metrics(
     history: History
         指標の推移
     valid_every_n_epochs: Any
-        ML-Found の検証の間隔 (trainer.valid_every_n_epochs. 既定は 1)
+        ML-Found の検証の間隔 (trainer.valid_every_n_epochs. None は 1)
 
     Returns
     ----------
@@ -840,8 +840,11 @@ def last_metrics(
         key for key in history.columns
         if key.startswith(("valid/", "train_eval/"))
     ]
+    # 最後のエポックで検証した場合はそのまま
     if any(metrics.get(key) is not None for key in judged):
         return metrics
+
+    # 後ろから最後に検証したエポックを探索
     for row in reversed(history.rows):
         if any(row.get(key) is not None for key in judged):
             metrics.update({key: row.get(key) for key in judged})
@@ -1120,10 +1123,12 @@ class RunData:
             実験の概要
         """
         # 最後のエポックの指標 (検証の値は最後に検証したエポック)
+        # 間隔は config.yaml, 無いか読めない場合はログから
         trainer = section(self.config, "trainer")
-        final_metrics = last_metrics(
-            self.history, trainer.get("valid_every_n_epochs", 1)
-        )
+        interval = trainer.get("valid_every_n_epochs")
+        if interval is None:
+            interval = parse_number(find_message(self.entries, "検証の間隔:"))
+        final_metrics = last_metrics(self.history, interval)
 
         # 学習時間と Early Stopping で止めたエポックは run.json を優先
         duration = to_float(self.status.get("duration_sec"))

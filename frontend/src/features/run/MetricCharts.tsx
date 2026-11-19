@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import type { BestValue, History } from '../../api/client'
 import { LineChart, type ChartMarker, type ChartSeries } from '../../components/LineChart'
 import { Card } from '../../components/ui'
-import { groupMetrics, pointStyle, toPoints } from '../../lib/metrics'
+import { groupMetrics, judgedOnly, pointStyle, toPoints } from '../../lib/metrics'
 import { seriesVar } from '../../lib/colors'
 
 /**
@@ -29,10 +29,13 @@ export function MetricCharts({
   history,
   best,
   earlyStoppedEpoch,
+  validInterval = 1,
 }: {
   history: History
   best?: BestValue | null
   earlyStoppedEpoch?: number | null
+  /** ML-Found の検証の間隔 (trainer.valid_every_n_epochs) */
+  validInterval?: number
 }) {
   const [logScale, setLogScale] = useState(false)
   const groups = useMemo(() => groupMetrics(history.columns), [history.columns])
@@ -55,6 +58,7 @@ export function MetricCharts({
             name: key,
             color: seriesVar(colorIndex(key, position)),
             points: toPoints(history, key),
+            sparse: judgedOnly(key, validInterval) || undefined,
           })),
           // step ごとに学習率を変えた実験は, エポックの中の変化も点線で重ねる
           // (位置はバックエンドがエポックの軸の上に計算済み. 対数の軸では 0 以下を欠損)
@@ -73,9 +77,11 @@ export function MetricCharts({
             : []),
         ],
         // 何エポックかおきにだけ記録した系列 (グラフの下に点で描いた旨を添える)
-        sparse: group.keys.filter((key) => pointStyle(toPoints(history, key)).sparse),
+        sparse: group.keys.filter(
+          (key) => judgedOnly(key, validInterval) || pointStyle(toPoints(history, key)).sparse,
+        ),
       })),
-    [groups, history, logScale],
+    [groups, history, logScale, validInterval],
   )
 
   if (history.rows.length === 0) {
@@ -125,8 +131,8 @@ export function MetricCharts({
             />
             {sparse.length > 0 && (
               <p className="mt-2 text-[11px] text-ink-3">
-                {sparse.join(', ')} は記録のあるエポック (検証したエポックなど)
-                だけを点で描いています
+                {sparse.join(', ')} は記録のあるエポック (検証したエポックなど) を点で示し,
+                間を線でつないでいます
               </p>
             )}
           </Card>
