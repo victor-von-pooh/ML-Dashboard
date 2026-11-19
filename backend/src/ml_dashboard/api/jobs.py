@@ -584,7 +584,7 @@ def describe_missing_path(
 
 def check_config(
     project: Project, path: Path, script: Optional[str] = None,
-    default: Optional[Path] = None
+    default: Optional[Path] = None, refresh_requires: bool = False
 ) -> CheckedConfig:
     """
     ML-Found で config を読み込み, 学習を始める前の確認をする関数
@@ -599,6 +599,8 @@ def check_config(
         学習のスクリプト, 元にする default の config の選択に使用
     default: Optional[Path] = None
         元にする default の config, None の場合はスクリプトから選択
+    refresh_requires: bool = False
+        requires の機能を, 覚えた結果を使わずに確かめる場合は True (起動)
 
     Returns
     ----------
@@ -679,18 +681,20 @@ def check_config(
 
         # データなどのパスの書き誤りは, 起動を止めずに注意
         warnings += find_missing_paths(cfg, project_dir)
-
-        # config の requires に書いた機能を, プロジェクトの Python で確かめ
-        # 直し, 足りなければ次の一手を添えて起動を止める
-        requires_error = check_requires(cfg, project)
-        warnings += requires_error[1]
-        if requires_error[0] is not None:
-            value_error = (
-                requires_error[0] if value_error is None
-                else f"{value_error}\n{requires_error[0]}"
-            )
     finally:
         sys.path.remove(str(project_dir))
+
+    # config の requires に書いた機能をプロジェクトの Python で確かめ,
+    # 足りなければ次の一手を添えた誤り (起動では覚えた結果を使わない確かめ)
+    requires_error, requires_warnings = check_requires(
+        cfg, project, refresh_requires
+    )
+    warnings += requires_warnings
+    if requires_error is not None:
+        value_error = (
+            requires_error if value_error is None
+            else f"{value_error}\n{requires_error}"
+        )
     config = OmegaConf.to_container(cfg, resolve=True)
     checked = CheckedConfig(
         diff={
@@ -714,7 +718,7 @@ def check_config(
 
 
 def check_requires(
-    cfg: Any, project: Project
+    cfg: Any, project: Project, refresh: bool = False
 ) -> tuple[Optional[str], list[str]]:
     """
     config の requires に書いた機能が入っているかを確かめる関数
@@ -725,6 +729,8 @@ def check_requires(
         default と合わせた config
     project: Project
         プロジェクト
+    refresh: bool = False
+        覚えた結果を使わずに確かめる場合は True
 
     Returns
     ----------
@@ -739,7 +745,7 @@ def check_requires(
         return error, warnings
     status = requires_status(
         names,
-        check_requirements(project.python, Path(project.path), refresh=True)
+        check_requirements(project.python, Path(project.path), refresh)
     )
     warnings = describe_warnings(status)
     if status.missing:
@@ -821,7 +827,7 @@ def check_output_dir(loaded: object) -> None:
 
 def validate_text(
     project: Project, text: str, script: Optional[str] = None,
-    default: Optional[Path] = None
+    default: Optional[Path] = None, refresh_requires: bool = False
 ) -> CheckedConfig:
     """
     書き換えた config の中身を一時ファイルに書いて確かめる関数
@@ -836,6 +842,8 @@ def validate_text(
         学習のスクリプト, 元にする default の config の選択に使用
     default: Optional[Path] = None
         元にする default の config, None の場合はスクリプトから選択
+    refresh_requires: bool = False
+        requires の機能を, 覚えた結果を使わずに確かめる場合は True (起動)
 
     Returns
     ----------
@@ -860,7 +868,9 @@ def validate_text(
         path = Path(directory) / "experiment.yaml"
         path.write_text(text, encoding="utf-8")
         try:
-            checked = check_config(project, path, script, default)
+            checked = check_config(
+                project, path, script, default, refresh_requires
+            )
         except Exception as error:
             message = str(error).replace(str(path), "experiment.yaml")
             raise ValueError(message) from error
@@ -1038,7 +1048,8 @@ def create_job(
     try:
         if body.config_text is not None:
             require_valid(validate_text(
-                project, body.config_text, body.script, default
+                project, body.config_text, body.script, default,
+                refresh_requires=True
             ))
         else:
             # config を指定しない場合は, スクリプトに対応する experiment の
@@ -1047,9 +1058,10 @@ def create_job(
                 project, body.config_path
                 or experiment_config_for(Path(project.path), body.script)
             )
-            require_valid(
-                check_config(project, config_path, body.script, default)
-            )
+            require_valid(check_config(
+                project, config_path, body.script, default,
+                refresh_requires=True
+            ))
     except HTTPException:
         raise
     except Exception as error:

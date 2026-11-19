@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { Check, CheckCircle2, CircleHelp, Copy, ExternalLink, XCircle } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import type { Requirement } from '../../api/client'
 import { availability, safeUrl } from '../../lib/requirements'
@@ -15,6 +15,12 @@ const CHECK_KINDS: Record<string, string> = {
 /** コマンドをクリップボードに写すボタン. 写せない環境では選んで写すように知らせる */
 export function CopyButton({ text, label }: { text: string; label: string }) {
   const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle')
+  // 少し経ったら元に戻し, もう一度コピーしたときも読み上げる
+  useEffect(() => {
+    if (state !== 'copied') return
+    const timer = window.setTimeout(() => setState('idle'), 2000)
+    return () => window.clearTimeout(timer)
+  }, [state])
   const copy = async () => {
     try {
       if (!navigator.clipboard) throw new Error('クリップボードを使えません')

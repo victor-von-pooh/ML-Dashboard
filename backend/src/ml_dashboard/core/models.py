@@ -365,6 +365,8 @@ class RequiresStatus(BaseModel):
     missing: list[Requirement] = []
     # 登録簿に無い名前 (確かめられないので起動は止めない)
     unknown: list[str] = []
+    # 登録簿にあるが, 入っているかを確かめられなかった名前
+    unchecked: list[str] = []
     # requires の書き方の誤り (起動を止める)
     error: Optional[str] = None
     # 確かめられなかった理由 (起動は止めない)

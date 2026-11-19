@@ -1,4 +1,6 @@
 import json
+import os
+import signal
 import subprocess
 import threading
 import time
@@ -9,6 +11,7 @@ from typing import Any, Optional
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from pydantic import ValidationError
 
+from ml_dashboard.core.jobs import child_env
 from ml_dashboard.core.models import (
     Requirement,
     RequirementReport,
@@ -55,8 +58,12 @@ class ReportCache:
         self.entries: dict[tuple[str, str], tuple[float, RequirementReport]]
         self.entries = {}
         self.lock = threading.Lock()
+        # 同じ鍵の確かめを 1 つずつにするロック
+        self.key_locks: dict[tuple[str, str], threading.Lock] = {}
 
-    def get(self, key: tuple[str, str]) -> Optional[RequirementReport]:
+    def get(
+        self, key: tuple[str, str], since: Optional[float] = None
+    ) -> Optional[RequirementReport]:
         """
         覚えておく時間の中の結果を取り出す関数
 
@@ -64,6 +71,9 @@ class ReportCache:
         ----------
         key: tuple[str, str]
             プロジェクトの Python とディレクトリ
+        since: Optional[float] = None
+            この時刻 (time.monotonic) より後に確かめた結果だけを返す場合に
+            指定
 
         Returns
         ----------
@@ -73,10 +83,34 @@ class ReportCache:
         with self.lock:
             found = self.entries.get(key)
         report = None
-        if found is not None and time.monotonic() - found[0] < CACHE_SECONDS:
+        if found is None:
+            return report
+        fresh = time.monotonic() - found[0] < CACHE_SECONDS
+        if (since is None and fresh) or (
+            since is not None and found[0] >= since
+        ):
             report = found[1]
 
         return report
+
+    def key_lock(self, key: tuple[str, str]) -> threading.Lock:
+        """
+        鍵ごとの確かめのロックを取り出す関数
+
+        Parameters
+        ----------
+        key: tuple[str, str]
+            プロジェクトの Python とディレクトリ
+
+        Returns
+        ----------
+        lock: threading.Lock
+            同じ鍵の確かめを 1 つずつにするロック
+        """
+        with self.lock:
+            lock = self.key_locks.setdefault(key, threading.Lock())
+
+        return lock
 
     def put(self, key: tuple[str, str], report: RequirementReport) -> None:
         """
@@ -136,7 +170,7 @@ def to_requirement(item: Any) -> Optional[Requirement]:
     except ValidationError:
         return result
 
-    # 入れ方の URL は http か https のものだけを残す
+    # 入れ方の URL は http か https のものだけ
     url = requirement.install.url
     if url is not None and not url.startswith(URL_PREFIXES):
         requirement.install.url = None
@@ -212,7 +246,9 @@ def to_report(
         if requirement is not None
     ]
     error = None
-    if len(requirements) < len(items) or not items:
+    if not items:
+        error = "ML-Found の登録簿の結果に機能がありません"
+    elif len(requirements) < len(items):
         error = (
             "ML-Found の登録簿の結果の形が違います "
             f"({len(items) - len(requirements)} 個の項目を読めません)"
@@ -223,6 +259,30 @@ def to_report(
     )
 
     return report
+
+
+def stop_group(process: subprocess.Popen[str]) -> None:
+    """
+    待ち切りの確かめのプロセスを, 子のプロセスごと止める関数
+
+    Parameters
+    ----------
+    process: subprocess.Popen[str]
+        確かめのプロセス (別のグループで起動したもの)
+
+    Returns
+    ----------
+    None
+    """
+    # 孫のプロセスが出力を持ったまま残らないように, グループごとに停止
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except OSError:
+        process.kill()
+    try:
+        process.communicate(timeout=5)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 def run_check(python: str, project_dir: Path) -> RequirementReport:
@@ -246,34 +306,38 @@ def run_check(python: str, project_dir: Path) -> RequirementReport:
     """
     checked_at = datetime.now().astimezone().isoformat(timespec="seconds")
     try:
-        completed = subprocess.run(
+        process = subprocess.Popen(
             [python, "-c", CHECK_SCRIPT], cwd=project_dir,
-            stdin=subprocess.DEVNULL, capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=CHECK_TIMEOUT
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True, encoding="utf-8",
+            errors="replace", env=child_env(), start_new_session=True
         )
-    except subprocess.TimeoutExpired:
-        report = RequirementReport(
-            python=python, checked_at=checked_at,
-            error=f"プロジェクトの Python の確かめが {CHECK_TIMEOUT} 秒で"
-            "終わりませんでした"
-        )
-        return report
     except OSError as error:
         report = RequirementReport(
             python=python, checked_at=checked_at,
             error=f"プロジェクトの Python を動かせません: {error}"
         )
         return report
+    try:
+        stdout, stderr = process.communicate(timeout=CHECK_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        stop_group(process)
+        report = RequirementReport(
+            python=python, checked_at=checked_at,
+            error=f"プロジェクトの Python の確かめが {CHECK_TIMEOUT} 秒で"
+            "終わりませんでした"
+        )
+        return report
 
-    # 印の付いた行が無い場合は, 標準エラー出力の末尾を理由に添える
-    payload = parse_output(completed.stdout)
+    # 印の付いた行が無い場合は, 標準エラー出力の末尾を理由に追加
+    payload = parse_output(stdout)
     if payload is None:
-        tail = completed.stderr.strip()[-STDERR_CHARS:]
+        tail = stderr.strip()[-STDERR_CHARS:]
         report = RequirementReport(
             python=python, checked_at=checked_at,
             error=(
                 "プロジェクトの Python で追加の依存を確かめられませんでした "
-                f"(終了コード {completed.returncode})"
+                f"(終了コード {process.returncode})"
                 + (f": {tail}" if tail else "")
             )
         )
@@ -303,13 +367,17 @@ def check_requirements(
     report: RequirementReport
         機能ごとの説明, 確かめられない場合は理由
     """
+    # 同じプロジェクトの確かめは 1 つずつ. 待つ間に他の要求が確かめた
+    # 結果は, 確かめ直しでもそのまま使用
     key = (python, str(project_dir))
-    cached = None if refresh else REPORT_CACHE.get(key)
-    if cached is not None:
-        report = cached
-        return report
-    report = run_check(python, project_dir)
-    REPORT_CACHE.put(key, report)
+    started = time.monotonic()
+    with REPORT_CACHE.key_lock(key):
+        cached = REPORT_CACHE.get(key, since=started if refresh else None)
+        if cached is not None:
+            report = cached
+            return report
+        report = run_check(python, project_dir)
+        REPORT_CACHE.put(key, report)
 
     return report
 
@@ -334,16 +402,16 @@ def read_requires(cfg: Any) -> tuple[list[str], Optional[str]]:
     error = None
     if not isinstance(cfg, (dict, DictConfig)):
         return names, error
-    value = cfg.get(REQUIRES_KEY)
-    if value is None:
-        return names, error
 
-    # 値の参照 (${...}) も学習と同じく解決して読む
+    # 値の参照 (${...}) も学習と同じく解決. 解決できない参照は書き方の誤り
     try:
+        value = cfg.get(REQUIRES_KEY)
         if isinstance(value, (DictConfig, ListConfig)):
             value = OmegaConf.to_container(value, resolve=True)
     except Exception as exception:
         error = f"requires を読めません: {exception}"
+        return names, error
+    if value is None:
         return names, error
     if not isinstance(value, list) or not all(
         isinstance(name, str) and name.strip() for name in value
@@ -393,6 +461,10 @@ def requires_status(
             if name in known and known[name].available is False
         ],
         unknown=[name for name in names if name not in known],
+        unchecked=[
+            name for name in names
+            if name in known and known[name].available is None
+        ],
         check_error=report.error
     )
 
@@ -473,6 +545,14 @@ def describe_warnings(status: RequiresStatus) -> list[str]:
             "requires の " + ", ".join(status.unknown) + " は ML-Found の"
             "登録簿に無いので, 入っているかを確かめていません"
         )
+    unchecked = [
+        name for name in status.unchecked if name not in status.unknown
+    ]
+    if unchecked:
+        warnings.append(
+            "requires の " + ", ".join(unchecked) + " は入っているかを"
+            "確かめられませんでした"
+        )
     if status.check_error is not None:
         warnings.append(
             "requires の機能が入っているかを確かめられませんでした: "
@@ -514,9 +594,12 @@ def requires_from_text(
         experiment = OmegaConf.create(text if text.strip() else "{}")
     except Exception:
         return names, error
-    source = default_cfg
-    if isinstance(experiment, DictConfig) and REQUIRES_KEY in experiment:
-        source = experiment
+    # ML-Found と同じく default に重ねる (default の値の参照も解決できる)
+    # 重ねられない形の違いは, 起動の前の確認が誤りを出す
+    try:
+        source = OmegaConf.merge(default_cfg, experiment)
+    except Exception:
+        return names, error
     names, error = read_requires(source)
 
     return names, error

@@ -47,6 +47,31 @@ FORCE_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGKILL)
 JobStatus = Literal["running", "finished"]
 
 
+def child_env() -> dict[str, str]:
+    """
+    プロジェクトの Python で動かすプロセスの環境変数を作る関数
+
+    ダッシュボードの Python の設定 (仮想環境, PYTHONPATH) を引き継がない.
+    学習と追加の依存の確かめで同じ環境にするため
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    env: dict[str, str]
+        環境変数 (出力はバッファしない設定)
+    """
+    env = {
+        key: value for key, value in os.environ.items()
+        if key not in DROPPED_ENV
+    }
+    env["PYTHONUNBUFFERED"] = "1"
+
+    return env
+
+
 @dataclass
 class Job:
     id: str
@@ -243,11 +268,7 @@ class JobManager:
         created_at = now_iso()
 
         # ダッシュボードの Python の設定は引き継がず, 出力はバッファしない設定
-        env = {
-            key: value for key, value in os.environ.items()
-            if key not in DROPPED_ENV
-        }
-        env["PYTHONUNBUFFERED"] = "1"
+        env = child_env()
 
         # 出力はファイルに残し, Ctrl-C を送れるように別のグループで起動
         with (self.job_dir(job_id) / "output.log").open("wb") as output:

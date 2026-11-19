@@ -34,7 +34,7 @@ from ml_dashboard.core.runs import (
     RunNotFoundError,
     collect_params,
     find_run_dirs,
-    is_policy_weights,
+    is_withheld_weights,
     make_run_id,
     resolve_run_dir,
     resolve_run_file,
@@ -554,10 +554,11 @@ def get_file(
     except RunNotFoundError as error:
         raise HTTPException(404, str(error)) from error
 
-    # 方策の一式の重みは配らない (使ってよいかは画面の外で人が決める)
-    if is_policy_weights(path.relative_to(run_dir).as_posix()):
+    # 方策の一式を持つ実験の重みは配らない (使ってよいかは画面の外で人が
+    # 決めるため)
+    if is_withheld_weights(run_dir, path):
         raise HTTPException(
-            403, "方策の一式の重みはダッシュボードから配りません"
+            403, "方策の一式を持つ実験の重みはダッシュボードから配りません"
         )
 
     # 実験のファイルの中のスクリプトが API を呼べないように,

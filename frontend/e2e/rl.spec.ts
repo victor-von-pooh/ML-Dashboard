@@ -41,7 +41,7 @@ test('強化学習の指標を学習曲線で見て, 方策の守りを確かめ
   await expect(observation.getByRole('row')).toHaveCount(5)
   await expect(observation.getByRole('row').nth(1)).toContainText('-2.4')
   await expect(page.getByText('一致', { exact: true })).toBeVisible()
-  await expect(page.getByText(/CartPole-v1/)).toBeVisible()
+  await expect(page.locator('pre').filter({ hasText: 'CartPole-v1' })).toBeVisible()
 
   // 重みは配らない: ファイルの一覧にダウンロードのリンクが無く, API も返さない
   await page.getByRole('tab', { name: /ファイル/ }).click()
@@ -88,5 +88,5 @@ test('足りない追加の依存のカードを見て, 学習の開始が止ま
   await page.getByLabel('config の中身').fill('requires: [rl]\n')
   await expect(page.getByRole('button', { name: '学習を開始' })).toBeDisabled()
   await page.getByRole('button', { name: 'ML-Found で config を確かめる' }).click()
-  await expect(page.getByRole('alert')).toContainText('pip install')
+  await expect(page.getByRole('alert').filter({ hasText: 'pip install' })).toBeVisible()
 })

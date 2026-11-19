@@ -627,8 +627,9 @@ def read_samples(run_dir: Path, notices: list[str]) -> list[Sample]:
 
 class DigestCache:
     def __init__(self) -> None:
-        # 重みのパスごとの, 大きさと更新の時刻と sha256
-        self.entries: dict[str, tuple[int, int, str]] = {}
+        # 重みのパスごとの, ファイルの見分け (大きさ, 更新と変更の時刻,
+        # inode) と sha256
+        self.entries: dict[str, tuple[tuple[int, ...], str]] = {}
         self.lock = threading.Lock()
 
     def digest(self, path: Path) -> str:
@@ -647,17 +648,20 @@ class DigestCache:
         """
         from ml_found.rl.bundle import file_sha256
 
-        # 大きさと更新の時刻が同じなら, 大きな重みを読み直さない
+        # 同じファイルなら, 大きな重みの読み直しは省略
         stat = path.stat()
+        identity = (
+            stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino
+        )
         key = str(path)
         with self.lock:
             found = self.entries.get(key)
-        if found is not None and found[:2] == (stat.st_size, stat.st_mtime_ns):
-            digest = found[2]
+        if found is not None and found[0] == identity:
+            digest = found[1]
             return digest
         digest = str(file_sha256(path))
         with self.lock:
-            self.entries[key] = (stat.st_size, stat.st_mtime_ns, digest)
+            self.entries[key] = (identity, digest)
 
         return digest
 
@@ -708,12 +712,17 @@ def read_policy(run_dir: Path) -> Optional[RunPolicy]:
     weights = folder / spec["weights"]
     status: Literal["match", "mismatch", "missing"] = "missing"
     size = None
+    # 確かめの間に消えたか読めない重みは, 無いものとして扱い
     if is_plain_file(weights):
-        size = weights.stat().st_size
-        status = (
-            "match" if DIGEST_CACHE.digest(weights) == spec["weights_sha256"]
-            else "mismatch"
-        )
+        try:
+            size = weights.stat().st_size
+            digest = DIGEST_CACHE.digest(weights)
+        except OSError:
+            size, digest = None, None
+        if digest is not None:
+            status = (
+                "match" if digest == spec["weights_sha256"] else "mismatch"
+            )
     policy = RunPolicy(
         path=POLICY_DIR,
         format_version=spec["format_version"],

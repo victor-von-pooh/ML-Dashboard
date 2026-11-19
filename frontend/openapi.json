@@ -2985,6 +2985,14 @@
             "title": "Unknown",
             "default": []
           },
+          "unchecked": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unchecked",
+            "default": []
+          },
           "error": {
             "anyOf": [
               {

@@ -1365,30 +1365,44 @@ def classify_file(path: Path) -> FileKind:
     return kind
 
 
-def is_policy_weights(relative: str) -> bool:
+def is_withheld_weights(run_dir: Path, path: Path) -> bool:
     """
-    方策の一式 (policy/) の中の重みのファイルかを判定する関数
+    方策の一式を持つ実験の重みのファイルかを判定する関数
 
-    方策を使ってよいかは画面の外で人が決めるので, 重みは返さない
+    方策を使ってよいかは画面の外で人が決めるので, 方策の一式 (policy/) を
+    持つ実験では, 一式の中のファイルと, どこにあっても重み (.pt などの
+    チェックポイント. final_model.pt も方策と同じ重み) を返さない
 
     Parameters
     ----------
-    relative: str
-        実験のディレクトリからの相対パス
+    run_dir: Path
+        実験のディレクトリ
+    path: Path
+        実験のディレクトリの中のファイル
 
     Returns
     ----------
-    found: bool
-        policy/ の中のチェックポイント (.pt など) かどうか
+    withheld: bool
+        返さないファイルかどうか
     """
-    # 大文字と小文字を区別しないファイルシステムのため, 小文字で比較
-    parts = Path(relative).parts
-    found = (
-        len(parts) >= 2 and parts[0].lower() == "policy"
-        and Path(relative).suffix.lower() in CHECKPOINT_SUFFIXES
+    # 大文字と小文字の違いや別名でも同じ場所かを, 辿った先のパスで比較
+    policy_dir = run_dir / "policy"
+    if not (policy_dir / "policy.json").is_file():
+        withheld = False
+        return withheld
+    resolved = path
+    inside = False
+    try:
+        resolved = path.resolve()
+        inside = resolved.is_relative_to(policy_dir.resolve())
+    except OSError:
+        pass
+    suffixes = {path.suffix.lower(), resolved.suffix.lower()}
+    withheld = bool(suffixes & CHECKPOINT_SUFFIXES) or (
+        inside and resolved.suffix.lower() != ".json"
     )
 
-    return found
+    return withheld
 
 
 def list_files(run_dir: Path) -> list[RunFile]:
@@ -1417,7 +1431,7 @@ def list_files(run_dir: Path) -> list[RunFile]:
                 RunFile(
                     path=relative, size=path.stat().st_size,
                     kind=classify_file(path),
-                    downloadable=not is_policy_weights(relative)
+                    downloadable=not is_withheld_weights(run_dir, path)
                 )
             )
 

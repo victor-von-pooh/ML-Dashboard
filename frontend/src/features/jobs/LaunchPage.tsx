@@ -2,6 +2,7 @@ import clsx from 'clsx'
 import {
   CheckCircle2,
   Info,
+  PackageCheck,
   PackageX,
   Play,
   RefreshCw,
@@ -48,7 +49,7 @@ export function LaunchPage() {
   return (
     <LaunchForm
       // 別の実験から開き直したら, 選んだものと書き換えた中身を作り直す
-      key={runId ?? ''}
+      key={`${projectId}:${runId ?? ''}`}
       projectId={projectId}
       runId={runId}
       plan={plan.data ?? null}
@@ -141,6 +142,8 @@ function LaunchForm({
   const missingRequirements = requires.data?.missing ?? []
   const requiresError = requires.data?.error ?? null
   const blockedByRequires = missingRequirements.length > 0 || requiresError !== null
+  // 書き換えた中身の requires をまだ確かめていない間も開始しない
+  const requiresPending = requires.pending
 
   // 書き換えたまま再読み込みやタブを閉じる場合はブラウザで確認
   useEffect(() => {
@@ -238,6 +241,7 @@ function LaunchForm({
             to={`/projects/${projectId}/requirements`}
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-sm font-medium hover:bg-surface-2"
           >
+            <PackageCheck className="size-4" aria-hidden />
             追加の依存
           </Link>
         }
@@ -401,6 +405,8 @@ function LaunchForm({
             checkError={requires.data?.check_error ?? null}
             onRecheck={() => recheck.mutate()}
             rechecking={recheck.isPending || requires.isFetching}
+            pending={requiresPending}
+            requestError={requires.error ?? recheck.error ?? null}
           />
           {formError && <ErrorBox error={formError} />}
           {create.error && <ErrorBox error={create.error} />}
@@ -408,9 +414,15 @@ function LaunchForm({
             variant="primary"
             icon={Play}
             className="h-10 w-full"
-            disabled={!selectedScript || create.isPending || loadingConfig || blockedByRequires}
+            disabled={
+              !selectedScript ||
+              create.isPending ||
+              loadingConfig ||
+              blockedByRequires ||
+              requiresPending
+            }
             onClick={launch}
-            aria-describedby={blockedByRequires ? requiresNoticeId : undefined}
+            aria-describedby={blockedByRequires || requiresPending ? requiresNoticeId : undefined}
           >
             学習を開始
           </Button>
@@ -461,6 +473,8 @@ function RequiresNotice({
   checkError,
   onRecheck,
   rechecking,
+  pending,
+  requestError,
 }: {
   id: string
   projectId: string
@@ -470,14 +484,33 @@ function RequiresNotice({
   checkError: string | null
   onRecheck: () => void
   rechecking: boolean
+  pending: boolean
+  requestError: Error | null
 }) {
+  // 開始のボタンを押せない理由の短い要約 (読み上げと aria-describedby に使う)
+  const summary = pending
+    ? 'config の requires を確かめています'
+    : missing.length > 0
+      ? `${missing.map((item) => item.name).join(', ')} が足りないので開始できません`
+      : error
+        ? 'config の requires に誤りがあるので開始できません'
+        : ''
   const link = (
     <Link to={`/projects/${projectId}/requirements`} className="text-accent-text hover:underline">
       追加の依存の一覧
     </Link>
   )
   return (
-    <div id={id} className="space-y-3">
+    <div className="space-y-3">
+      <p id={id} role="status" className="sr-only">
+        {summary}
+      </p>
+      {requestError && (
+        <p className="flex items-start gap-1.5 text-xs text-warning-text">
+          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          requires を確かめられませんでした: {requestError.message}
+        </p>
+      )}
       {error && <ErrorBox error={`config の requires の誤り: ${error}`} live={false} />}
       {missing.length > 0 && (
         <Card

@@ -243,9 +243,21 @@ def test_policy_weights_not_served(
     spec = client.get(f"{base}/files/policy/policy.json")
     assert spec.status_code == 200
 
+    # 方策を持つ実験の他の重み (final_model.pt は方策と同じ重み) も返さず,
+    # 方策を持たない実験の重みは今までどおり返す
+    run_dir = project_dir / "outputs" / RUN
+    (run_dir / "final_model.pt").write_bytes(WEIGHTS)
+    final = client.get(f"{base}/files/final_model.pt")
+    assert final.status_code == 403
+    other = project_dir / "outputs" / "demo" / "2026-11-08" / "11-00-00"
+    (other / "final_model.pt").write_bytes(WEIGHTS)
+    other_url = f"/api/projects/{project_id}/runs/demo/2026-11-08/11-00-00"
+    assert client.get(f"{other_url}/files/final_model.pt").status_code == 200
+
     files = {
         item["path"]: item for item in client.get(base).json()["files"]
     }
     assert files["policy/policy.pt"]["downloadable"] is False
+    assert files["final_model.pt"]["downloadable"] is False
     assert files["policy/policy.json"]["downloadable"] is True
     assert files["loss_curve.png"]["downloadable"] is True

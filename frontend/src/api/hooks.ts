@@ -1,12 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
-import {
-  keepPreviousData,
-  useMutation,
-  useQueries,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api, type JobInfo, type RunNote } from './client'
 
@@ -337,14 +331,27 @@ export function useRequiresStatus(
     const timer = window.setTimeout(() => setSettled(text), 400)
     return () => window.clearTimeout(timer)
   }, [text])
+  const active = enabled && script !== ''
+  const queryKey = keys.requires(projectId, settled, script, defaultConfig ?? '')
   const query = useQuery({
-    queryKey: keys.requires(projectId, settled, script, defaultConfig ?? ''),
+    queryKey,
     queryFn: () => api.getRequiresStatus(projectId, settled, script, defaultConfig),
-    enabled: enabled && script !== '',
-    placeholderData: keepPreviousData,
+    enabled: active,
+    // 前の結果を出し続けるのは, 同じプロジェクト, スクリプト, default で中身だけを
+    // 書き換えた場合だけ (別のプロジェクトの結果でボタンを止めないため)
+    placeholderData: (previous, previousQuery) =>
+      previousQuery && sameRequiresTarget(previousQuery.queryKey, queryKey) ? previous : undefined,
     staleTime: 0,
     refetchOnWindowFocus: false,
   })
-  // 待っている間 (書き換えた中身をまだ確かめていない間) も分かるようにする
-  return { ...query, settling: settled !== text }
+  // 書き換えた中身をまだ確かめていない間 (待つ間, 前の結果を出している間) は確かめ中
+  const pending =
+    active &&
+    (settled !== text || query.isPlaceholderData || (query.isFetching && query.data === undefined))
+  return { ...query, data: active ? query.data : undefined, pending }
+}
+
+/** requires の問い合わせの鍵が, 中身を除いて同じか */
+function sameRequiresTarget(previous: readonly unknown[], next: readonly unknown[]): boolean {
+  return [0, 1, 2, 3, 4].every((index) => previous[index] === next[index])
 }

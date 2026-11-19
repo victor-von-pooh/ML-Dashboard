@@ -36,8 +36,10 @@ function DeploymentNote() {
 }
 
 function spaceSummary(space: PolicySpace): string {
-  if (space.type === 'discrete')
-    return `discrete (行動 ${space.start ?? 0} から ${(space.start ?? 0) + (space.n ?? 0) - 1})`
+  if (space.type === 'discrete') {
+    const start = space.start ?? 0
+    return space.n ? `discrete (行動 ${start} から ${start + space.n - 1})` : 'discrete'
+  }
   return `box (形 [${(space.shape ?? []).join(', ')}])`
 }
 
@@ -187,13 +189,13 @@ export function PolicyTab({ policy }: { policy: RunPolicy }) {
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
             <dt className="text-ink-3">ファイル</dt>
             <dd className="font-mono text-xs">
-              {policy.weights}
+              {policy.weights ?? '不明'}
               {policy.weights_size != null && (
                 <span className="ml-2 text-ink-3">{formatBytes(policy.weights_size)}</span>
               )}
             </dd>
             <dt className="text-ink-3">sha256</dt>
-            <dd className="font-mono text-xs break-all">{policy.weights_sha256}</dd>
+            <dd className="font-mono text-xs break-all">{policy.weights_sha256 ?? '不明'}</dd>
             <dt className="text-ink-3">確かめ</dt>
             <dd className={clsx('inline-flex items-center gap-1 font-medium', tone.className)}>
               <WeightsIcon className="size-4" aria-hidden />

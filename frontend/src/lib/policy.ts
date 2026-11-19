@@ -91,5 +91,6 @@ export function weightsStatus(status: RunPolicy['weights_status']): {
 } {
   if (status === 'match') return { label: '一致', tone: 'good' }
   if (status === 'mismatch') return { label: '違う (読む側は読まない)', tone: 'critical' }
-  return { label: '重みが無い', tone: 'warning' }
+  if (status === 'missing') return { label: '重みが無い', tone: 'warning' }
+  return { label: '確かめていない', tone: 'warning' }
 }

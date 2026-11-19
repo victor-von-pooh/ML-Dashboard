@@ -6,11 +6,14 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from ml_dashboard.core.models import RequirementReport
 from ml_dashboard.core.requirements import (
     REPORT_CACHE,
     REPORT_MARK,
+    describe_warnings,
     parse_output,
     read_requires,
+    requires_status,
     to_report,
 )
 
@@ -312,13 +315,28 @@ def test_requires_blocks_start(
 
     empty = client.post(f"{base}/requires", json={"text": ""}).json()
     assert empty == {
-        "requires": [], "missing": [], "unknown": [], "error": None,
+        "requires": [], "missing": [], "unknown": [], "unchecked": [],
+        "error": None,
         "check_error": None, "python": None
     }
     wrong = client.post(f"{base}/requires", json={"text": "requires: rl"})
     assert wrong.json()["error"] is not None
     broken = client.post(f"{base}/requires", json={"text": "a: ["}).json()
     assert broken["requires"] == [] and broken["error"] is None
+    # 解決できない参照は 500 にせず書き方の誤り, default の値の参照は読める
+    oops = client.post(
+        f"{base}/requires", json={"text": "requires: ${oops}"}
+    ).json()
+    assert oops["requires"] == [] and "requires" in oops["error"]
+    (project_dir / "configs" / "default" / "train.yaml").write_text(
+        "experiment:\n  name: demo\n  output_dir: outputs\nrequires: []\n"
+        "needs: [ros2]\n"
+    )
+    referenced = client.post(
+        f"{base}/requires", json={"text": "requires: ${needs}"}
+    ).json()
+    assert referenced["requires"] == ["ros2"]
+    assert [item["name"] for item in referenced["missing"]] == ["ros2"]
     bad_script = client.post(
         f"{base}/requires", json={"text": "", "script": "evil.py"}
     )
@@ -351,3 +369,34 @@ def test_requires_blocks_start(
     assert passed["ok"] is True
     assert any("unknown_feature" in item for item in passed["warnings"])
     assert json.dumps(passed["diff"]).count("requires") == 1
+
+
+def test_unchecked_and_empty_registry() -> None:
+    """
+    入っているかを確かめられなかった機能の注意と, 空の登録簿の文を
+    確かめる関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    None
+    """
+    item = {
+        "name": "cuda", "description": "d",
+        "checks": [{"kind": "function", "name": "f", "ok": None,
+                    "error": "boom"}],
+        "match": "all", "available": None,
+        "install": {"kind": "guide", "url": "https://example.org/"},
+        "note": None
+    }
+    report = to_report("py", "now", {"requirements": [item]})
+    status = requires_status(["cuda"], report)
+    assert status.missing == [] and status.unchecked == ["cuda"]
+    assert any("cuda" in text for text in describe_warnings(status))
+
+    empty = to_report("py", "now", {"requirements": []})
+    assert empty.error == "ML-Found の登録簿の結果に機能がありません"
+    assert isinstance(empty, RequirementReport)

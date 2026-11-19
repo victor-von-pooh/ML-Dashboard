@@ -1352,6 +1352,11 @@ export interface components {
              * @default []
              */
             unknown: string[];
+            /**
+             * Unchecked
+             * @default []
+             */
+            unchecked: string[];
             /** Error */
             error?: string | null;
             /** Check Error */
