@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { Download, ExternalLink, Search, X } from 'lucide-react'
+import { Ban, Download, ExternalLink, Search, X } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 
 import { runFileUrl, type LogEntry, type ModelParam, type RunDetail } from '../../api/client'
@@ -484,14 +484,25 @@ export function FilesTab({ run, projectId }: { run: RunDetail; projectId: string
                   )}
                 </td>
                 <td className="w-10 px-2 py-1.5">
-                  <a
-                    href={runFileUrl(projectId, run.id, file.path)}
-                    download
-                    className="inline-flex rounded p-1 text-ink-3 hover:bg-surface-2 hover:text-ink"
-                    aria-label={`${file.path} をダウンロード`}
-                  >
-                    <Download className="size-3.5" aria-hidden />
-                  </a>
+                  {/* 方策の一式の重みは配らない (使ってよいかは画面の外で人が決める) */}
+                  {file.downloadable ? (
+                    <a
+                      href={runFileUrl(projectId, run.id, file.path)}
+                      download
+                      className="inline-flex rounded p-1 text-ink-3 hover:bg-surface-2 hover:text-ink"
+                      aria-label={`${file.path} をダウンロード`}
+                    >
+                      <Download className="size-3.5" aria-hidden />
+                    </a>
+                  ) : (
+                    <span
+                      className="inline-flex rounded p-1 text-ink-3"
+                      title="方策の重みは配りません"
+                    >
+                      <Ban className="size-3.5" aria-hidden />
+                      <span className="sr-only">{file.path} は配りません</span>
+                    </span>
+                  )}
                 </td>
               </tr>
             ))}

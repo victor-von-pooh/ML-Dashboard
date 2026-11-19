@@ -1324,7 +1324,10 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "gymnasium", marker = "extra == 'mujoco'", specifier = ">=1.0" },
+    { name = "gymnasium", marker = "extra == 'rl'", specifier = ">=1.0" },
     { name = "matplotlib" },
+    { name = "mujoco", marker = "extra == 'mujoco'" },
     { name = "numpy" },
     { name = "omegaconf", specifier = ">=2.3" },
     { name = "pytest", marker = "extra == 'dev'" },
@@ -1333,7 +1336,7 @@ requires-dist = [
     { name = "torch", specifier = ">=2.2" },
     { name = "tqdm" },
 ]
-provides-extras = ["dev", "examples"]
+provides-extras = ["dev", "examples", "rl", "mujoco"]
 
 [[package]]
 name = "mpmath"

@@ -4,6 +4,7 @@ import {
   ArrowUp,
   FlaskConical,
   ChartScatter,
+  PackageCheck,
   GitCompareArrows,
   Play,
   Search,
@@ -313,6 +314,13 @@ function RunsPage({ projectId }: { projectId: string }) {
             >
               <ChartScatter className="size-4" aria-hidden />
               分析
+            </Link>
+            <Link
+              to={`/projects/${projectId}/requirements`}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-sm font-medium hover:bg-surface-2"
+            >
+              <PackageCheck className="size-4" aria-hidden />
+              追加の依存
             </Link>
             <Link
               to={`/projects/${projectId}/launch`}

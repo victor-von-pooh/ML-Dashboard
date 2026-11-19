@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# 画面の通しのテスト (Playwright) 用に, デモのプロジェクトで実験を 2 つ作ってから
+# 画面の通しのテスト (Playwright) 用に, デモのプロジェクトで実験を 2 つ作り,
+# 強化学習の確かめ用のプロジェクトを写してから
 # ダッシュボードを起動する. 画面は pnpm build で作っておく
 set -euo pipefail
 
@@ -11,6 +12,8 @@ PORT="${E2E_PORT:-8791}"
 rm -rf "$WORK"
 mkdir -p "$WORK"
 rsync -a --exclude outputs ../../demo/ "$WORK/demo/"
+# 強化学習の実験 (Gymnasium を入れずに方策の一式を見るため, 学習せずに置いたもの)
+rsync -a fixtures/rl/ "$WORK/rl/"
 
 # config の違う 2 つの実験 (どちらも 3 エポック)
 cd ../../backend

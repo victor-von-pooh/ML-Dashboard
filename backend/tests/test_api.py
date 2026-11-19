@@ -285,9 +285,10 @@ def test_run_detail_history_log(
     assert detail["parameter_count"] == 131
     assert detail["env"][0]["items"]["OS"] == "Darwin 27.2.0"
     assert detail["packages"] == {"torch": "2.15.0", "numpy": "2.3.0"}
-    assert {"path": "loss_curve.png", "size": 4, "kind": "image"} in (
-        detail["files"]
-    )
+    assert {
+        "path": "loss_curve.png", "size": 4, "kind": "image",
+        "downloadable": True
+    } in detail["files"]
 
     history = client.get(f"{base}/history").json()
     assert history["columns"][0] == "epoch"

@@ -18,6 +18,7 @@ import { groupImageSeries } from '../../lib/images'
 import { validInterval } from '../../lib/metrics'
 import type { RunFile } from '../../api/client'
 import { EvaluationsTab } from './EvaluationsTab'
+import { PolicyTab } from './PolicyTab'
 import { ImageTimeline } from './ImageTimeline'
 import { MetricCharts } from './MetricCharts'
 import { NotePanel } from './NotePanel'
@@ -39,6 +40,7 @@ const TAB_IDS = [
   'charts',
   'evaluations',
   'samples',
+  'policy',
   'images',
   'config',
   'model',
@@ -66,7 +68,7 @@ export function RunDetailPage() {
   const run = useRun(projectId, runId)
   const running = run.data?.status === 'running'
   const history = useHistory(projectId, runId, running)
-  // task.yaml, evaluations/, samples/ (無い実験は空で, 画面も今までどおり)
+  // task.yaml, evaluations/, samples/, policy/ (無い実験は空で, 画面も今までどおり)
   const results = useResults(projectId, runId, running)
 
   // 学習が終わったら, 最後のエポックの記録と学習の後の評価と見本を読み直す
@@ -129,7 +131,8 @@ export function RunDetailPage() {
   const missing =
     (requestedTab === 'images' && series.length === 0) ||
     (requestedTab === 'evaluations' && !results.isPending && evaluations.length === 0) ||
-    (requestedTab === 'samples' && !results.isPending && samples.length === 0)
+    (requestedTab === 'samples' && !results.isPending && samples.length === 0) ||
+    (requestedTab === 'policy' && !results.isPending && !results.data?.policy)
   const tab: TabId = missing ? 'charts' : requestedTab
   const sampleNames = new Set(samples.map((sample) => sample.name)).size
 
@@ -287,6 +290,9 @@ export function RunDetailPage() {
                 },
               ]
             : []),
+          ...(results.data?.policy || (results.isPending && tab === 'policy')
+            ? [{ id: 'policy' as const, label: '方策' }]
+            : []),
           ...(series.length > 0
             ? [{ id: 'images' as const, label: '画像の推移', count: series.length }]
             : []),
@@ -323,6 +329,14 @@ export function RunDetailPage() {
         {tab === 'samples' &&
           (results.data ? (
             <SamplesTab samples={samples} projectId={projectId} runId={data.id} />
+          ) : results.error ? (
+            <ErrorBox error={results.error} />
+          ) : (
+            <Spinner />
+          ))}
+        {tab === 'policy' &&
+          (results.data?.policy ? (
+            <PolicyTab policy={results.data.policy} />
           ) : results.error ? (
             <ErrorBox error={results.error} />
           ) : (

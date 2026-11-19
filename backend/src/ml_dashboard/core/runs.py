@@ -1365,6 +1365,46 @@ def classify_file(path: Path) -> FileKind:
     return kind
 
 
+def is_withheld_weights(run_dir: Path, path: Path) -> bool:
+    """
+    方策の一式を持つ実験の重みのファイルかを判定する関数
+
+    方策を使ってよいかは画面の外で人が決めるので, 方策の一式 (policy/) を
+    持つ実験では, 一式の中のファイルと, どこにあっても重み (.pt などの
+    チェックポイント. final_model.pt も方策と同じ重み) を返さない
+
+    Parameters
+    ----------
+    run_dir: Path
+        実験のディレクトリ
+    path: Path
+        実験のディレクトリの中のファイル
+
+    Returns
+    ----------
+    withheld: bool
+        返さないファイルかどうか
+    """
+    # 大文字と小文字の違いや別名でも同じ場所かを, 辿った先のパスで比較
+    policy_dir = run_dir / "policy"
+    if not (policy_dir / "policy.json").is_file():
+        withheld = False
+        return withheld
+    resolved = path
+    inside = False
+    try:
+        resolved = path.resolve()
+        inside = resolved.is_relative_to(policy_dir.resolve())
+    except OSError:
+        pass
+    suffixes = {path.suffix.lower(), resolved.suffix.lower()}
+    withheld = bool(suffixes & CHECKPOINT_SUFFIXES) or (
+        inside and resolved.suffix.lower() != ".json"
+    )
+
+    return withheld
+
+
 def list_files(run_dir: Path) -> list[RunFile]:
     """
     実験のディレクトリのファイルを列挙する関数
@@ -1386,10 +1426,12 @@ def list_files(run_dir: Path) -> list[RunFile]:
             path = Path(root) / name
             if path.is_symlink() or not path.is_file():
                 continue
+            relative = path.relative_to(run_dir).as_posix()
             files.append(
                 RunFile(
-                    path=path.relative_to(run_dir).as_posix(),
-                    size=path.stat().st_size, kind=classify_file(path)
+                    path=relative, size=path.stat().st_size,
+                    kind=classify_file(path),
+                    downloadable=not is_withheld_weights(run_dir, path)
                 )
             )
 

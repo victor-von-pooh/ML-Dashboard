@@ -804,6 +804,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/requirements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Requirements
+         * @description プロジェクトの Python で, ML-Found の登録簿の追加の依存を確かめる関数
+         *
+         *     Parameters
+         *     ----------
+         *     request: Request
+         *         リクエスト
+         *     project_id: str
+         *         プロジェクトの ID
+         *     refresh: bool = False
+         *         覚えた結果を使わずに確かめ直す場合は True
+         *
+         *     Returns
+         *     ----------
+         *     report: RequirementReport
+         *         機能ごとの要るもの, 入っているか, 入れ方
+         */
+        get: operations["read_requirements"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/requires": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read Requires Status
+         * @description config の requires に書いた機能のうち, 足りないものを返す関数
+         *
+         *     学習の起動の画面が開始のボタンを止めるのに使う. ML-Found を読み込まず,
+         *     YAML の requires だけを読む
+         *
+         *     Parameters
+         *     ----------
+         *     request: Request
+         *         リクエスト
+         *     project_id: str
+         *         プロジェクトの ID
+         *     body: RequiresRequest
+         *         experiment の config の中身と, 学習のスクリプト
+         *
+         *     Returns
+         *     ----------
+         *     status: RequiresStatus
+         *         要る機能, 足りない機能, 登録簿に無い名前
+         */
+        post: operations["read_requires_status"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1041,6 +1112,42 @@ export interface components {
              */
             exclusive_maximum: boolean;
         };
+        /** PolicyFallback */
+        PolicyFallback: {
+            /** Kind */
+            kind: string;
+            /** Action */
+            action?: number | number[] | null;
+        };
+        /** PolicyGuards */
+        PolicyGuards: {
+            /** Action Low */
+            action_low?: (number | null)[] | null;
+            /** Action High */
+            action_high?: (number | null)[] | null;
+            /** Allowed Actions */
+            allowed_actions?: number[] | null;
+            /** Observation Low */
+            observation_low?: (number | null)[] | null;
+            /** Observation High */
+            observation_high?: (number | null)[] | null;
+            fallback: components["schemas"]["PolicyFallback"];
+        };
+        /** PolicySpace */
+        PolicySpace: {
+            /** Type */
+            type: string;
+            /** N */
+            n?: number | null;
+            /** Start */
+            start?: number | null;
+            /** Shape */
+            shape?: number[] | null;
+            /** Low */
+            low?: (number | null)[] | null;
+            /** High */
+            high?: (number | null)[] | null;
+        };
         /** Progress */
         Progress: {
             /** Phase */
@@ -1160,6 +1267,103 @@ export interface components {
              */
             notes: string[];
         };
+        /** Requirement */
+        Requirement: {
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Checks */
+            checks: components["schemas"]["RequirementCheck"][];
+            /** Match */
+            match: string;
+            /** Available */
+            available?: boolean | null;
+            install: components["schemas"]["RequirementInstall"];
+            /** Note */
+            note?: string | null;
+        };
+        /** RequirementCheck */
+        RequirementCheck: {
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Ok */
+            ok?: boolean | null;
+            /** Error */
+            error?: string | null;
+        };
+        /** RequirementInstall */
+        RequirementInstall: {
+            /** Kind */
+            kind: string;
+            /** Extra */
+            extra?: string | null;
+            /**
+             * Packages
+             * @default []
+             */
+            packages: string[];
+            /** Url */
+            url?: string | null;
+            /** Command */
+            command?: string | null;
+            /** Extra Command */
+            extra_command?: string | null;
+        };
+        /** RequirementReport */
+        RequirementReport: {
+            /** Python */
+            python: string;
+            /** Checked At */
+            checked_at: string;
+            /**
+             * Requirements
+             * @default []
+             */
+            requirements: components["schemas"]["Requirement"][];
+            /** Error */
+            error?: string | null;
+        };
+        /** RequiresRequest */
+        RequiresRequest: {
+            /** Text */
+            text: string;
+            /** Script */
+            script?: string | null;
+            /** Default Config */
+            default_config?: string | null;
+        };
+        /** RequiresStatus */
+        RequiresStatus: {
+            /**
+             * Requires
+             * @default []
+             */
+            requires: string[];
+            /**
+             * Missing
+             * @default []
+             */
+            missing: components["schemas"]["Requirement"][];
+            /**
+             * Unknown
+             * @default []
+             */
+            unknown: string[];
+            /**
+             * Unchecked
+             * @default []
+             */
+            unchecked: string[];
+            /** Error */
+            error?: string | null;
+            /** Check Error */
+            check_error?: string | null;
+            /** Python */
+            python?: string | null;
+        };
         /** RunDetail */
         RunDetail: {
             /** Id */
@@ -1247,6 +1451,11 @@ export interface components {
              * @enum {string}
              */
             kind: "image" | "checkpoint" | "text" | "other";
+            /**
+             * Downloadable
+             * @default true
+             */
+            downloadable: boolean;
         };
         /** RunLink */
         RunLink: {
@@ -1293,6 +1502,39 @@ export interface components {
                 [key: string]: boolean | number | string | null;
             };
         };
+        /** RunPolicy */
+        RunPolicy: {
+            /** Path */
+            path: string;
+            /** Error */
+            error?: string | null;
+            /** Format Version */
+            format_version?: number | null;
+            /** Head */
+            head?: string | null;
+            observation_space?: components["schemas"]["PolicySpace"] | null;
+            action_space?: components["schemas"]["PolicySpace"] | null;
+            guards?: components["schemas"]["PolicyGuards"] | null;
+            /** Weights */
+            weights?: string | null;
+            /** Weights Sha256 */
+            weights_sha256?: string | null;
+            /** Weights Status */
+            weights_status?: ("match" | "mismatch" | "missing") | null;
+            /** Weights Size */
+            weights_size?: number | null;
+            /** Model Class */
+            model_class?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Metadata
+             * @default {}
+             */
+            metadata: {
+                [key: string]: unknown;
+            };
+        };
         /** RunResults */
         RunResults: {
             task?: components["schemas"]["RunTask"] | null;
@@ -1306,6 +1548,7 @@ export interface components {
              * @default []
              */
             samples: components["schemas"]["Sample"][];
+            policy?: components["schemas"]["RunPolicy"] | null;
             /**
              * Notices
              * @default []
@@ -2421,6 +2664,95 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RunNote"];
                 };
+            };
+            /** @description プロジェクトか実験が見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_requirements: {
+        parameters: {
+            query?: {
+                refresh?: boolean;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequirementReport"];
+                };
+            };
+            /** @description プロジェクトか実験が見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_requires_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequiresRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequiresStatus"];
+                };
+            };
+            /** @description 受け付けられないリクエスト */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description プロジェクトか実験が見つからない */
             404: {

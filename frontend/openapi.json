@@ -1270,6 +1270,115 @@
           }
         }
       }
+    },
+    "/api/projects/{project_id}/requirements": {
+      "get": {
+        "summary": "Read Requirements",
+        "description": "プロジェクトの Python で, ML-Found の登録簿の追加の依存を確かめる関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\nrefresh: bool = False\n    覚えた結果を使わずに確かめ直す場合は True\n\nReturns\n----------\nreport: RequirementReport\n    機能ごとの要るもの, 入っているか, 入れ方",
+        "operationId": "read_requirements",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "refresh",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Refresh"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequirementReport"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "プロジェクトか実験が見つからない"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{project_id}/requires": {
+      "post": {
+        "summary": "Read Requires Status",
+        "description": "config の requires に書いた機能のうち, 足りないものを返す関数\n\n学習の起動の画面が開始のボタンを止めるのに使う. ML-Found を読み込まず,\nYAML の requires だけを読む\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\nbody: RequiresRequest\n    experiment の config の中身と, 学習のスクリプト\n\nReturns\n----------\nstatus: RequiresStatus\n    要る機能, 足りない機能, 登録簿に無い名前",
+        "operationId": "read_requires_status",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequiresRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequiresStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "プロジェクトか実験が見つからない"
+          },
+          "400": {
+            "description": "受け付けられないリクエスト"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2015,6 +2124,237 @@
         ],
         "title": "ParamSpec"
       },
+      "PolicyFallback": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "action": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "PolicyFallback"
+      },
+      "PolicyGuards": {
+        "properties": {
+          "action_low": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Low"
+          },
+          "action_high": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action High"
+          },
+          "allowed_actions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed Actions"
+          },
+          "observation_low": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observation Low"
+          },
+          "observation_high": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observation High"
+          },
+          "fallback": {
+            "$ref": "#/components/schemas/PolicyFallback"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fallback"
+        ],
+        "title": "PolicyGuards"
+      },
+      "PolicySpace": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "n": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          },
+          "shape": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shape"
+          },
+          "low": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low"
+          },
+          "high": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "title": "PolicySpace"
+      },
       "Progress": {
         "properties": {
           "phase": {
@@ -2385,6 +2725,311 @@
         "type": "object",
         "title": "RelaunchPlan"
       },
+      "Requirement": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/RequirementCheck"
+            },
+            "type": "array",
+            "title": "Checks"
+          },
+          "match": {
+            "type": "string",
+            "title": "Match"
+          },
+          "available": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available"
+          },
+          "install": {
+            "$ref": "#/components/schemas/RequirementInstall"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "description",
+          "checks",
+          "match",
+          "install"
+        ],
+        "title": "Requirement"
+      },
+      "RequirementCheck": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ok"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "name"
+        ],
+        "title": "RequirementCheck"
+      },
+      "RequirementInstall": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "extra": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extra"
+          },
+          "packages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Packages",
+            "default": []
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "command": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Command"
+          },
+          "extra_command": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extra Command"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "RequirementInstall"
+      },
+      "RequirementReport": {
+        "properties": {
+          "python": {
+            "type": "string",
+            "title": "Python"
+          },
+          "checked_at": {
+            "type": "string",
+            "title": "Checked At"
+          },
+          "requirements": {
+            "items": {
+              "$ref": "#/components/schemas/Requirement"
+            },
+            "type": "array",
+            "title": "Requirements",
+            "default": []
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "python",
+          "checked_at"
+        ],
+        "title": "RequirementReport"
+      },
+      "RequiresRequest": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "script": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Script"
+          },
+          "default_config": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Config"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "RequiresRequest"
+      },
+      "RequiresStatus": {
+        "properties": {
+          "requires": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Requires",
+            "default": []
+          },
+          "missing": {
+            "items": {
+              "$ref": "#/components/schemas/Requirement"
+            },
+            "type": "array",
+            "title": "Missing",
+            "default": []
+          },
+          "unknown": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unknown",
+            "default": []
+          },
+          "unchecked": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unchecked",
+            "default": []
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "check_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check Error"
+          },
+          "python": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Python"
+          }
+        },
+        "type": "object",
+        "title": "RequiresStatus"
+      },
       "RunDetail": {
         "properties": {
           "id": {
@@ -2726,6 +3371,11 @@
               "other"
             ],
             "title": "Kind"
+          },
+          "downloadable": {
+            "type": "boolean",
+            "title": "Downloadable",
+            "default": true
           }
         },
         "type": "object",
@@ -2861,6 +3511,159 @@
         ],
         "title": "RunParams"
       },
+      "RunPolicy": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "format_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Format Version"
+          },
+          "head": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head"
+          },
+          "observation_space": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PolicySpace"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "action_space": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PolicySpace"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "guards": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PolicyGuards"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "weights": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weights"
+          },
+          "weights_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weights Sha256"
+          },
+          "weights_status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "match",
+                  "mismatch",
+                  "missing"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weights Status"
+          },
+          "weights_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weights Size"
+          },
+          "model_class": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Class"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "RunPolicy"
+      },
       "RunResults": {
         "properties": {
           "task": {
@@ -2888,6 +3691,16 @@
             "type": "array",
             "title": "Samples",
             "default": []
+          },
+          "policy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunPolicy"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "notices": {
             "items": {

@@ -11,6 +11,7 @@ import { ComparePage } from './features/compare/ComparePage'
 import { JobDetailPage, JobsPage } from './features/jobs/JobsPage'
 import { LaunchPage } from './features/jobs/LaunchPage'
 import { ProjectsPage } from './features/projects/ProjectsPage'
+import { RequirementsPage } from './features/requirements/RequirementsPage'
 import { RunDetailPage } from './features/run/RunDetailPage'
 import { ProjectRunsPage } from './features/runs/RunsPage'
 import './index.css'
@@ -37,6 +38,7 @@ const router = createBrowserRouter([
       { path: '/projects/:projectId/compare', element: <ComparePage /> },
       { path: '/projects/:projectId/analysis', element: <AnalysisPage /> },
       { path: '/projects/:projectId/launch', element: <LaunchPage /> },
+      { path: '/projects/:projectId/requirements', element: <RequirementsPage /> },
       { path: '/jobs', element: <JobsPage /> },
       { path: '/jobs/:jobId', element: <JobDetailPage /> },
       { path: '/projects/:projectId/runs/*', element: <RunDetailPage /> },

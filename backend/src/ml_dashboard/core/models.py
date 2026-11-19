@@ -98,6 +98,8 @@ class RunFile(BaseModel):
     path: str
     size: int
     kind: FileKind
+    # ファイルを返す API で返すか (方策の一式の重みは返さない)
+    downloadable: bool = True
 
 
 class ModelParam(BaseModel):
@@ -250,11 +252,124 @@ class Sample(BaseModel):
     created_at: Optional[str] = None
 
 
+# 要素ごとの範囲 (null は制限なし)
+Bounds = list[Optional[float]]
+
+
+class PolicySpace(BaseModel):
+    # 観測か行動の空間 (ML-Found の policy.json の空間). type は discrete か
+    # box
+    type: str
+    n: Optional[int] = None
+    start: Optional[int] = None
+    shape: Optional[list[int]] = None
+    low: Optional[Bounds] = None
+    high: Optional[Bounds] = None
+
+
+class PolicyFallback(BaseModel):
+    # 外れたときの動き. kind は stop, handover, action のどれか. action は
+    # discrete では番号, box では数のリスト
+    kind: str
+    action: Union[int, list[float], None] = None
+
+
+class PolicyGuards(BaseModel):
+    # 守り (ML-Found の policy.json の guards). null は制限なし
+    action_low: Optional[Bounds] = None
+    action_high: Optional[Bounds] = None
+    allowed_actions: Optional[list[int]] = None
+    observation_low: Optional[Bounds] = None
+    observation_high: Optional[Bounds] = None
+    fallback: PolicyFallback
+
+
+# 重みの sha256 の確かめ (match は一致, mismatch は違う, missing は重みが
+# 無いかシンボリックリンク)
+WeightsStatus = Literal["match", "mismatch", "missing"]
+
+
+class RunPolicy(BaseModel):
+    # 方策の一式 (ML-Found の policy/policy.json). 読めない場合は error
+    # だけを持ち, 守りを読み違えないように中身を出さない
+    path: str
+    error: Optional[str] = None
+    format_version: Optional[int] = None
+    head: Optional[str] = None
+    observation_space: Optional[PolicySpace] = None
+    action_space: Optional[PolicySpace] = None
+    guards: Optional[PolicyGuards] = None
+    weights: Optional[str] = None
+    weights_sha256: Optional[str] = None
+    weights_status: Optional[WeightsStatus] = None
+    weights_size: Optional[int] = None
+    model_class: Optional[str] = None
+    created_at: Optional[str] = None
+    metadata: dict[str, Any] = {}
+
+
 class RunResults(BaseModel):
-    # 実験の任意のファイル (task.yaml, evaluations/, samples/). 無い実験は
-    # None と空のリスト
+    # 実験の任意のファイル (task.yaml, evaluations/, samples/,
+    # policy/policy.json). 無い実験は None と空のリスト
     task: Optional[RunTask] = None
     evaluations: list[Evaluation] = []
     samples: list[Sample] = []
+    policy: Optional[RunPolicy] = None
     # 読めなかったファイルなど (画面に注意として出す)
     notices: list[str] = []
+
+
+class RequirementCheck(BaseModel):
+    # 確かめ方ごとの結果 (ML-Found の describe_requirements の checks). kind
+    # は module, command, function のどれか. 確かめていない場合 ok は None
+    kind: str
+    name: str
+    ok: Optional[bool] = None
+    error: Optional[str] = None
+
+
+class RequirementInstall(BaseModel):
+    # 入れ方. kind は pip か guide. url は http か https のものだけ
+    kind: str
+    extra: Optional[str] = None
+    packages: list[str] = []
+    url: Optional[str] = None
+    command: Optional[str] = None
+    extra_command: Optional[str] = None
+
+
+class Requirement(BaseModel):
+    # 1 つの機能の要るもの, 入っているか, 入れ方. 確かめられない場合
+    # available は None
+    name: str
+    description: str
+    checks: list[RequirementCheck]
+    match: str
+    available: Optional[bool] = None
+    install: RequirementInstall
+    note: Optional[str] = None
+
+
+class RequirementReport(BaseModel):
+    # プロジェクトの Python で確かめた, 登録簿の全ての機能
+    python: str
+    checked_at: str
+    requirements: list[Requirement] = []
+    # 確かめられなかった理由 (Python が動かない, ML-Found が古いなど)
+    error: Optional[str] = None
+
+
+class RequiresStatus(BaseModel):
+    # config の requires に書いた機能と, 足りないもの
+    requires: list[str] = []
+    missing: list[Requirement] = []
+    # 登録簿に無い名前 (確かめられないので起動は止めない)
+    unknown: list[str] = []
+    # 登録簿にあるが, 入っているかを確かめられなかった名前
+    unchecked: list[str] = []
+    # requires の書き方の誤り (起動を止める)
+    error: Optional[str] = None
+    # 確かめられなかった理由 (起動は止めない)
+    check_error: Optional[str] = None
+    # 確かめた Python
+    python: Optional[str] = None

@@ -1,13 +1,17 @@
 import json
 import math
+import threading
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from ml_dashboard.core.loader import import_ml_found
 from ml_dashboard.core.models import (
     CellValue,
     Evaluation,
+    PolicyGuards,
+    PolicySpace,
     RunLink,
+    RunPolicy,
     RunResults,
     RunTask,
     Sample,
@@ -31,6 +35,10 @@ TASK_FILE = "task.yaml"
 EVALUATIONS_DIR = "evaluations"
 SAMPLES_DIR = "samples"
 SAMPLES_INDEX = "index.json"
+
+# 方策の一式 (ML-Found の docs/FORMAT.md の「方策の一式」)
+POLICY_DIR = "policy"
+POLICY_SPEC = "policy.json"
 
 # 1 つの評価で返す行の上限 (多い場合は先頭だけ)
 MAX_EVALUATION_ROWS = 2000
@@ -64,7 +72,28 @@ def has_results(run_dir: Path) -> bool:
         is_plain_file(run_dir / TASK_FILE)
         or is_plain_dir(run_dir / EVALUATIONS_DIR)
         or has_samples_index(run_dir)
+        or has_policy(run_dir)
     )
+
+    return found
+
+
+def has_policy(run_dir: Path) -> bool:
+    """
+    方策の一式 (policy/policy.json) を持つかを判定する関数
+
+    Parameters
+    ----------
+    run_dir: Path
+        実験のディレクトリ
+
+    Returns
+    ----------
+    found: bool
+        policy/ と policy.json がどちらもシンボリックリンクでなく, あるかどうか
+    """
+    folder = run_dir / POLICY_DIR
+    found = is_plain_dir(folder) and is_plain_file(folder / POLICY_SPEC)
 
     return found
 
@@ -596,6 +625,123 @@ def read_samples(run_dir: Path, notices: list[str]) -> list[Sample]:
     return samples
 
 
+class DigestCache:
+    def __init__(self) -> None:
+        # 重みのパスごとの, ファイルの見分け (大きさ, 更新と変更の時刻,
+        # inode) と sha256
+        self.entries: dict[str, tuple[tuple[int, ...], str]] = {}
+        self.lock = threading.Lock()
+
+    def digest(self, path: Path) -> str:
+        """
+        ファイルの sha256 を, 同じファイルなら覚えた値で返す関数
+
+        Parameters
+        ----------
+        path: Path
+            重みのファイル
+
+        Returns
+        ----------
+        digest: str
+            16 進の小文字 64 文字
+        """
+        from ml_found.rl.bundle import file_sha256
+
+        # 同じファイルなら, 大きな重みの読み直しは省略
+        stat = path.stat()
+        identity = (
+            stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino
+        )
+        key = str(path)
+        with self.lock:
+            found = self.entries.get(key)
+        if found is not None and found[0] == identity:
+            digest = found[1]
+            return digest
+        digest = str(file_sha256(path))
+        with self.lock:
+            self.entries[key] = (identity, digest)
+
+        return digest
+
+
+# プロセスの中で共有する, 重みの sha256
+DIGEST_CACHE = DigestCache()
+
+
+def read_policy(run_dir: Path) -> Optional[RunPolicy]:
+    """
+    方策の一式 (policy/policy.json) を ML-Found の read_policy_spec で読む関数
+
+    守りを読み違えないように, 版と形を確かめられない一式は中身を出さず,
+    読めない理由だけを返す. 重みは sha256 を確かめるだけで読み込まない
+
+    Parameters
+    ----------
+    run_dir: Path
+        実験のディレクトリ
+
+    Returns
+    ----------
+    policy: Optional[RunPolicy]
+        方策の一式, 無い実験は None
+    """
+    from ml_found.rl.bundle import read_policy_spec
+
+    policy = None
+    if not has_policy(run_dir):
+        return policy
+    folder = run_dir / POLICY_DIR
+    try:
+        spec = read_policy_spec(folder)
+        guards = PolicyGuards.model_validate(spec["guards"])
+        observation_space = PolicySpace.model_validate(
+            spec["observation_space"]
+        )
+        action_space = PolicySpace.model_validate(spec["action_space"])
+    except Exception as error:
+        policy = RunPolicy(
+            path=POLICY_DIR,
+            error=f"{POLICY_SPEC} を読めません: {type(error).__name__}: "
+            f"{error}"
+        )
+        return policy
+
+    # 重みは一式の中の決まったファイル (read_policy_spec が確かめ済み)
+    weights = folder / spec["weights"]
+    status: Literal["match", "mismatch", "missing"] = "missing"
+    size = None
+    # 確かめの間に消えたか読めない重みは, 無いものとして扱い
+    if is_plain_file(weights):
+        try:
+            size = weights.stat().st_size
+            digest = DIGEST_CACHE.digest(weights)
+        except OSError:
+            size, digest = None, None
+        if digest is not None:
+            status = (
+                "match" if digest == spec["weights_sha256"] else "mismatch"
+            )
+    policy = RunPolicy(
+        path=POLICY_DIR,
+        format_version=spec["format_version"],
+        head=text_or_none(spec.get("head")),
+        observation_space=observation_space,
+        action_space=action_space,
+        guards=guards,
+        weights=spec["weights"],
+        weights_sha256=spec["weights_sha256"],
+        weights_status=status,
+        weights_size=size,
+        model_class=text_or_none(spec.get("model_class")),
+        created_at=text_or_none(spec.get("created_at")),
+        metadata=dict_or_empty(spec.get("metadata"))
+    )
+
+    return policy
+
+
 def read_results(
     run_dir: Path, project: Project, store: ProjectStore
 ) -> RunResults:
@@ -626,8 +772,8 @@ def read_results(
         import_ml_found()
     except Exception as error:
         results = RunResults(notices=[
-            "ML-Found を読み込めないので, task.yaml, evaluations/, samples/ "
-            f"を出せません: {type(error).__name__}: {error}"
+            "ML-Found を読み込めないので, task.yaml, evaluations/, samples/, "
+            f"policy/ を出せません: {type(error).__name__}: {error}"
         ])
         return results
 
@@ -635,6 +781,7 @@ def read_results(
         task=read_task(run_dir, project, store, notices),
         evaluations=read_evaluations(run_dir, notices),
         samples=read_samples(run_dir, notices),
+        policy=read_policy(run_dir),
         notices=notices
     )
 

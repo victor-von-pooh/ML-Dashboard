@@ -75,7 +75,12 @@ describe('画像の推移と見本のディレクトリ', () => {
       'samples/recon/epoch_0010.png',
       'samples/recon/final.png',
       'samples/index.json',
-    ].map((path) => ({ path, size: 1, kind: path.endsWith('.png') ? 'image' : 'text' }))
+    ].map((path) => ({
+      path,
+      size: 1,
+      kind: path.endsWith('.png') ? 'image' : 'text',
+      downloadable: true,
+    }))
     const series = groupImageSeries(files)
     expect(series.map((item) => [item.name, item.frames.map((frame) => frame.step)])).toEqual([
       ['samples/epoch', [10, 20]],
