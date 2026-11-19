@@ -19,6 +19,12 @@ export type RunResults = Schemas['RunResults']
 export type RunTask = Schemas['RunTask']
 export type Evaluation = Schemas['Evaluation']
 export type Sample = Schemas['Sample']
+export type RunPolicy = Schemas['RunPolicy']
+export type PolicySpace = Schemas['PolicySpace']
+export type PolicyGuards = Schemas['PolicyGuards']
+export type Requirement = Schemas['Requirement']
+export type RequirementReport = Schemas['RequirementReport']
+export type RequiresStatus = Schemas['RequiresStatus']
 // 既定値のある項目もサーバーは必ず返すので, 全て必須として扱う
 export type RunNote = Required<Schemas['RunNote']>
 export type RunParams = Schemas['RunParams']
@@ -166,6 +172,21 @@ export const api = {
       { method: 'PUT', body: JSON.stringify(note) },
     ),
   getRegistry: () => request<Registry>('/api/registry'),
+  // refresh は覚えた結果を使わずにプロジェクトの Python で確かめ直す
+  getRequirements: (projectId: string, refresh = false) =>
+    request<RequirementReport>(
+      `/api/projects/${encodeURIComponent(projectId)}/requirements${refresh ? '?refresh=true' : ''}`,
+    ),
+  // config の requires に書いた機能のうち足りないもの (開始のボタンを止めるのに使う)
+  getRequiresStatus: (projectId: string, text: string, script?: string, defaultConfig?: string) =>
+    request<RequiresStatus>(`/api/projects/${encodeURIComponent(projectId)}/requires`, {
+      method: 'POST',
+      body: JSON.stringify({
+        text,
+        script: script || undefined,
+        default_config: defaultConfig || undefined,
+      }),
+    }),
   listJobs: () => request<JobInfo[]>('/api/jobs'),
   getJob: (jobId: string) => request<JobInfo>(`/api/jobs/${encodeURIComponent(jobId)}`),
   // now はエポックの途中でも止める (ML-Found が途中のエポックを捨てる), force はプロセスに割り込む

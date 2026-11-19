@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ml_dashboard.api.jobs import router as jobs_router
 from ml_dashboard.api.notes import router as notes_router
+from ml_dashboard.api.requirements import router as requirements_router
 from ml_dashboard.api.routes import router
 from ml_dashboard.core.jobs import JobManager
 from ml_dashboard.core.notes import NoteStore
@@ -337,6 +338,7 @@ def create_app(
     app.include_router(router)
     app.include_router(jobs_router)
     app.include_router(notes_router)
+    app.include_router(requirements_router)
     mount_frontend(app, STATIC_DIR)
 
     return app

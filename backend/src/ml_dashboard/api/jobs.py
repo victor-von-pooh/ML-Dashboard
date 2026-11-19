@@ -26,6 +26,13 @@ from ml_dashboard.core.projects import (
     list_experiment_configs,
     list_scripts,
 )
+from ml_dashboard.core.requirements import (
+    check_requirements,
+    describe_missing,
+    describe_warnings,
+    read_requires,
+    requires_status,
+)
 from ml_dashboard.core.runs import (
     RunNotFoundError,
     read_progress,
@@ -672,6 +679,16 @@ def check_config(
 
         # データなどのパスの書き誤りは, 起動を止めずに注意
         warnings += find_missing_paths(cfg, project_dir)
+
+        # config の requires に書いた機能を, プロジェクトの Python で確かめ
+        # 直し, 足りなければ次の一手を添えて起動を止める
+        requires_error = check_requires(cfg, project)
+        warnings += requires_error[1]
+        if requires_error[0] is not None:
+            value_error = (
+                requires_error[0] if value_error is None
+                else f"{value_error}\n{requires_error[0]}"
+            )
     finally:
         sys.path.remove(str(project_dir))
     config = OmegaConf.to_container(cfg, resolve=True)
@@ -694,6 +711,41 @@ def check_config(
     )
 
     return checked
+
+
+def check_requires(
+    cfg: Any, project: Project
+) -> tuple[Optional[str], list[str]]:
+    """
+    config の requires に書いた機能が入っているかを確かめる関数
+
+    Parameters
+    ----------
+    cfg: Any
+        default と合わせた config
+    project: Project
+        プロジェクト
+
+    Returns
+    ----------
+    error: Optional[str]
+        起動を止める誤り (書き方の誤りか足りない機能), 無ければ None
+    warnings: list[str]
+        起動は止めない注意 (登録簿に無い名前, 確かめられない理由)
+    """
+    warnings: list[str] = []
+    names, error = read_requires(cfg)
+    if error is not None or not names:
+        return error, warnings
+    status = requires_status(
+        names,
+        check_requirements(project.python, Path(project.path), refresh=True)
+    )
+    warnings = describe_warnings(status)
+    if status.missing:
+        error = describe_missing(status)
+
+    return error, warnings
 
 
 def require_valid(checked: CheckedConfig) -> None:

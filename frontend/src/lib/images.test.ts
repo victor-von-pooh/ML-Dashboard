@@ -4,7 +4,7 @@ import type { RunFile } from '../api/client'
 import { frameAtOrBefore, groupImageSeries, sharedImageSeries } from './images'
 
 function image(path: string): RunFile {
-  return { path, size: 1, kind: 'image' }
+  return { path, size: 1, kind: 'image', downloadable: true }
 }
 
 describe('groupImageSeries', () => {
@@ -18,7 +18,7 @@ describe('groupImageSeries', () => {
       image('loss_curve.png'),
       image('step-1.jpg'),
       image('step-20.jpg'),
-      { path: 'samples/epoch_003.pt', size: 1, kind: 'checkpoint' },
+      { path: 'samples/epoch_003.pt', size: 1, kind: 'checkpoint', downloadable: true },
     ])
     expect(series).toEqual([
       {

@@ -1,6 +1,12 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 
 import { api, type JobInfo, type RunNote } from './client'
 
@@ -17,6 +23,9 @@ export const keys = {
     ['projects', projectId, 'relaunch', runId] as const,
   params: (projectId: string) => ['projects', projectId, 'params'] as const,
   notes: (projectId: string) => ['projects', projectId, 'notes'] as const,
+  requirements: (projectId: string) => ['projects', projectId, 'requirements'] as const,
+  requires: (projectId: string, text: string, script: string, defaultConfig: string) =>
+    ['projects', projectId, 'requires', script, defaultConfig, text] as const,
   jobs: ['jobs'] as const,
   job: (jobId: string) => ['jobs', jobId] as const,
   jobOutput: (jobId: string) => ['jobs', jobId, 'output'] as const,
@@ -288,4 +297,54 @@ export function useSaveNote(projectId: string) {
       }
     },
   })
+}
+
+/** プロジェクトの Python で確かめた追加の依存 (バックエンドも少しの間覚えておく) */
+export function useRequirements(projectId: string) {
+  return useQuery({
+    queryKey: keys.requirements(projectId),
+    queryFn: () => api.getRequirements(projectId),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  })
+}
+
+/** 覚えた結果を使わずに確かめ直し, 結果を一覧と起動の画面の両方に反映する */
+export function useRecheckRequirements(projectId: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.getRequirements(projectId, true),
+    onSuccess: (report) => {
+      client.setQueryData(keys.requirements(projectId), report)
+      void client.invalidateQueries({ queryKey: ['projects', projectId, 'requires'] })
+    },
+  })
+}
+
+/**
+ * config の requires に書いた機能のうち足りないもの. 書き換えのたびに呼ばないように,
+ * 中身が少しの間変わらなくなってから読む (読む間は前の結果を出し続ける)
+ */
+export function useRequiresStatus(
+  projectId: string,
+  text: string,
+  script: string,
+  defaultConfig: string | undefined,
+  enabled: boolean,
+) {
+  const [settled, setSettled] = useState(text)
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSettled(text), 400)
+    return () => window.clearTimeout(timer)
+  }, [text])
+  const query = useQuery({
+    queryKey: keys.requires(projectId, settled, script, defaultConfig ?? ''),
+    queryFn: () => api.getRequiresStatus(projectId, settled, script, defaultConfig),
+    enabled: enabled && script !== '',
+    placeholderData: keepPreviousData,
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+  })
+  // 待っている間 (書き換えた中身をまだ確かめていない間) も分かるようにする
+  return { ...query, settling: settled !== text }
 }

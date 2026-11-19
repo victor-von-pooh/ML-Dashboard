@@ -1365,6 +1365,32 @@ def classify_file(path: Path) -> FileKind:
     return kind
 
 
+def is_policy_weights(relative: str) -> bool:
+    """
+    方策の一式 (policy/) の中の重みのファイルかを判定する関数
+
+    方策を使ってよいかは画面の外で人が決めるので, 重みは返さない
+
+    Parameters
+    ----------
+    relative: str
+        実験のディレクトリからの相対パス
+
+    Returns
+    ----------
+    found: bool
+        policy/ の中のチェックポイント (.pt など) かどうか
+    """
+    # 大文字と小文字を区別しないファイルシステムのため, 小文字で比較
+    parts = Path(relative).parts
+    found = (
+        len(parts) >= 2 and parts[0].lower() == "policy"
+        and Path(relative).suffix.lower() in CHECKPOINT_SUFFIXES
+    )
+
+    return found
+
+
 def list_files(run_dir: Path) -> list[RunFile]:
     """
     実験のディレクトリのファイルを列挙する関数
@@ -1386,10 +1412,12 @@ def list_files(run_dir: Path) -> list[RunFile]:
             path = Path(root) / name
             if path.is_symlink() or not path.is_file():
                 continue
+            relative = path.relative_to(run_dir).as_posix()
             files.append(
                 RunFile(
-                    path=path.relative_to(run_dir).as_posix(),
-                    size=path.stat().st_size, kind=classify_file(path)
+                    path=relative, size=path.stat().st_size,
+                    kind=classify_file(path),
+                    downloadable=not is_policy_weights(relative)
                 )
             )
 

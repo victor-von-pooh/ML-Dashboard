@@ -1,0 +1,25 @@
+{
+  "format_version": 1,
+  "kind": "policy",
+  "head": "categorical",
+  "observation_space": {
+    "type": "box",
+    "shape": [4],
+    "low": [null, null, null, null],
+    "high": [null, null, null, null]
+  },
+  "action_space": { "type": "discrete", "n": 2, "start": 0 },
+  "guards": {
+    "action_low": null,
+    "action_high": null,
+    "allowed_actions": null,
+    "observation_low": [-2.4, null, -0.21, null],
+    "observation_high": [2.4, null, 0.21, null],
+    "fallback": { "kind": "handover", "action": null }
+  },
+  "weights": "policy.pt",
+  "weights_sha256": "680d4ede556a2b61be5e9adc7bae4e2fb1a03897834126a268165b6403b2fe57",
+  "model_class": "train.PolicyNet",
+  "created_at": "2026-11-20T10:00:00+09:00",
+  "metadata": { "env": "CartPole-v1", "method": "REINFORCE" }
+}

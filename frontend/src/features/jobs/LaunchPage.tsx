@@ -1,19 +1,31 @@
 import clsx from 'clsx'
-import { CheckCircle2, Info, Play, RotateCcw, ShieldCheck, TriangleAlert } from 'lucide-react'
+import {
+  CheckCircle2,
+  Info,
+  PackageX,
+  Play,
+  RefreshCw,
+  RotateCcw,
+  ShieldCheck,
+  TriangleAlert,
+} from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 
-import { encodeRunId, type RelaunchPlan } from '../../api/client'
+import { encodeRunId, type RelaunchPlan, type Requirement } from '../../api/client'
 import {
   useConfig,
   useCreateJob,
   useProject,
+  useRecheckRequirements,
   useRelaunch,
+  useRequiresStatus,
   useValidateConfig,
 } from '../../api/hooks'
 import { Button, Card, ErrorBox, PageHeader, Spinner } from '../../components/ui'
 import { formatValue } from '../../lib/format'
 import { configForScript } from '../../lib/scripts'
+import { RequirementCard } from '../requirements/RequirementCard'
 import { ConfigForm } from './ConfigForm'
 
 // 実験の config の中身 (プロジェクトの experiment の config の一覧に無いもの) を
@@ -64,6 +76,7 @@ function LaunchForm({
   const scriptId = useId()
   const configId = useId()
   const editorId = useId()
+  const requiresNoticeId = useId()
 
   // 実験から開いた場合は, その実験のスクリプトと config を最初に選択
   const fromRun = plan !== null && plan.reason == null ? plan : null
@@ -114,6 +127,20 @@ function LaunchForm({
     draft.text !== original
   const text = draft !== null && draft.path === configPath ? draft.text : original
   const loadingConfig = filePath !== null && config.isPending
+
+  // config の requires に書いた機能が足りなければ, 開始のボタンを止めて次の一手を出す
+  // (起動の API も同じ決まりで止めるので, 確かめる前に押しても学習は始まらない)
+  const requires = useRequiresStatus(
+    projectId,
+    text,
+    selectedScript,
+    defaultConfig,
+    !loadingConfig && !config.error,
+  )
+  const recheck = useRecheckRequirements(projectId)
+  const missingRequirements = requires.data?.missing ?? []
+  const requiresError = requires.data?.error ?? null
+  const blockedByRequires = missingRequirements.length > 0 || requiresError !== null
 
   // 書き換えたまま再読み込みやタブを閉じる場合はブラウザで確認
   useEffect(() => {
@@ -206,6 +233,14 @@ function LaunchForm({
         }
         title="学習を起動"
         subtitle="プロジェクトの Python で学習のスクリプトを別のプロセスとして動かします"
+        actions={
+          <Link
+            to={`/projects/${projectId}/requirements`}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-sm font-medium hover:bg-surface-2"
+          >
+            追加の依存
+          </Link>
+        }
       />
 
       {runId !== null && (
@@ -357,14 +392,25 @@ function LaunchForm({
             </div>
           </Card>
 
+          <RequiresNotice
+            id={requiresNoticeId}
+            projectId={projectId}
+            missing={missingRequirements}
+            error={requiresError}
+            unknown={requires.data?.unknown ?? []}
+            checkError={requires.data?.check_error ?? null}
+            onRecheck={() => recheck.mutate()}
+            rechecking={recheck.isPending || requires.isFetching}
+          />
           {formError && <ErrorBox error={formError} />}
           {create.error && <ErrorBox error={create.error} />}
           <Button
             variant="primary"
             icon={Play}
             className="h-10 w-full"
-            disabled={!selectedScript || create.isPending || loadingConfig}
+            disabled={!selectedScript || create.isPending || loadingConfig || blockedByRequires}
             onClick={launch}
+            aria-describedby={blockedByRequires ? requiresNoticeId : undefined}
           >
             学習を開始
           </Button>
@@ -402,6 +448,75 @@ function LaunchForm({
         </Card>
       </div>
     </>
+  )
+}
+
+/** config の requires に書いた機能のうち, 足りないものと確かめられないもの */
+function RequiresNotice({
+  id,
+  projectId,
+  missing,
+  error,
+  unknown,
+  checkError,
+  onRecheck,
+  rechecking,
+}: {
+  id: string
+  projectId: string
+  missing: Requirement[]
+  error: string | null
+  unknown: string[]
+  checkError: string | null
+  onRecheck: () => void
+  rechecking: boolean
+}) {
+  const link = (
+    <Link to={`/projects/${projectId}/requirements`} className="text-accent-text hover:underline">
+      追加の依存の一覧
+    </Link>
+  )
+  return (
+    <div id={id} className="space-y-3">
+      {error && <ErrorBox error={`config の requires の誤り: ${error}`} live={false} />}
+      {missing.length > 0 && (
+        <Card
+          title={
+            <span className="flex items-center gap-1.5 text-critical-text">
+              <PackageX className="size-4" aria-hidden />
+              足りない追加の依存があるので開始できません
+            </span>
+          }
+          actions={
+            <Button variant="ghost" icon={RefreshCw} onClick={onRecheck} disabled={rechecking}>
+              確かめ直す
+            </Button>
+          }
+        >
+          <div className="space-y-3">
+            <p className="text-xs text-ink-2">
+              config の requires に書いた機能が, プロジェクトの Python に入っていません.
+              次の一手で入れてから「確かめ直す」を押します ({link}).
+            </p>
+            {missing.map((requirement) => (
+              <RequirementCard key={requirement.name} requirement={requirement} />
+            ))}
+          </div>
+        </Card>
+      )}
+      {unknown.length > 0 && (
+        <p className="flex items-start gap-1.5 text-xs text-warning-text">
+          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          requires の {unknown.join(', ')} は ML-Found の登録簿に無いので, 確かめていません
+        </p>
+      )}
+      {checkError && (
+        <p className="flex items-start gap-1.5 text-xs text-warning-text">
+          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          requires の機能が入っているかを確かめられませんでした (開始は止めません): {checkError}
+        </p>
+      )}
+    </div>
   )
 }
 
