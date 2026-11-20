@@ -1046,6 +1046,9 @@ def read_sample_cloud(run_dir: Path, relative: str) -> SampleCloud:
         except ValueError as error:
             reason = f"元の座標に戻せません: {error}"
 
+    # 戻せない場合はファイルのまま (正規化した) 座標なので, 単位を付けない
+    if reason is not None:
+        units = None
     cloud = SampleCloud(
         vertices=vertices, points=points, original=original, units=units,
         reason=reason
