@@ -13,7 +13,7 @@ from ml_dashboard.core.requirements import REPORT_CACHE, REPORT_MARK
 
 # ML-Found と段階のライブラリの pip の指定
 FOUND = "ml-found @ git+https://github.com/victor-von-pooh/ML-Found.git"
-EDA = "ml-eda @ git+https://github.com/victor-von-pooh/ML-EDA.git"
+EDA = "ml-eda[parquet] @ git+https://github.com/victor-von-pooh/ML-EDA.git"
 
 # 学習の準備を持つ default の config
 READY_CONFIG = """\
