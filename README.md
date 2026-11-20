@@ -35,7 +35,7 @@ ML-Found が実験ごとに残すディレクトリ (`history.csv`, `config.yaml
   </tr>
 </table>
 
-図は同梱の `demo/` (2 本の渦巻きを分ける小さなモデル) の実験と, 方策と追加の依存は画面の通しのテストに置いた強化学習の実験 (`frontend/e2e/fixtures/rl/`. 学習せずに置いたもの).
+図は同梱の `demo/` (2 本の渦巻きを分ける小さなモデル) の実験. 方策と追加の依存の図は, 画面の通しのテストに置いた強化学習の実験 (`frontend/e2e/fixtures/rl/`. 学習せずに置いたもの).
 
 ## できること
 
@@ -51,7 +51,7 @@ ML-Found が実験ごとに残すディレクトリ (`history.csv`, `config.yaml
 
 ### 必要なもの
 
-- [uv](https://docs.astral.sh/uv/) (Python は uv が用意する. 3.10 以上で, 3.12 と 3.13 で確かめている). ML-Found の依存の PyTorch も入るので, 最初の `make setup` は数 GB を取得する
+- [uv](https://docs.astral.sh/uv/) (Python は uv が用意する. 3.10 以上で, 3.12 と 3.13 で確かめている). ML-Found の依存の PyTorch も入るので, 最初の `make setup` は数 GB を取得し, 回線によって数分かかる
 - Node.js 24 以上と [pnpm](https://pnpm.io/) 11 以上 (`corepack enable` で `package.json` の版が入る)
 - 画面の通しのテスト (`make e2e`) だけは, 手元の Google Chrome を使う (CI では Playwright の Chromium)
 
