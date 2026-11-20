@@ -115,7 +115,7 @@ make api            # バックエンドの API を変えたら, 画面の型を
 | `frontend/e2e/` | 画面の通しのテスト (Playwright) |
 | `ML-Found/` | submodule |
 | `docs/GUIDE.md` | 画面ごとの使い方と, 試す手順 |
-| `docs/DESIGN.md` | 設計の方針と段階 |
+| `docs/DESIGN.md` | 設計の方針と次に足すもの |
 
 ## ライセンス
 
