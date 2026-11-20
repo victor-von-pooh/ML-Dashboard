@@ -429,6 +429,41 @@ class ProjectStore:
 
         return moved
 
+    def set_python(self, project_id: str, python: str) -> Optional[Project]:
+        """
+        プロジェクトの学習に使う Python を付け替える関数
+
+        Parameters
+        ----------
+        project_id: str
+            プロジェクトの ID
+        python: str
+            新しい Python
+
+        Returns
+        ----------
+        project: Optional[Project]
+            付け替えたプロジェクト, ID が無い場合は None
+        """
+        check_python(python)
+        with self.lock:
+            projects = self.load()
+            current = next(
+                (item for item in projects if item.id == project_id), None
+            )
+            if current is None:
+                return None
+            project = Project(
+                id=current.id, name=current.name, path=current.path,
+                python=python, created_at=current.created_at
+            )
+            self.save([
+                project if item.id == project_id else item
+                for item in projects
+            ])
+
+        return project
+
     def remove(self, project_id: str) -> bool:
         """
         プロジェクトの登録を外す関数

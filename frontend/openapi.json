@@ -1379,6 +1379,167 @@
           }
         }
       }
+    },
+    "/api/projects/{project_id}/readiness": {
+      "get": {
+        "summary": "Read Readiness",
+        "description": "プロジェクトの学習の準備 (データセット, モデルの定義, 環境) を返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\nrefresh: bool = False\n    覚えた確かめの結果を使わずに確かめ直す場合は True\n\nReturns\n----------\nreadiness: ProjectReadiness\n    確かめた結果, 入れるコマンド, 最後の環境のジョブ",
+        "operationId": "read_readiness",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "refresh",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Refresh"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectReadiness"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "プロジェクトか実験が見つからない"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{project_id}/environment": {
+      "get": {
+        "summary": "Read Environment Job",
+        "description": "プロジェクトの最後の環境のジョブと出力の末尾を返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\n\nReturns\n----------\njob: Optional[EnvironmentJob]\n    ジョブ, 無い場合は null",
+        "operationId": "read_environment_job",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/EnvironmentJob"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Read Environment Job"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "プロジェクトか実験が見つからない"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Start Environment Job",
+        "description": "プロジェクトの .venv を作るか, 足りないものを入れるジョブを始める関数\n\n画面で利用者が確かめたコマンドが, 今の確かめの結果と同じ場合だけ\n動かす (確かめた内容と違うものを入れないため)\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\nbody: EnvironmentRequest\n    利用者が確かめたコマンド\n\nReturns\n----------\njob: EnvironmentJob\n    始めたジョブ",
+        "operationId": "start_environment_job",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnvironmentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentJob"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "プロジェクトか実験が見つからない"
+          },
+          "400": {
+            "description": "入れるものが無い"
+          },
+          "409": {
+            "description": "動いているか, 確かめた後に変わった"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1451,6 +1612,63 @@
         ],
         "title": "ClassSpec"
       },
+      "ConfigPath": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "exists": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exists"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key"
+        ],
+        "title": "ConfigPath"
+      },
       "ConfigText": {
         "properties": {
           "path": {
@@ -1489,6 +1707,92 @@
           "items"
         ],
         "title": "EnvSection"
+      },
+      "EnvironmentJob": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "succeeded",
+              "failed",
+              "interrupted"
+            ],
+            "title": "Status"
+          },
+          "started_at": {
+            "type": "string",
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "return_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Code"
+          },
+          "commands": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Commands",
+            "default": []
+          },
+          "output": {
+            "type": "string",
+            "title": "Output",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "status",
+          "started_at"
+        ],
+        "title": "EnvironmentJob"
+      },
+      "EnvironmentRequest": {
+        "properties": {
+          "commands": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Commands"
+          }
+        },
+        "type": "object",
+        "required": [
+          "commands"
+        ],
+        "title": "EnvironmentRequest"
       },
       "Evaluation": {
         "properties": {
@@ -2632,6 +2936,161 @@
         ],
         "title": "ProjectMove"
       },
+      "ProjectReadiness": {
+        "properties": {
+          "dataset": {
+            "$ref": "#/components/schemas/ConfigPath"
+          },
+          "model_spec": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConfigPath"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "python": {
+            "type": "string",
+            "title": "Python"
+          },
+          "target_python": {
+            "type": "string",
+            "title": "Target Python"
+          },
+          "managed": {
+            "type": "boolean",
+            "title": "Managed"
+          },
+          "environment_exists": {
+            "type": "boolean",
+            "title": "Environment Exists"
+          },
+          "ml_found": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ml Found"
+          },
+          "requires": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Requires",
+            "default": []
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing",
+            "default": []
+          },
+          "manual": {
+            "items": {
+              "$ref": "#/components/schemas/Requirement"
+            },
+            "type": "array",
+            "title": "Manual",
+            "default": []
+          },
+          "unknown": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unknown",
+            "default": []
+          },
+          "outdated": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Outdated",
+            "default": []
+          },
+          "requires_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requires Error"
+          },
+          "check_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check Error"
+          },
+          "installer": {
+            "type": "string",
+            "enum": [
+              "uv",
+              "venv"
+            ],
+            "title": "Installer"
+          },
+          "commands": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Commands",
+            "default": []
+          },
+          "switch_python": {
+            "type": "boolean",
+            "title": "Switch Python",
+            "default": false
+          },
+          "ready": {
+            "type": "boolean",
+            "title": "Ready"
+          },
+          "job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnvironmentJob"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "dataset",
+          "python",
+          "target_python",
+          "managed",
+          "environment_exists",
+          "installer",
+          "ready"
+        ],
+        "title": "ProjectReadiness"
+      },
       "Registry": {
         "properties": {
           "optimizers": {
@@ -2915,6 +3374,17 @@
               }
             ],
             "title": "Error"
+          },
+          "ml_found": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ml Found"
           }
         },
         "type": "object",

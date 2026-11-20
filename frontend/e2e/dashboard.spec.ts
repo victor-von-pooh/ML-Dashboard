@@ -68,6 +68,24 @@ test('プロジェクトから実験の一覧と詳細を開く', async ({ page 
   await expect(page.getByRole('img', { name: /boundary の epoch 2/ })).toBeVisible()
 })
 
+test('学習の準備のカードで, 環境を作る前に動かすコマンドを確かめる', async ({ page }) => {
+  await page.goto(`/projects/${projectId}`)
+  const card = page.locator('section', {
+    has: page.getByRole('heading', { name: '学習の準備' }),
+  })
+  // デモは .venv を持たないので, 作るボタンが出る (入れるのはネットワークを使うので確かめだけ)
+  const items = page.getByRole('list', { name: '学習の準備の項目' })
+  await expect(items.getByText('プロジェクトの .venv がまだありません')).toBeVisible()
+  await expect(items.getByText(/default の config に data.dataset がありません/)).toBeVisible()
+  await page.getByRole('button', { name: '環境を作る' }).click()
+  const confirm = page.getByRole('region', { name: '入れる内容の確認' })
+  await expect(confirm.getByText(/ml-found @ git\+https/)).toBeVisible()
+  await expect(confirm.getByText(/学習に使う Python を/)).toBeVisible()
+  await confirm.getByRole('button', { name: 'やめる' }).click()
+  await expect(confirm).toBeHidden()
+  await expect(card.getByRole('button', { name: '環境を作る' })).toBeVisible()
+})
+
 test('何の実験か, データ全体の評価, 見本を見る', async ({ page, request }) => {
   // デモの学習は, 学習の後に task.yaml, evaluations/, samples/ を書く
   const listed = await request.get(`/api/projects/${projectId}/runs`)

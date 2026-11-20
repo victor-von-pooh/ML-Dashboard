@@ -358,6 +358,9 @@ class RequirementReport(BaseModel):
     # 確かめられなかった理由 (Python が動かない, ML-Found に
     # describe_requirements が無いなど)
     error: Optional[str] = None
+    # ML-Found の describe_requirements を読み込めたか (Python が動かない
+    # 場合などは None)
+    ml_found: Optional[bool] = None
 
 
 class RequiresStatus(BaseModel):
@@ -374,3 +377,73 @@ class RequiresStatus(BaseModel):
     check_error: Optional[str] = None
     # 確かめた Python
     python: Optional[str] = None
+
+
+class ConfigPath(BaseModel):
+    # config に書いたパスと, プロジェクトから辿った先があるか. 書いて
+    # いない場合 value と path と exists は None
+    key: str
+    value: Optional[str] = None
+    path: Optional[str] = None
+    exists: Optional[bool] = None
+    # 値の参照 (${...}) を解決できないなどの読めない理由
+    error: Optional[str] = None
+
+
+EnvironmentJobStatus = Literal[
+    "running", "succeeded", "failed", "interrupted"
+]
+
+
+class EnvironmentJob(BaseModel):
+    # 環境を作るか足りないものを入れるジョブ. interrupted はダッシュボード
+    # を起動し直して, 終わりを見届けられなかったもの
+    project_id: str
+    status: EnvironmentJobStatus
+    started_at: str
+    finished_at: Optional[str] = None
+    return_code: Optional[int] = None
+    # 順に動かすコマンド (引数のリスト)
+    commands: list[list[str]] = []
+    # 出力の末尾
+    output: str = ""
+
+
+class ProjectReadiness(BaseModel):
+    # 学習の準備. データセット, モデルの定義, 学習に使う Python の環境
+    dataset: ConfigPath
+    # config に model.spec が無い場合は None
+    model_spec: Optional[ConfigPath] = None
+    # 学習に使う Python (登録したもの) と, 確かめと入れる先の Python
+    python: str
+    target_python: str
+    # 入れる先がプロジェクトの .venv か (False は利用者が選んだ他の環境)
+    managed: bool
+    # 入れる先の Python があるか
+    environment_exists: bool
+    # 入れる先の Python で ML-Found を読み込めるか (確かめられない場合は
+    # None)
+    ml_found: Optional[bool] = None
+    # default の config の requires と, 足りない機能
+    requires: list[str] = []
+    missing: list[str] = []
+    # pip で入らないので, 利用者が公式の手順で入れる機能
+    manual: list[Requirement] = []
+    # 登録簿に無い名前 (入れられないので確かめない)
+    unknown: list[str] = []
+    # 環境の ML-Found が古い版で, 登録簿に無いので確かめられない名前
+    outdated: list[str] = []
+    # requires の書き方の誤り
+    requires_error: Optional[str] = None
+    # 入っているかを確かめられなかった理由
+    check_error: Optional[str] = None
+    # ボタンで動かすコマンド (空なら入れるものが無い)
+    installer: Literal["uv", "venv"]
+    commands: list[list[str]] = []
+    # 入れ終えたら (入れるものが無ければすぐに), 学習に使う Python を
+    # プロジェクトの .venv に付け替えるか
+    switch_python: bool = False
+    # 全てがそろっているか
+    ready: bool
+    # 最後の環境のジョブ
+    job: Optional[EnvironmentJob] = None

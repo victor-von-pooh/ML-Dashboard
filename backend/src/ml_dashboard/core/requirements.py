@@ -130,6 +130,23 @@ class ReportCache:
         with self.lock:
             self.entries[key] = (time.monotonic(), report)
 
+    def forget(self, python: str) -> None:
+        """
+        ある Python で確かめた結果を捨てる関数 (環境に入れた後など)
+
+        Parameters
+        ----------
+        python: str
+            プロジェクトの Python
+
+        Returns
+        ----------
+        None
+        """
+        with self.lock:
+            for key in [key for key in self.entries if key[0] == python]:
+                del self.entries[key]
+
     def clear(self) -> None:
         """
         覚えた結果を全て捨てる関数 (テスト用)
@@ -231,7 +248,7 @@ def to_report(
     # ML-Found が無いか, describe_requirements を持たない版の場合
     if payload.get("error") is not None:
         report = RequirementReport(
-            python=python, checked_at=checked_at,
+            python=python, checked_at=checked_at, ml_found=False,
             error=(
                 "プロジェクトの Python で ML-Found の describe_requirements "
                 "を読み込めません (ML-Found が無いか, describe_requirements "
@@ -256,7 +273,7 @@ def to_report(
         )
     report = RequirementReport(
         python=python, checked_at=checked_at, requirements=requirements,
-        error=error
+        error=error, ml_found=True
     )
 
     return report

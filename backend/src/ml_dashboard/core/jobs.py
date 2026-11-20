@@ -594,21 +594,40 @@ class JobManager:
         text: str
             出力の末尾
         """
-        path = self.job_dir(job.id) / "output.log"
-        if not path.is_file():
-            return ""
-
-        # 大きな出力でも末尾だけの読み込み
-        size = path.stat().st_size
-        with path.open("rb") as file:
-            file.seek(max(0, size - OUTPUT_TAIL))
-            raw = file.read().decode("utf-8", errors="replace")
-
-        # 進捗バーが \r で同じ行を書き直した分と, 端末の制御文字の除去
-        raw = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", raw)
-        lines = [
-            line.rstrip("\r").rsplit("\r", 1)[-1] for line in raw.split("\n")
-        ]
-        text = "\n".join(lines)
+        text = output_tail(self.job_dir(job.id) / "output.log")
 
         return text
+
+
+def output_tail(path: Path) -> str:
+    """
+    プロセスの出力のファイルの末尾を読む関数
+
+    Parameters
+    ----------
+    path: Path
+        出力のファイル
+
+    Returns
+    ----------
+    text: str
+        出力の末尾, ファイルが無い場合は空
+    """
+    text = ""
+    if not path.is_file():
+        return text
+
+    # 大きな出力でも末尾だけの読み込み
+    size = path.stat().st_size
+    with path.open("rb") as file:
+        file.seek(max(0, size - OUTPUT_TAIL))
+        raw = file.read().decode("utf-8", errors="replace")
+
+    # 進捗バーが \r で同じ行を書き直した分と, 端末の制御文字の除去
+    raw = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", raw)
+    lines = [
+        line.rstrip("\r").rsplit("\r", 1)[-1] for line in raw.split("\n")
+    ]
+    text = "\n".join(lines)
+
+    return text
