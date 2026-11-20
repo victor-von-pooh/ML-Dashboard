@@ -11,11 +11,13 @@ from ml_dashboard.core.models import (
     ProjectCandidate,
     ProjectDetail,
     ProjectInfo,
+    RecordedProjects,
     RunDetail,
     RunParams,
     RunResults,
     RunSummary,
 )
+from ml_dashboard.core.problems import recorded_projects
 from ml_dashboard.core.projects import (
     Project,
     ProjectError,
@@ -40,6 +42,7 @@ from ml_dashboard.core.runs import (
     resolve_run_file,
     summarize_run,
 )
+from ml_dashboard.core.settings import get_problems_dir
 
 router = APIRouter(prefix="/api")
 
@@ -273,6 +276,29 @@ def scan_projects(
     ]
 
     return candidates
+
+
+@router.get("/problems/projects")
+def list_recorded_projects(request: Request) -> RecordedProjects:
+    """
+    ML-Pathfinder の問題の設定に記録された, 登録していない学習の
+    プロジェクトを返す関数
+
+    Parameters
+    ----------
+    request: Request
+        リクエスト
+
+    Returns
+    ----------
+    result: RecordedProjects
+        今あり, default の config を持ち, 登録していないプロジェクト
+        (更新の新しい順)
+    """
+    registered = {project.path for project in get_store(request).load()}
+    result = recorded_projects(get_problems_dir(), registered)
+
+    return result
 
 
 @router.get("/projects/{project_id}", responses=NOT_FOUND)

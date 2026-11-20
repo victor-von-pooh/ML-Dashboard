@@ -63,6 +63,8 @@ make serve
 
 プロジェクトは, ML-Found を使っているディレクトリ (`configs/default/train.yaml` を持つもの). 親のディレクトリを指定すると, まとめて登録できる.
 
+ML-Pathfinder で学習のプロジェクトを書き出した場合は, 「プロジェクトを追加」の先頭の「ML-Pathfinder で書き出したプロジェクト」に, まだ登録していないものが並ぶ. 「登録」を押すだけで登録できる (場所を打たなくてよい). 一覧は ML-Pathfinder の置き場 (環境変数 `ML_PATHFINDER_HOME`. 無ければ `~/.ml-pathfinder`) の問題の設定を読む. 同梱の `demo` などは, 次の手順で場所を入れて登録する.
+
 1. 「プロジェクトを追加」を押す
 2. パスの欄に, ML-Dashboard を clone したディレクトリの中の `demo` のパスを入れて (`~` から書ける. 例: `~/ML-Dashboard/demo`) 「探す」を押す
 3. 選ばれた状態で「1 件を追加」を押すと, 左の「PROJECTS」に `demo` が並ぶ. 数字は実験の数

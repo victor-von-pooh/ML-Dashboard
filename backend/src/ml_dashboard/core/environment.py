@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Optional
 
@@ -428,6 +429,11 @@ class EnvironmentJobs:
         self.starting: set[str] = set()
         self.lock = threading.Lock()
 
+        # 学習の起動と環境のジョブの開始で共有するロック. 相手が動いて
+        # いないことの確かめと, 始める印か起動を 1 つにまとめ, 入れ違いで
+        # 両方が始まらないようにするため
+        self.launch_lock = threading.Lock()
+
     def job_dir(self, project_id: str) -> Path:
         """
         プロジェクトの環境のジョブのディレクトリを返す関数
@@ -525,7 +531,8 @@ class EnvironmentJobs:
         return alive
 
     def start(
-        self, project: Project, commands: list[list[str]]
+        self, project: Project, commands: list[list[str]],
+        training: Optional[Callable[[str], bool]] = None
     ) -> EnvironmentJob:
         """
         確かめた結果のコマンドを, 別のスレッドで順に動かす関数
@@ -536,17 +543,31 @@ class EnvironmentJobs:
             登録したプロジェクト
         commands: list[list[str]]
             利用者が確かめたコマンド (今の確かめの結果と同じものだけ)
+        training: Optional[Callable[[str], bool]] = None
+            プロジェクトの ID から, 学習のジョブが動いているかを返す関数
 
         Returns
         ----------
         job: EnvironmentJob
             始めたジョブ
+
+        Raises
+        ----------
+        RuntimeError
+            環境のジョブか学習のジョブが動いている場合
         """
-        # 確かめは時間がかかるので, 始める印だけをロックの中で付ける
-        with self.lock:
-            if self.running(project.id):
-                raise RuntimeError("環境のジョブが動いています")
-            self.starting.add(project.id)
+        # 確かめは時間がかかるので, 学習が動いていないことの確かめと始める
+        # 印だけを, 学習の起動と共有するロックの中で行う
+        with self.launch_lock:
+            if training is not None and training(project.id):
+                raise RuntimeError(
+                    "学習が動いている間は環境に入れられません. 学習が"
+                    "終わるか止めてから入れてください"
+                )
+            with self.lock:
+                if self.running(project.id):
+                    raise RuntimeError("環境のジョブが動いています")
+                self.starting.add(project.id)
         try:
             # 利用者が確かめた後に結果が変わった場合は動かさない
             readiness = check_readiness(project, refresh=True)

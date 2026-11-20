@@ -5,6 +5,8 @@ type Schemas = components['schemas']
 export type ProjectInfo = Schemas['ProjectInfo']
 export type ProjectDetail = Schemas['ProjectDetail']
 export type ProjectCandidate = Schemas['ProjectCandidate']
+export type RecordedProject = Schemas['RecordedProject']
+export type RecordedProjects = Schemas['RecordedProjects']
 export type RunSummary = Schemas['RunSummary']
 export type RunDetail = Schemas['RunDetail']
 export type ModelParam = Schemas['ModelParam']
@@ -120,6 +122,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ path }),
     }),
+  /** ML-Pathfinder の問題の設定に記録された, 登録していないプロジェクト */
+  recordedProjects: () => request<RecordedProjects>('/api/problems/projects'),
   listRuns: (projectId: string) =>
     request<RunSummary[]>(`/api/projects/${encodeURIComponent(projectId)}/runs`),
   getRun: (projectId: string, runId: string) =>

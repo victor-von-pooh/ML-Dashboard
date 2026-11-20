@@ -6,6 +6,7 @@ import { api, type JobInfo, type RunNote } from './client'
 
 export const keys = {
   projects: ['projects'] as const,
+  recorded: ['problems', 'projects'] as const,
   project: (id: string) => ['projects', id] as const,
   runs: (projectId: string) => ['projects', projectId, 'runs'] as const,
   run: (projectId: string, runId: string) => ['projects', projectId, 'run', runId] as const,
@@ -126,6 +127,11 @@ export function useMoveProject() {
     mutationFn: ({ id, path }: { id: string; path: string }) => api.moveProject(id, path),
     onSuccess: () => client.invalidateQueries({ queryKey: keys.projects }),
   })
+}
+
+/** ML-Pathfinder で書き出した, 登録していないプロジェクト (開いている間だけ読む) */
+export function useRecordedProjects(enabled: boolean) {
+  return useQuery({ queryKey: keys.recorded, queryFn: api.recordedProjects, enabled })
 }
 
 export function useScanProjects() {

@@ -35,6 +35,26 @@ class ProjectCandidate(BaseModel):
     registered: bool
 
 
+class RecordedProject(BaseModel):
+    # ML-Pathfinder の問題の設定に記録された, 登録していないプロジェクト
+    path: str
+    name: str
+    # 記録した問題の設定の名前と problem.yaml の場所
+    problem: str
+    problem_path: str
+    # problem.yaml の更新時刻 (読めなければ None)
+    updated_at: Optional[str] = None
+
+
+class RecordedProjects(BaseModel):
+    # 置き場の problems, プロジェクト (更新の新しい順), 読まなかった問題の
+    # 設定の理由 (新しい版など), 置き場を読めない場合の理由
+    root: str
+    projects: list[RecordedProject]
+    skipped: list[str]
+    error: Optional[str] = None
+
+
 class BestValue(BaseModel):
     monitor: str
     mode: Mode

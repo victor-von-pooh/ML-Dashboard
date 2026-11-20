@@ -14,6 +14,8 @@ dependencies = [
     "ml-found",
     "omegaconf>=2.3",
     "pydantic>=2.9",
+    # ML-Pathfinder の問題の設定を読む
+    "pyyaml>=6.0",
     # ML-Found が使う. Linux では下の pytorch-cpu から取る
     "torch>=2.2",
     "uvicorn>=0.32"

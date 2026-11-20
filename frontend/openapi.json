@@ -108,6 +108,25 @@
         }
       }
     },
+    "/api/problems/projects": {
+      "get": {
+        "summary": "List Recorded Projects",
+        "description": "ML-Pathfinder の問題の設定に記録された, 登録していない学習の\nプロジェクトを返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\n\nReturns\n----------\nresult: RecordedProjects\n    今あり, default の config を持ち, 登録していないプロジェクト\n    (更新の新しい順)",
+        "operationId": "list_recorded_projects",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordedProjects"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects/{project_id}": {
       "get": {
         "summary": "Read Project",
@@ -3096,6 +3115,85 @@
           "ready"
         ],
         "title": "ProjectReadiness"
+      },
+      "RecordedProject": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "problem": {
+            "type": "string",
+            "title": "Problem"
+          },
+          "problem_path": {
+            "type": "string",
+            "title": "Problem Path"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "name",
+          "problem",
+          "problem_path"
+        ],
+        "title": "RecordedProject"
+      },
+      "RecordedProjects": {
+        "properties": {
+          "root": {
+            "type": "string",
+            "title": "Root"
+          },
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/RecordedProject"
+            },
+            "type": "array",
+            "title": "Projects"
+          },
+          "skipped": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Skipped"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "root",
+          "projects",
+          "skipped"
+        ],
+        "title": "RecordedProjects"
       },
       "Registry": {
         "properties": {

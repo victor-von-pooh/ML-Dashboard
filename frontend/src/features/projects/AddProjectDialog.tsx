@@ -1,12 +1,117 @@
-import { useQueryClient } from '@tanstack/react-query'
-import { FolderSearch, X } from 'lucide-react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { ClipboardList, FolderSearch, Plus, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 
 import { api, type ProjectCandidate } from '../../api/client'
-import { keys, useScanProjects } from '../../api/hooks'
-import { Button, ErrorBox } from '../../components/ui'
+import { keys, useRecordedProjects, useScanProjects } from '../../api/hooks'
+import { Button, ErrorBox, Spinner } from '../../components/ui'
 
-/** ディレクトリを入力して, その下の ML-Found のプロジェクトをまとめて登録するダイアログ */
+/**
+ * ML-Pathfinder の問題の設定に記録された, 登録していないプロジェクトの一覧.
+ * 押すとそのプロジェクトを登録する (場所を打たずに済むように)
+ */
+function RecordedProjects({
+  open,
+  busy,
+  onBusy,
+}: {
+  /** ダイアログを開いているか (開いている間だけ読む) */
+  open: boolean
+  /** 他の登録の途中か */
+  busy: boolean
+  /** 登録の途中かを知らせる (途中で閉じないように) */
+  onBusy: (busy: boolean) => void
+}) {
+  const client = useQueryClient()
+  const recorded = useRecordedProjects(open)
+  const titleId = useId()
+  const [added, setAdded] = useState<string | null>(null)
+  const register = useMutation({
+    mutationFn: (path: string) => api.addProject({ path }),
+    onMutate: () => {
+      setAdded(null)
+      onBusy(true)
+    },
+    onSuccess: (project) => setAdded(project.name),
+    onSettled: async () => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: keys.projects, exact: true }),
+        client.invalidateQueries({ queryKey: keys.recorded }),
+      ])
+      onBusy(false)
+    },
+  })
+  // 閉じたら次に開いたときのために結果を消去
+  const [wasOpen, setWasOpen] = useState(open)
+  if (open !== wasOpen) {
+    setWasOpen(open)
+    if (!open) {
+      setAdded(null)
+      register.reset()
+    }
+  }
+  const list = recorded.data
+  return (
+    <section aria-labelledby={titleId} className="space-y-2">
+      <h3 id={titleId} className="text-sm font-semibold">
+        ML-Pathfinder で書き出したプロジェクト
+      </h3>
+      {recorded.isPending && open && <Spinner />}
+      {recorded.error && <ErrorBox error={recorded.error} />}
+      {list?.error && <p className="text-xs text-critical-text">{list.error}</p>}
+      {list?.skipped.map((reason) => (
+        <p key={reason} className="text-xs text-warning-text">
+          {reason}
+        </p>
+      ))}
+      {list && list.projects.length === 0 && !list.error && (
+        <p className="text-xs text-ink-3">
+          登録していない書き出したプロジェクトはありません (置き場:{' '}
+          <span className="font-mono break-all">{list.root}</span>). 下の欄で場所を書いて探せます.
+        </p>
+      )}
+      {list && list.projects.length > 0 && (
+        <ul
+          aria-label="登録していない書き出したプロジェクト"
+          className="max-h-48 overflow-y-auto rounded-lg border border-line"
+        >
+          {list.projects.map((item) => (
+            <li
+              key={item.path}
+              className="flex items-center gap-3 border-b border-line px-3 py-2 last:border-b-0"
+            >
+              <ClipboardList className="size-4 shrink-0 text-accent" aria-hidden />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium">{item.name}</div>
+                <div className="truncate font-mono text-xs text-ink-3" title={item.path}>
+                  {item.path}
+                </div>
+                <div className="truncate text-xs text-ink-2">問題の設定: {item.problem}</div>
+              </div>
+              <Button
+                icon={Plus}
+                onClick={() => register.mutate(item.path)}
+                disabled={busy || register.isPending}
+                aria-label={`${item.name} を登録`}
+              >
+                登録
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {register.error != null && <ErrorBox error={register.error} />}
+      <p role="status" className="text-xs text-good-text">
+        {added ? `${added} を登録しました` : ''}
+      </p>
+    </section>
+  )
+}
+
+/**
+ * ML-Pathfinder で書き出したプロジェクトを選んで登録するか, ディレクトリを入力して,
+ * その下の ML-Found のプロジェクトをまとめて登録するダイアログ
+ */
 export function AddProjectDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -18,6 +123,9 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose: ()
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<unknown>(null)
+  // 一覧からの登録の途中か (途中で閉じないように)
+  const [registering, setRegistering] = useState(false)
+  const busy = adding || registering
 
   // open に合わせてネイティブのダイアログを開閉し, 開いたら入力欄に移る
   useEffect(() => {
@@ -95,11 +203,11 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose: ()
       aria-labelledby={titleId}
       onClose={() => {
         // 登録の途中で閉じられた場合は開き直し, 結果が分かるようにする
-        if (adding) dialogRef.current?.showModal()
+        if (busy) dialogRef.current?.showModal()
         else close()
       }}
       onCancel={(event) => {
-        if (adding) event.preventDefault()
+        if (busy) event.preventDefault()
       }}
       className="m-auto w-[min(640px,calc(100vw-2rem))] rounded-2xl border border-line bg-surface p-0 text-ink shadow-2xl backdrop:bg-black/40 backdrop:backdrop-blur-sm"
     >
@@ -110,7 +218,7 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose: ()
         <button
           type="button"
           onClick={() => dialogRef.current?.close()}
-          disabled={adding}
+          disabled={busy}
           className="rounded-lg p-1 text-ink-3 hover:bg-surface-2"
           aria-label="閉じる"
         >
@@ -119,6 +227,8 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose: ()
       </div>
 
       <div className="space-y-4 px-5 py-4">
+        <RecordedProjects open={open} busy={busy} onBusy={setRegistering} />
+        <hr className="border-line" />
         <p className="text-sm text-ink-2">
           ML-Found のプロジェクト (
           <code className="font-mono text-xs">configs/default/train.yaml</code> を持つディレクトリ)
@@ -138,7 +248,7 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose: ()
             type="submit"
             variant="primary"
             icon={FolderSearch}
-            disabled={scan.isPending || adding}
+            disabled={scan.isPending || busy}
           >
             探す
           </Button>
@@ -180,10 +290,10 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose: ()
           {candidates.length > 0 && `${addable.length} 件中 ${selected.size} 件を選択`}
         </span>
         <div className="flex gap-2">
-          <Button variant="ghost" onClick={() => dialogRef.current?.close()} disabled={adding}>
+          <Button variant="ghost" onClick={() => dialogRef.current?.close()} disabled={busy}>
             キャンセル
           </Button>
-          <Button variant="primary" onClick={onAdd} disabled={selected.size === 0 || adding}>
+          <Button variant="primary" onClick={onAdd} disabled={selected.size === 0 || busy}>
             {selected.size > 0 ? `${selected.size} 件を追加` : '追加'}
           </Button>
         </div>
