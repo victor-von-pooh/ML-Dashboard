@@ -494,7 +494,7 @@ def test_notes_corrupt_file_and_remove(
 
 def test_optimizers_from_config() -> None:
     """
-    run.json に optimizers の無い古い実験で, config の optimizers から
+    run.json に optimizers の無い実験で, config の optimizers から
     Optimizer ごとの情報を作ることを確かめる関数
 
     Parameters
@@ -590,7 +590,7 @@ def test_run_source(client: TestClient, project_dir: Path) -> None:
     base = f"/api/projects/{project_id}/runs/demo/2026-11-08/10-00-00"
     run_dir = project_dir / "outputs/demo/2026-11-08/10-00-00"
 
-    # 書いていない古い実験は None
+    # 書いていない実験は None
     assert client.get(base).json()["source"] is None
 
     # 書いた値を返し, 文字でない値は分からないもの

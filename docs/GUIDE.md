@@ -16,7 +16,7 @@ ML-Dashboard の使い方を, 画面の順に説明する. 各章の「やって
 9. [困ったとき](#9-困ったとき)
 10. [ML_tester のタスクで試す](#10-ml_tester-のタスクで試す)
 
-画面の図の多くは, `demo` に加えて ML_tester のタスク (10 章) を登録し, 多くの実験を流した環境で撮った. 実験の数や一覧の中身は, 手元とは違う.
+画面の図は `demo` の実験で, `make demo` の 4 つに, 6 章の「やってみる」のように学習率と隠れ層の大きさを変えた `spiral` の実験をいくつか足したもの. 方策と追加の依存の図は, 画面の通しのテストに置いた強化学習の実験 (`frontend/e2e/fixtures/rl/`) を `rl` として登録したもの.
 
 ## 準備
 
@@ -34,7 +34,7 @@ ML-Found の用語のうち, この手順書でよく使うもの.
 | `spiral_small` | 隠れ層の大きさを 4 に | 表現力の不足 |
 | `spiral_dropout` | Dropout を 0.3 にし, 学習用データを評価し直す (`trainer.eval_train`) | 学習中の値と評価し直した値の違い |
 
-画面の「default との差分」には, 変えた実験の名前 (`experiment.name`) も並ぶ.
+画面の「default との差分」には, 変えた実験の名前 (`experiment.name`) も並ぶ. `make demo` を実行するたびに実験が 4 つずつ増える. 消す場合は `demo/outputs/` を削除する.
 
 ## 1. 起動する
 
@@ -51,7 +51,13 @@ make serve
 > **トークンを毎回同じにする**
 > `ML_DASHBOARD_TOKEN=好きな文字列 make serve` で起動すると, `http://127.0.0.1:8765/api/auth?token=好きな文字列` を開けば入れる. ブラウザを閉じるまでは, `http://127.0.0.1:8765` だけで開ける.
 
-![プロジェクトがまだ無い最初の画面](images/guide/home.jpg)
+> **起動の設定**
+> - ポートは `make serve PORT=8800` のように変える. ビルド済みの場合は `cd backend && uv run ml-dashboard --port 8800` でも起動できる
+> - 既定では `127.0.0.1` だけで待ち受ける. `--host` で変えられるが, トークンを知る人は学習のコードを実行できるので勧めない
+> - 登録したプロジェクト, 画面で書き換えた config, 起動した学習の標準出力, メモとタグは `~/.ml-dashboard/` に保存する. 場所は環境変数 `ML_DASHBOARD_HOME` で変える. 全て消す場合は, ダッシュボードを止めてからこのディレクトリを削除する
+> - ダッシュボードを止めても, 画面から起動した学習は別のプロセスなので続く. 学習も止める場合は, 先にジョブの画面で止める
+
+![プロジェクトの画面. demo と rl を登録したところ](images/guide/home.jpg)
 
 ## 2. プロジェクトを登録する
 
@@ -61,11 +67,15 @@ make serve
 2. パスの欄に, ML-Dashboard を clone したディレクトリの中の `demo` のパスを入れて (`~` から書ける. 例: `~/ML-Dashboard/demo`) 「探す」を押す
 3. 選ばれた状態で「1 件を追加」を押すと, 左の「PROJECTS」に `demo` が並ぶ. 数字は実験の数
 
-親のディレクトリを入れると, 3 階層下までのプロジェクトが並び, まとめて登録できる (`outputs` や `data`, submodule の中は探さない). 図は ML_tester (10 章) のタスクを探した例 (タスクが 12 だった時のもの).
+親のディレクトリを入れると, 3 階層下までのプロジェクトが並び, まとめて登録できる (隠しディレクトリ, `outputs`, `data`, `node_modules` など, git の submodule の中は探さない. submodule の中のプロジェクトは, そのディレクトリを直接入れれば探せる). 登録済みのものには「登録済み」と出る.
 
-![ML_tester を探した結果](images/guide/scan.jpg)
+![clone したディレクトリ (~/ML-Dashboard) を探した結果. demo が見つかり, 選ばれている](images/guide/scan.jpg)
 
 一度登録したプロジェクトは, ダッシュボードを起動し直しても残る.
+
+> **自分のプロジェクトを使う**
+> ML-Found のプロジェクトの作り方 (`configs/default/train.yaml`, `configs/experiment/train.yaml`, 学習スクリプト) は, ML-Found の README の [使い方](https://github.com/victor-von-pooh/ML-Found#使い方) にある. 小さな雛形として `demo/` (`train.py` と `configs/`) を写して始めてもよい.
+> 画面から起動する学習には, 登録したときに見つかった仮想環境の Python を使う. プロジェクトのディレクトリから上に向かって (git のルートかホームの手前まで) `.venv` か `venv` の `bin/python` を探し, 無い場合はダッシュボード自身の Python を使う. その Python には ML-Found と学習に使うライブラリを入れておく. 仮想環境は登録の**前**に作る (後から作った場合は, 登録を外して追加し直すか, 場所を変える).
 
 > **ダッシュボードはプロジェクトに書き込まない**
 > 登録の情報, メモ, タグ, 画面で書き換えた config は `~/.ml-dashboard/` (`ML_DASHBOARD_HOME` で変えられる) に保存する. プロジェクトのディレクトリには, 学習を止めるときの `STOP` のファイル以外は何も書かない.
@@ -74,7 +84,7 @@ make serve
 
 左でプロジェクトを選ぶと, そのプロジェクトの実験が新しい順に並ぶ. `demo` を選ぶと, `make demo` で作った 4 つの実験が並ぶ.
 
-![ML_tester の 11_diffusion の実験の一覧の例](images/guide/runs.jpg)
+![demo の実験の一覧. 状態, default との差分, エポック, ベストの指標, 学習時間が並ぶ](images/guide/runs.jpg)
 
 - **上のカード**: 実験の数, ベストの実験, 最新の実験, 学習時間の合計
 - **default との差分**: その実験で default の config から変えた項目. 実験を見分ける一番の手がかりになる
@@ -88,16 +98,16 @@ make serve
 
 実験が ML-Found の `task.yaml` (何の実験か) を持つ場合は, その下に「何の実験か」の欄が出る. 受け持ち (予測する, 作るなど), 出力の意味, 正解の種類, 正解の出どころの説明, 作り方 (一から学習, 微調整など) と元にした実験か重みを並べる. 正解が今ある処理の出力の場合は, 「この処理との一致を測り, この処理を超えられない」を処理の名前と設定と一緒に目立たせる (指標が良くても, その処理より良いとは言えないため). 元にした実験がダッシュボードにあれば, 押すとその実験に移る. 新しい版の ML-Found が書いた `task.yaml` では, 正解の出どころを「分からない (新しい版)」と出す. `task.yaml` の無い実験には, この欄は出ない.
 
-![学習曲線のタブ](images/guide/run_charts.jpg)
+![spiral の実験の詳細. 上に何の実験かの欄, 下に学習曲線のタブ](images/guide/run_charts.jpg)
 
 | タブ | 見るもの |
 | --- | --- |
-| 学習曲線 | 指標ごとに学習用と検証用を重ねたグラフ. `train_eval/` (学習用データを推論モードで評価し直した値) があれば 3 本目として重なる. 「監視する指標」の印とベストのエポックの縦線が付く. 拡大と対数の縦軸. step ごとに学習率を変えた実験は, 学習率のグラフにエポックの中の変化も重なる |
+| 学習曲線 | 指標ごとに学習用と検証用を重ねたグラフ. `train_eval/` (学習用データを推論モードで評価し直した値) があれば 3 本目として重なる. 「監視する指標」の印とベストのエポックの縦線, Early Stopping の位置が付く (ベストモデルを選ばない `trainer.select_best: false` の実験はベストを出さない). 拡大と対数の縦軸. step ごとに学習率を変えた実験 (`lr_steps.csv` がある実験) は, 学習率のグラフにエポックの中の変化も重なる (名前付きの複数の Optimizer の実験は `lr_<名前>` のグラフごと) |
 | 評価 | ML-Found の `evaluations/` がある実験だけ. データ全体の評価の表 (列の順) と曲線 (横軸は評価の `x` の列. 縦軸は 1 つで, 列を選んで描く) を, 分割, 説明, 比べる相手, 評価した重みのエポックと一緒に見る. 守る指標の表は「守る指標」の印を付けて先頭に並べる |
 | 見本 | ML-Found の `samples/index.json` に見本がある実験だけ. 見本の名前ごとに, エポック (学習の後は「学習の後」) を選んで見る. 画像は画像, 文は文, 音は再生, 点群は上から見た図 (ascii の PLY の場合) とダウンロード, その他のファイルはダウンロード. 説明と分割を添える |
 | 画像の推移 | `samples/epoch_010.png` や `samples/<名前>/epoch_0005.png` のように番号の付いた画像を, スライダーと再生で順に見る (生成モデルのサンプルなど). 見本の画像のエポックごとの並びもここに出る |
 | config | default との差分と, config 全体 (検索できる). ML-Found が補った値 (`auto` や warmup の回数) もここに出る |
-| モデル | モデルの構造, Optimizer, Scheduler と, パラメータの一覧 (名前, 層, 形, 要素数, 学習するか, 重みの共有). 名前付きの Optimizer (`optimizers`) の実験では, 名前ごとの Optimizer, 受け持つ部分, Scheduler の表も出る. パラメータの一覧は, 古い版の ML-Found で流した実験には出ない. その場合は流し直す |
+| モデル | モデルの構造, Optimizer, Scheduler と, パラメータの一覧 (名前, 層, 形, 要素数, 学習するか, 重みの共有). 名前付きの Optimizer (`optimizers`) の実験では, 名前ごとの Optimizer, 受け持つ部分, Scheduler の表も出る. パラメータの一覧は, `model_summary.csv` の無い実験には出ない. その場合は今の ML-Found で流し直す |
 | 環境 | プロジェクトと ML-Found の git の情報, OS, PyTorch, パッケージ, 学習時の未コミットの変更 |
 | ログ | `train.log` を警告とエラーで絞り込み, 検索する |
 | 方策 | ML-Found の強化学習で方策の一式 (`policy/policy.json`) を書き出した実験だけ. 守り (止める条件, 行動の範囲, 選んでよい行動), 外れたときの動き (止める, 元の制御に戻す, 決めた行動), 観測と行動の空間, 重みの sha256 が一致するかを見る. 読めない一式 (新しい版, 壊れたファイル) は中身を出さずに理由だけを出す |
@@ -105,16 +115,26 @@ make serve
 
 <table>
   <tr>
+    <td><img src="images/evaluations.png" alt="評価のタブ: 守る指標の表と, しきい値ごとの曲線"></td>
+    <td><img src="images/samples.png" alt="見本のタブ: 点群を上から見た図と, 予測の要約の文"></td>
+  </tr>
+  <tr>
+    <td>評価 (<code>spiral</code>). クラスごとの正解率の表に「守る指標」の印が付き, 先頭に並ぶ</td>
+    <td>見本 (<code>spiral</code>). 検証用の点の点群と, 学習の後の予測の要約の文</td>
+  </tr>
+  <tr>
     <td><img src="images/guide/run_images.jpg" alt="画像の推移のタブ"></td>
     <td><img src="images/guide/run_config.jpg" alt="config のタブ"></td>
   </tr>
   <tr>
-    <td>画像の推移 (ML_tester の 11_diffusion の例). スライダーでエポック 10, 20, 30 の生成画像を見比べる</td>
-    <td>config (ML_tester の 11_diffusion の例). この実験は default から <code>ema.eval</code> だけを変えている</td>
+    <td>画像の推移 (<code>spiral</code>). スライダーと再生で, エポックごとの決定境界の画像を順に見る</td>
+    <td>config (<code>spiral_sgd</code>). 元にした default と experiment の config, default から変えた 4 項目と config 全体</td>
   </tr>
 </table>
 
 強化学習 (ML-Found の `ml_found.rl`) の実験も同じ画面で見る. エピソードごとの報酬の和 (`reward`), 歩数 (`length`), 安全の違反の数 (`violations`), 成功の割合 (`success`) は, 他の指標と同じく学習曲線に出る. 監視する指標は `valid/reward` (大きいほど良い).
+
+![方策のタブ: 守り, 外れたときの動き, 観測と行動の範囲, 重みの sha256](images/policy.png)
 
 > **方策を実機で動かすのは道具の外**
 > ダッシュボードは方策を動かさず, 重みも配らない. 方策を使ってよいか (配備) と守りの範囲は, 方策のタブで中身を確かめたうえで人が承認する.
@@ -144,15 +164,15 @@ make serve
 
 ## 5. 実験を比べる
 
-一覧で 2 つ以上の実験の行のチェックを入れ, 上の「比較 (n)」を押す. 8 つまで選べる. 図は ML_tester の 11 (拡散モデル) の 3 つの実験を比べた例.
+一覧で 2 つ以上の実験の行のチェックを入れ, 上の「比較 (n)」を押す. 8 つまで選べる. 図は `demo` の `spiral`, `spiral_sgd`, `spiral_small` を比べた例 (下の「やってみる 4」).
 
-![11 の 3 つの実験の比較](images/guide/compare.jpg)
+![demo の 3 つの実験の比較](images/compare.png)
 
-学習曲線は指標ごとに実験を重ね, 同じエポックの画像 (生成画像や決定境界など) を横に並べ, config の違う項目だけを表にする.
+学習曲線は指標ごとに実験を重ね, 同じエポックの画像 (生成画像や決定境界など) を横に並べ, config の違う項目だけを表にする. その番号の画像が無い実験は, それより前で最も近い番号の画像を出す.
 
 - 検証用がある指標は, 既定では検証用だけを出す. 「検証用がある指標も学習用を表示する」で学習用も出る
 - 全てのエポックで同じ値の実験は線が完全に重なり, 下の線が見えなくなるので, グラフの下に「線が重なっています」と実験の名前を出す
-- config の違いの表の `—` は, その実験の config にその項目が無いことを表す (Optimizer を変えて引数の種類が違う場合 (Adam には `momentum` が無いなど) や, 古い版の ML-Found で流した場合)
+- config の違いの表の `—` は, その実験の config にその項目が無いことを表す (Optimizer を変えて引数の種類が違う場合 (Adam には `momentum` が無いなど) や, その項目を書かない版の ML-Found で流した場合)
 
 ### やってみる 4: Optimizer とモデルの大きさの違いを比べる (5 分)
 
@@ -166,30 +186,31 @@ make serve
 
 一覧の「分析」から開く. **同じ名前の実験の中で**値を変えた config の項目と, 結果 (ベストや最後の指標) の関係を散布図と値ごとの表で見る. 値を変えた実験が多いほど役に立つ. `make demo` の 4 つの実験は名前が全て違うので, そのままでは比べる項目が出ない (下の「やってみる」で, 同じ名前の実験を足す).
 
-![ML_tester の 01_tabular_cls の分析の例](images/guide/analysis.jpg)
+![spiral の分析. 隠れ層の大きさを 2 から 64 まで変えた実験と, ベストの検証用の正解率の関係](images/guide/analysis.jpg)
 
 - 横軸に config の項目, 縦軸に結果を選ぶ. 点を押すとその実験が開く
 - 下の「結果への影響が大きい項目」は, 値ごとの最良の差が大きい順 (`一部の実験だけ` と `記録や環境` の項目は後ろに回す). 他の項目も同時に変えた実験が混ざるので目安
-- 項目の横の `一部の実験だけ` は, その項目を持たない実験があることを表す (Optimizer の種類で引数が違う場合や, 古い版の ML-Found で流したもの). `記録や環境` は結果に関係しない設定 (デバイス, 保存の設定など)
+- 項目の横の `一部の実験だけ` は, その項目を持たない実験があることを表す (Optimizer の種類で引数が違う場合や, その項目を書かない版の ML-Found で流したもの). `記録や環境` は結果に関係しない設定 (デバイス, 保存の設定など)
 
 ### やってみる 5: 学習率と隠れ層の大きさの影響を見る (3 分)
 
-- [ ] ML-Dashboard を clone したディレクトリで, 次の 2 つを流し, `spiral` の名前の実験を足す (それぞれ数秒). 7 章の画面から, フォームで値を変えて起動してもよい
+- [ ] ML-Dashboard を clone したディレクトリで, 次の 3 つを流し, `spiral` の名前の実験を足す (それぞれ数秒). 7 章の画面から, フォームで値を変えて起動してもよい
 
 ```bash
 cd backend
 uv run python ../demo/train.py optimizer.params.lr=0.003
+uv run python ../demo/train.py model.hidden_dim=2
 uv run python ../demo/train.py model.hidden_dim=16
 ```
 
 - [ ] `demo` の一覧の「分析」を開き, 実験の名前に `spiral` を選ぶ
-- [ ] `optimizer.params.lr` と `model.hidden_dim` が 2 通りずつ並び, 散布図と値ごとの表, 「結果への影響が大きい項目」が出ることを見る
+- [ ] 横軸に `model.hidden_dim` を選び, 隠れ層が 2 の実験だけ正解率が大きく下がることを見る. `optimizer.params.lr` も選べ, 散布図と値ごとの表, 「結果への影響が大きい項目」が出ることを見る
 
 ## 7. 画面から学習を起動する
 
-一覧の「学習を起動」から開く. 学習のスクリプトと experiment の config を選び, フォームか YAML の欄で書き換えてから, ML-Found で確かめて起動する.
+一覧の「学習を起動」から開く. 学習のスクリプトと experiment の config を選び, フォームか YAML の欄で書き換えてから, ML-Found で確かめて起動する. `demo` で試す場合は, experiment の config に `configs/experiment/examples/quick.yaml` (3 エポック) を選ぶと手軽.
 
-![学習の起動の画面](images/guide/launch.jpg)
+![学習の起動の画面. 左にスクリプトと config の選択とフォーム, 右に YAML の欄](images/guide/launch.jpg)
 
 1. **学習のスクリプト** と **experiment の config** を選ぶ. 学習は, プロジェクトの Python (登録したときに, プロジェクトのディレクトリから上に向かって探して見つかった仮想環境. 見つからなければダッシュボード自身の Python で, `demo` はこれ) で別のプロセスとして動く
 2. **フォーム** でエポック数, 検証の間隔, Optimizer と Scheduler とその引数を変える. 検証の間隔を N にすると, N で割り切れるエポックと予定の最後のエポックだけ検証し, ベストモデルもその中から選ぶ (Early Stopping と ReduceLROnPlateau の patience は検証の回数で数える). 重い評価を毎エポック行わない場合に使い, 学習曲線では検証の値を点で示して間を線でつなぐ. 引数には ML-Found の登録簿の説明と範囲が付き, `*` は必須. 数の欄には `auto` とも書ける (学習全体のステップ数で補う引数だけ). フォームで変えた値は YAML の欄にも書き込まれる
@@ -203,7 +224,7 @@ uv run python ../demo/train.py model.hidden_dim=16
 <table>
   <tr>
     <td><img src="images/guide/launch_error.jpg" alt="学習率を負にした場合の誤り"></td>
-    <td><img src="images/guide/launch_notes.jpg" alt="auto と warmup を書いた場合のフォーム"></td>
+    <td><img src="images/launch.png" alt="auto と warmup を書いた場合のフォーム"></td>
   </tr>
   <tr>
     <td>誤りの例 (<code>demo</code>). YAML の欄に <code>lr: -0.1</code> を書いて確かめると「lr は 0.0 以上 (今は -0.1)」と出て, フォームの lr の欄も赤くなる</td>
@@ -211,12 +232,17 @@ uv run python ../demo/train.py model.hidden_dim=16
   </tr>
 </table>
 
+> **学習のスクリプトと default の config**
+> 学習のスクリプトは, プロジェクトのディレクトリの `train` で始まる Python のファイルで, `--experiment <config のパス>` を受け取るもの (ML-Found の例と同じ形. ML-Found の `load_project_config` を使うと, これと「項目=値」の上書きを受け取れる). 起動の前の確認は, スクリプトの本文に `configs/default/<名前>.yaml` (`.yml` も) が 1 種類だけ書かれていればその config を元にする. 無ければ名前で選び, `train_hf.py` なら `configs/default/hf.yaml`, 次に `train_hf.yaml`, どちらも無ければ `train.yaml` を元にする. 元にした config は確かめた結果に出る. スクリプトを選ぶと, 名前で対応する experiment の config (`train_hf.py` なら `configs/experiment/hf.yaml`) があれば, それに切り替わる. 画面からの起動では `experiment.output_dir` は変えられない.
+
 > **GPU を使う学習は 1 つずつ**
 > 画面から起動した学習も, config で GPU を選んでいれば, 端末から流す学習と同じく GPU を使う. 重い学習を同時に 2 つ動かすと, どちらも遅くなる. 試すときは, CPU で数秒で終わる `demo` が手軽.
 
 ### 追加の依存
 
 強化学習の環境 (Gymnasium), MuJoCo, ROS 2, CUDA のように, ML-Found の本体に含めない機能は, 要るときだけ入れる. 実験の一覧か学習の起動の画面の「追加の依存」で, 機能ごとに入っているかと入れ方をカードで見られる (確かめるのはプロジェクトの Python). pip で入るものはコマンドをコピーして, プロジェクトの Python の環境で実行する. pip で入らないもの (ROS 2, CUDA) は公式の手順へのリンクが出る. 入れた後は「確かめ直す」を押す.
+
+![追加の依存の画面. 4 つの機能のカードに, 足りないものと次の一手が出る](images/requirements.png)
 
 学習に要る機能は, default の config の一番上に書く.
 
@@ -235,7 +261,7 @@ requires: [rl]
 - 画面で config を書き換えて起動した学習の実験は, そのとき渡した config の中身が「実験 … の config」として選ばれる
 - 起動の前の確認は, 実験が元にした default の config で行う (スクリプトを選び直すと, いつもどおりスクリプトから選ぶ)
 - config のファイルを実験の後に書き換えた場合は, 今の中身が入る. その場合は画面の上にお知らせが出る
-- `source.yaml` の無い古い実験, スクリプトや config のファイルが無くなった実験では, ボタンを押せず, 理由が出る
+- `source.yaml` の無い実験, スクリプトや config のファイルが無くなった実験では, ボタンを押せず, 理由が出る
 
 ### やってみる 6: 確かめる, 起動する (5 分)
 
@@ -266,7 +292,7 @@ scheduler:
 
 画面から起動した学習は「ジョブ」に並ぶ. エポックとバッチの進捗バー, 残り時間の目安, 標準出力の末尾が見られ, 止め方を 3 つから選べる.
 
-![実行中のジョブ](images/guide/job.jpg)
+![実行中のジョブ. エポックとバッチの進捗バー, 残り時間の目安, 3 つの止め方](images/jobs.png)
 
 学習中の実験は, 一覧と学習曲線も自動で更新される.
 
@@ -276,12 +302,12 @@ scheduler:
 | エポックの途中で止める | 次のバッチを終えたところ (多くは数秒以内) で止め, 途中のエポックを捨てる | 最後に終えたエポックの状態 (重み, Optimizer, Scheduler, 乱数) に戻して結果を保存する |
 | すぐに止める | プロセスに割り込む (Ctrl-C と同じ) | 今のエポックの結果は残らない. 状態は「中断」 |
 
-![エポックの区切りで止めたジョブ](images/guide/job_stopped.jpg)
+![エポックの区切りで止めたジョブ. 状態は「中断」で, 同じ設定でもう一度起動できる](images/guide/job_stopped.jpg)
 
 ### やってみる 7: 3 つの止め方を試す (5 分)
 
-- [ ] `demo` で「学習を起動」を開き, エポック数を `1000` にして起動する (CPU で 30 秒ほど). ジョブの画面で, 途中で「エポックの区切りで止める」を押す. 実験の一覧で状態が「中断」になることを見る
-- [ ] もう一度エポック数を `1000` にして起動し, 「エポックの途中で止める」を押す (確認が出たら OK). 実験の「ログ」に「中断の要求で学習を止めました」と出ることを見る. デモの学習は 1 エポックがとても短い (数十ミリ秒) ので, 多くはエポックの区切りが先に来て, 区切りで止めた場合と同じ結果になる. 1 エポックが長い学習で押すと, 途中のエポックを捨てて「状態はエポック … のものに戻しました」と出る
+- [ ] `demo` で「学習を起動」を開き, エポック数を `1000` にして起動する (CPU で数分かかる). ジョブの画面で, 途中で「エポックの区切りで止める」を押す. 実験の一覧で状態が「中断」になることを見る
+- [ ] もう一度エポック数を `1000` にして起動し, 「エポックの途中で止める」を押す (確認が出たら OK). 実験の「ログ」に「中断の要求で学習を止めました」と出ることを見る. デモの学習は 1 エポックが短いので, 多くはエポックの区切りが先に来て, 区切りで止めた場合と同じ結果になる. 1 エポックが長い学習で押すと, 途中のエポックを捨てて「状態はエポック … のものに戻しました」と出る
 - [ ] もう一度起動して「すぐに止める」を押し, 標準出力の末尾を見る
 
 ## 9. 困ったとき
@@ -307,10 +333,10 @@ scheduler:
 | 試すこと | コマンド | 時間 |
 | --- | --- | --- |
 | 学習用データの評価し直し (4 章) | `python tasks/03_imbalanced_cls/train.py --experiment configs/experiment/examples/eval_train.yaml` | 数秒 |
-| 外部ライブラリの層の重み (4 章) | `python tasks/12_quantum_nn/train.py` | 約 2 分 (CPU) |
-| EMA で検証した効果の比較 (5 章) | `python tasks/11_diffusion/train.py` と, `--experiment configs/experiment/examples/no_ema.yaml`, `--experiment configs/experiment/examples/ema_eval.yaml` を付けたもの | それぞれ約 35 分 (GPU) |
+| 外部ライブラリの層の重み (4 章) | `python tasks/12_quantum_nn/train.py` | 数分 (CPU) |
+| EMA で検証した効果の比較 (5 章) | `python tasks/11_diffusion/train.py` と, `--experiment configs/experiment/examples/no_ema.yaml`, `--experiment configs/experiment/examples/ema_eval.yaml` を付けたもの | それぞれ数十分 (GPU) |
 
-時間は Apple Silicon の Mac で 1 つずつ流した場合の目安. 11 は GPU (CUDA か Apple Silicon の mps) が無いと, かなり長くかかる. 02 と 08 から 11 は, 最初の学習で MNIST などのデータを取得するのでネットワークが要る.
+11 は GPU (CUDA か Apple Silicon の mps) が無いと, かなり長くかかる. 画像のタスクなどは, 最初の学習で MNIST などのデータを取得するのでネットワークが要る.
 
-- **外部ライブラリの層の重み**: `12_quantum_nn` の default の実験の「モデル」のタブで, モデルの構造では `TorchConnector()` としか出ない層が, パラメータの一覧では重み 6 個として出る. 2 行目に「qnn.qnn_est.weight と共有」と出て, 同じ重みを 2 つの名前で持っているので, 学習するパラメータ数は 6 (2 回は数えない)
+- **外部ライブラリの層の重み**: `12_quantum_nn` の default の実験の「モデル」のタブで, モデルの構造では `TorchConnector()` としか出ない層が, パラメータの一覧では重みとして出る. 2 行目に「qnn.qnn_est.weight と共有」と出て, 同じ重みを 2 つの名前で持っているので, 学習するパラメータ数には 1 回だけ数える
 - **EMA で検証した効果**: `11_diffusion` の 3 つの実験 (差分が `なし`, `ema.use=false`, `ema.eval=true`) を比べると, `valid/loss` のグラフで, EMA の重みで検証した実験は最初が高く, その後はなめらかに下がる (縦軸を対数にすると分かりやすい). default は EMA を生成画像にだけ使い, 検証は学習中の重みで行うので, `ema.use=false` と線が重なる

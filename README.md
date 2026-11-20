@@ -1,101 +1,73 @@
 # ML-Dashboard
 
-[ML-Found](https://github.com/victor-von-pooh/ML-Found) で行った実験の結果を確かめるための, ローカルで動く Web アプリ.
+「機械学習を全て GUI 上で行う」うちの **モデルの学習・評価** の段階を受け持つ, ローカルで動く Web アプリ. 学習のライブラリ [ML-Found](https://github.com/victor-von-pooh/ML-Found) の実験を一覧にして比べ, 画面から学習を起動して止める.
 
-ML-Found が実験ごとに残すディレクトリ (`history.csv`, `config.yaml`, `train.log` など) をそのまま読むので, 学習のコードに手を加えなくても, 既にある実験を一覧にして比べられる.
+ML-Found が実験ごとに残すディレクトリ (`history.csv`, `config.yaml`, `train.log` など) をそのまま読むので, 学習のコードに手を加えなくても, 既にある実験を見られる.
 
-![実験の比較: 学習曲線, 同じエポックの決定境界の画像, config の違い](docs/images/compare.png)
+![実験の比較: 3 つの実験の学習曲線を重ね, 同じエポックの決定境界の画像と config の違いを並べる](docs/images/compare.png)
+
+**実験の比較**. 選んだ実験の学習曲線を指標ごとに重ね, 同じエポックの画像と config の違う項目を並べる.
 
 <table>
   <tr>
-    <td><img src="docs/images/run_images.png" alt="実験の詳細: エポックごとの決定境界の画像の推移"></td>
-    <td><img src="docs/images/analysis_dark.png" alt="ハイパーパラメータの分析 (ダークモード): 学習率と検証用の正解率の関係"></td>
+    <td width="50%"><img src="docs/images/evaluations.png" alt="評価のタブ: 守る指標の印が付いたクラスごとの正解率の表と, しきい値ごとの適合率と再現率の曲線"></td>
+    <td width="50%"><img src="docs/images/samples.png" alt="見本のタブ: 検証用の点を上から見た図と, 学習の後の予測の要約の文"></td>
   </tr>
   <tr>
-    <td colspan="2"><img src="docs/images/jobs.png" alt="ジョブ: 学習の進み具合と, 3 種類の止め方"></td>
+    <td><b>評価</b>. 何の実験か (受け持ち, 正解の出どころ) と, データ全体の評価の表と曲線. 守る指標の表を先頭に置く</td>
+    <td><b>見本</b>. 名前ごとに, エポックを選んで画像, 文, 音, 点群を見る</td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><img src="docs/images/launch_form.png" width="50%" alt="学習の起動: ML-Found の登録簿から作るフォームと, 範囲の外の値の誤り, ML-Found が補う値のお知らせ"></td>
+    <td><img src="docs/images/launch.png" alt="学習の起動: ML-Found の登録簿から作るフォームと YAML の欄, ML-Found が補う値のお知らせ"></td>
+    <td><img src="docs/images/jobs.png" alt="ジョブ: エポックとバッチの進捗バー, 残り時間の目安, 3 種類の止め方, 標準出力の末尾"></td>
+  </tr>
+  <tr>
+    <td><b>学習の起動</b>. フォームか YAML で config を書き換え, ML-Found で確かめてから起動する</td>
+    <td><b>ジョブ</b>. 進み具合を見て, エポックの区切り, エポックの途中, すぐの 3 通りで止める</td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/policy.png" alt="方策のタブ: 強化学習の方策の一式の守り, 外れたときの動き, 観測と行動の範囲, 重みの sha256 の一致"></td>
+    <td><img src="docs/images/requirements.png" alt="追加の依存: 強化学習, MuJoCo, ROS 2, CUDA が入っているかと入れ方のカード"></td>
+  </tr>
+  <tr>
+    <td><b>方策</b>. 強化学習の方策の守りと重みの sha256 を確かめる. 重みは配らず, 使ってよいかは人が承認する</td>
+    <td><b>追加の依存</b>. 本体に含めない機能が入っているかと入れ方. 足りなければ学習を起動できない</td>
   </tr>
 </table>
 
-画面の例は `demo/` のプロジェクト (2 本の渦巻きを分ける小さなモデル) の実験と, その学習の起動. 比較と画像の推移は `make demo` の実験で, 分析の画面はそれに加えて学習率と隠れ層の大きさを変えて `spiral` を何回か学習したもの.
+図は同梱の `demo/` (2 本の渦巻きを分ける小さなモデル) の実験. 方策と追加の依存の図は, 画面の通しのテストに置いた強化学習の実験 (`frontend/e2e/fixtures/rl/`. 学習せずに置いたもの).
 
 ## できること
 
-- **プロジェクト**: ML-Found を使っているディレクトリ (`configs/default/train.yaml` を持つもの) を登録する. 親のディレクトリを指定すると, 3 階層下までのプロジェクトをまとめて探して登録できる (隠しディレクトリ, `outputs`, `data`, `node_modules` など, git の submodule の中は探さない. submodule の中のプロジェクトは, そのディレクトリを直接指定すれば探せる)
-- **実験の一覧**: 状態, default との差分, エポック数, ベストの指標, 学習時間を表で見る. config の差分の文字で絞り込み, 並べ替える
-- **実験の詳細**
-    - 学習曲線: 学習用と検証用 (ML-Found の `trainer.eval_train` で評価し直した学習用の値も) を重ねたグラフ. ベストのエポックと Early Stopping の位置を示す (ベストモデルを選ばない設定 `trainer.select_best: false` の実験は, ベストを出さない). 拡大と対数の縦軸に対応. step ごとに学習率を変えた実験 (ML-Found の `lr_steps.csv` がある実験) は, 学習率のグラフにエポックの中の変化も重ねる (名前付きの複数の Optimizer の実験は, `lr_<名前>` のグラフごと)
-    - config: default との差分と, config 全体の検索
-    - モデル: モデルの構造, Optimizer, Scheduler, パラメータの一覧 (名前, 層, 形, 要素数, 学習するか, 重みの共有)
-    - 環境: git の情報, OS, PyTorch, パッケージの一覧, 学習時の未コミットの変更
-    - ログ: `train.log` を警告とエラーで絞り込み, 検索する
-    - 何の実験か: ML-Found の `task.yaml` がある実験では, 受け持ち, 出力の意味, 正解の種類と出どころ (正解が今ある処理の出力なら「この処理との一致を測り, この処理を超えられない」), 作り方と元にした実験 (ダッシュボードにあればリンク) か重みを出す
-    - 評価: ML-Found の `evaluations/` の表と曲線を, 分割, 説明, 比べる相手, エポックと一緒に見る. 守る指標の表は目立たせて先頭に
-    - 見本: ML-Found の `samples/` の見本を名前ごとに, エポックを選んで見る (画像, 文, 音, 点群の上から見た図とダウンロード)
-    - 方策: ML-Found の強化学習で方策の一式 (`policy/policy.json`) を書き出した実験では, 守り (止める条件, 行動の範囲, 選んでよい行動), 外れたときの動き, 観測と行動の空間, 重みの sha256 が一致するかを見る. 方策の一式を持つ実験の重み (`final_model.pt` なども) は配らない. 実機での実行は道具の外で, 方策を使ってよいかと守りの範囲は人が承認する. 強化学習の報酬, 歩数, 違反, 成功は他の指標と同じく学習曲線に出る
-    - 画像の推移: `samples/epoch_010.png` や `samples/<名前>/epoch_0005.png` のように番号の付いた画像を, スライダーと再生でエポックの順に見る (生成モデルのサンプルなど)
-    - ファイル: 学習曲線や生成画像の一覧と, ファイルのダウンロード
-    - この設定でもう一度起動: ML-Found が実験に残す起動のしかた (`source.yaml`) から, 同じスクリプト, experiment の config, 「項目=値」の上書きを入れた学習の起動の画面を開く. 起動の前の確認は実験が元にした default の config で行う. `source.yaml` の無い古い実験や, スクリプトや config のファイルが無くなった実験では押せず, 理由を表示する
-- **メモとタグと星**: 実験にメモ, タグ, 星を付け, 一覧で星とタグで絞り込む. メモとタグの文字でも検索できる. ダッシュボードのデータの置き場に保存し, 実験のディレクトリには書き込まない
-- **比較**: 選んだ実験 (8 つまで) の学習曲線を指標ごとに重ね, config の違う項目を並べる. 番号の付いた画像があれば, 同じエポックの画像を実験ごとに横に並べる (その番号が無い実験は, それより前で最も近い番号の画像)
-- **ハイパーパラメータの分析**: 同じ名前の実験で値を変えた config の項目と, ベストや最後の指標の関係を散布図と値ごとの表で見る. 値を変えたときに結果が大きく動いた項目の順位も出す
-- **学習の起動**: 学習のスクリプトと experiment の config を選び, フォーム (エポック数, 検証の間隔 (ML-Found の `trainer.valid_every_n_epochs`), Optimizer と Scheduler とその引数. ML-Found の登録簿から説明と範囲付きで表示. ML-Found の `optimizers` で名前付きの複数の Optimizer を使う場合は, 名前ごとの欄) か YAML の欄で書き換えて, プロジェクトの Python で学習を始める. 起動の前に ML-Found で config を確かめ, 誤り (存在しない項目, 範囲の外の値など. 値の誤りはフォームにも表示), 注意 (学習率が下がりきらない, データなどのパスのファイルが無いなど), お知らせ (ML-Found が学習を始めるときに補う Scheduler の引数など) を表示する. 画面からの起動では `experiment.output_dir` は変えられない. 学習のスクリプトは, プロジェクトのディレクトリの `train` で始まる Python のファイルで, `--experiment <config のパス>` を受け取るもの (ML-Found の例と同じ形. ML-Found の `load_project_config` を使うと, これと「項目=値」の上書きを受け取れる). スクリプトごとに default の config が違う場合は, 名前で対応させる
-    - 起動の前の確認は, スクリプトの本文に `configs/default/<名前>.yaml` (`.yml` も) が 1 種類だけ書かれていればその config を元にする. 無ければ名前で選び, `train_hf.py` なら `configs/default/hf.yaml`, 次に `train_hf.yaml`, どちらも無ければ `train.yaml` を元にする. 元にした config は確かめた結果に表示する
-    - スクリプトを選ぶと, 名前で対応する experiment の config (`configs/experiment/hf.yaml` など. `train.py` なら `train.yaml`) があれば, それに切り替える. 無ければ選んでいる config のまま
-- **追加の依存**: ML-Found の本体に含めない機能 (強化学習の環境, MuJoCo, ROS 2, CUDA) が, プロジェクトの Python に入っているかと入れ方 (pip のコマンドとコピーのボタン, 公式の手順) をカードで見る. config の一番上に `requires: [rl]` のように要る機能を書くと, 足りないときに学習の起動の画面で開始のボタンが押せなくなり, 次の一手が出る
-- **ジョブ**: 起動した学習のエポックとバッチの進捗バー, 残り時間の目安, 標準出力を見る. エポックの区切りで止めるか, エポックの途中で止めて最後に終えたエポックに戻すか, すぐに止める (Ctrl-C と同じ). 学習中の実験は一覧と学習曲線も自動で更新する
-- ライトとダークの表示
+- **プロジェクト**: ML-Found を使うディレクトリを登録する. 親のディレクトリからまとめて探せる
+- **実験の一覧と詳細**: 状態, default との差分, ベストの指標で並べ, 絞り込む. 詳細では学習曲線, 何の実験か, 評価, 見本, 方策, 画像の推移, config, モデル, 環境, ログ, ファイルを見る. メモ, タグ, 星も付けられる
+- **比較と分析**: 8 つまでの実験を重ねて比べる. 同じ名前の実験で値を変えた config の項目と結果の関係を見る
+- **学習の起動とジョブ**: config を書き換えて ML-Found で確かめてから起動し, 進み具合を見て止める. 実験の設定でもう一度起動できる
+- **追加の依存**: 強化学習の環境, MuJoCo, ROS 2, CUDA が入っているかと入れ方を見る
 
-進み具合の表示と中断は, ML-Found が実験のディレクトリに書く `run.json` と `progress.json`, `STOP` のファイルを使う (ML-Found の README の「学習の外からの確認と中断」). 設計の方針は [docs/DESIGN.md](docs/DESIGN.md) を参照.
+画面ごとの使い方は [docs/GUIDE.md](docs/GUIDE.md) (`demo` だけで試せる), 設計の方針は [docs/DESIGN.md](docs/DESIGN.md) にまとめた.
 
-## 必要なもの
+## 使い方
+
+### 必要なもの
 
 - [uv](https://docs.astral.sh/uv/) (Python は uv が用意する. 3.10 以上で, 3.12 と 3.13 で確かめている). ML-Found の依存の PyTorch も入るので, 最初の `make setup` は数 GB を取得し, 回線によって数分かかる
 - Node.js 24 以上と [pnpm](https://pnpm.io/) 11 以上 (`corepack enable` で `package.json` の版が入る)
 - 画面の通しのテスト (`make e2e`) だけは, 手元の Google Chrome を使う (CI では Playwright の Chromium)
 
-## 導入と起動
+### 導入と起動
 
 ```bash
 git clone --recursive https://github.com/victor-von-pooh/ML-Dashboard.git
 cd ML-Dashboard
 make setup   # submodule, Python と Node.js の依存
-make serve   # 画面をビルドして http://127.0.0.1:8765 で起動 (端末を占有する. Ctrl-C で止める)
+make demo    # demo のプロジェクトで config を変えた 4 つの実験を作る (CPU で十数秒)
+make serve   # 画面をビルドして http://127.0.0.1:8765 で起動 (Ctrl-C で止める)
 ```
 
-起動すると, 画面のビルドのログの後に, 起動ごとのトークンが付いた URL (`http://127.0.0.1:8765/api/auth?token=...`) が表示されるので, それを開く. ダッシュボードは学習のプロセスを起動できるため, 同じ端末の他の利用者や他のサイトから使えないように, トークンを Cookie に保存したブラウザからだけ API を受け付ける. 毎回同じトークンにする場合は, 環境変数 `ML_DASHBOARD_TOKEN` で指定する.
+起動すると, 起動ごとのトークンが付いた URL (`http://127.0.0.1:8765/api/auth?token=...`) が表示されるので, それを開く. ダッシュボードは学習のプロセスを起動できるため, トークンを Cookie に保存したブラウザからだけ API を受け付ける.
 
-開いたら, 画面の「プロジェクトを追加」から ML-Found を使っているディレクトリを, 絶対パスか `~` からのパスで登録する.
-
-ダッシュボードを止めても, 画面から起動した学習は別のプロセスなので止まらずに続く. 学習も止める場合は, 先にジョブの画面で止める.
-
-画面ごとの使い方は [docs/GUIDE.md](docs/GUIDE.md) にまとめた (`demo` だけで試せる).
-
-### デモのプロジェクト
-
-手元に ML-Found のプロジェクトが無い場合は, `demo/` で試せる. 2 本の渦巻きを分ける小さなモデルを CPU で数秒ずつ学習し, エポックごとの決定境界の画像 (`boundary/epoch_001.png` など) も保存する.
-
-1. `make serve` の前か別の端末で `make demo` を実行し, config を変えた 4 つの実験 (Adam, SGD, 小さなモデル, Dropout と学習用データの評価し直し) を作る
-2. 画面の「プロジェクトを追加」で, clone したディレクトリの中の `demo` を絶対パスか `~` からのパス (例: `~/ML-Dashboard/demo`) で登録する
-3. 学習曲線, 決定境界の画像の推移, 実験の比較を確かめる. 画面から学習を起動する場合は `configs/experiment/examples/quick.yaml` (3 エポック) が手軽
-
-`make demo` を実行するたびに実験が 4 つずつ増える. 消す場合は `demo/outputs/` を削除する.
-
-### 自分のプロジェクトを使う
-
-ML-Found のプロジェクトの作り方 (`configs/default/train.yaml`, `configs/experiment/train.yaml`, 学習スクリプト) は, ML-Found の README の [使い方](https://github.com/victor-von-pooh/ML-Found#使い方) にある. 小さな雛形として `demo/` (`train.py` と `configs/`) を写して始めてもよい.
-
-画面から起動する学習には, 登録したときに見つかった仮想環境の Python を使う. プロジェクトのディレクトリから上に向かって (git のルートかホームの手前まで) `.venv` か `venv` の `bin/python` を探し, 無い場合はダッシュボード自身の Python を使う. その Python には ML-Found と学習に使うライブラリを入れておく. 仮想環境は登録の**前**に作る (後から作った場合は, 登録を外して追加し直すか, 場所を変える).
-
-### 起動の設定
-
-`make serve` は毎回画面をビルドしてから起動する. ポートを変える場合は `make serve PORT=8800` のように指定する. ビルド済みの場合は `cd backend && uv run ml-dashboard --port 8800` でも起動できる.
-ローカルから 1 人で使う前提なので, 既定では `127.0.0.1` だけで待ち受ける. `--host` で変えられるが, トークンを知る人は学習のコードを実行できるので勧めない.
-
-登録したプロジェクトなどのダッシュボードのデータは `~/.ml-dashboard/` に保存する. 環境変数 `ML_DASHBOARD_HOME` で場所を変えられる.
-画面で書き換えた config と, 起動した学習の標準出力, メモとタグもここに保存する. 全て消す場合は, ダッシュボードを止めてからこのディレクトリを削除する. プロジェクトのディレクトリには, 学習を止めるときの `STOP` 以外は何も書き込まない.
+開いたら「プロジェクトを追加」で, clone したディレクトリの中の `demo` を絶対パスか `~` からのパス (例: `~/ML-Dashboard/demo`) で登録する. 自分のプロジェクトの登録, ポートやデータの置き場の変え方は [docs/GUIDE.md](docs/GUIDE.md) の 1 章と 2 章にある.
 
 ## 開発
 

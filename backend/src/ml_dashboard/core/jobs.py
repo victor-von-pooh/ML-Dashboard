@@ -358,7 +358,7 @@ class JobManager:
                 job.run_id = make_run_id(output_dir, run_dir)
                 return run_dir
 
-        # run.json を書かない古い ML-Found の場合は, 終わった後に限り
+        # run.json を書かない版の ML-Found の場合は, 終わった後に限り
         # ジョブの後に始まった最初の実験と結び付け (学習中は他のジョブの可能性)
         legacy = [
             item for item in candidates

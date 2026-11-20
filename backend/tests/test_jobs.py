@@ -829,10 +829,12 @@ def test_relaunch_plan(
         result: dict = client.get(url).json()
         return result
 
-    # source.yaml の無い古い実験は, 理由だけ
+    # source.yaml の無い実験は, 理由だけ
     old = client.get(url).json()
     assert old["script"] is None
     assert "source.yaml" in old["reason"]
+    # 理由は今の条件だけで, 版の経緯を書かない
+    assert "古い" not in old["reason"]
     missing = client.get(
         f"/api/projects/{project_id}/runs/demo/2026-11-08/12-00-00/relaunch"
     )

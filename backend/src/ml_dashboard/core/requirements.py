@@ -228,13 +228,14 @@ def to_report(
     report: RequirementReport
         機能ごとの説明と, 確かめられなかった理由
     """
-    # ML-Found が無いか古い (describe_requirements が無い) 場合
+    # ML-Found が無いか, describe_requirements を持たない版の場合
     if payload.get("error") is not None:
         report = RequirementReport(
             python=python, checked_at=checked_at,
             error=(
                 "プロジェクトの Python で ML-Found の describe_requirements "
-                f"を読み込めません (ML-Found が無いか古い): {payload['error']}"
+                "を読み込めません (ML-Found が無いか, describe_requirements "
+                f"を持たない版): {payload['error']}"
             )
         )
         return report

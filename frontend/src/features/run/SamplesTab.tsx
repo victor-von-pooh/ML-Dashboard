@@ -272,7 +272,7 @@ export function SamplesTab({
       </div>
       <p className="text-xs text-ink-3">
         画像の見本のエポックごとの推移は「画像の推移」のタブでも見られます. samples/
-        の直下に置いた番号付きの画像 (前からの形) は「画像の推移」のタブにあります.
+        の直下の番号付きの画像 (samples/epoch_010.png など) は「画像の推移」のタブにあります.
       </p>
     </div>
   )

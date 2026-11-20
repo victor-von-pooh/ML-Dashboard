@@ -10,7 +10,8 @@ from ml_dashboard.core import results as results_module
 from conftest import write_run
 from test_api import register
 
-# 任意のファイルを持つ実験と, 前からの形の画像だけを持つ実験の場所
+# 任意のファイルを持つ実験と, samples/ の直下の番号付きの画像だけを持つ
+# 実験の場所
 RESULTS_RUN = "demo/2026-11-08/10-00-00"
 LEGACY_RUN = "demo/2026-11-08/11-00-00"
 BASE_RUN = "demo/2026-11-08/09-00-00"
