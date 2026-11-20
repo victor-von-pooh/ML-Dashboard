@@ -52,13 +52,23 @@ function environmentItem(readiness: ProjectReadiness): ReadinessItem {
         }
   }
   if (readiness.ml_found === false) {
-    return { label, state: 'missing', text: 'ML-Found が入っていません', detail }
+    return {
+      label,
+      state: 'missing',
+      text: 'ML-Found が入っていません',
+      hint: '「足りないものを入れる」で入れます',
+      detail,
+    }
   }
   if (readiness.missing.length > 0) {
     return {
       label,
       state: 'missing',
       text: `足りない機能: ${readiness.missing.join(', ')}`,
+      hint:
+        readiness.commands.length > 0
+          ? '「足りないものを入れる」で pip で入るものを入れます'
+          : undefined,
       detail,
     }
   }
@@ -118,7 +128,7 @@ export function environmentAction(readiness: ProjectReadiness): string | null {
 
 /** 環境のジョブの状態の文 */
 export const JOB_STATUS: Record<EnvironmentJob['status'], string> = {
-  running: '入れています',
+  running: '進めています',
   succeeded: '終わりました',
   failed: '失敗しました',
   interrupted: '途中で止まりました (ダッシュボードを起動し直したため)',

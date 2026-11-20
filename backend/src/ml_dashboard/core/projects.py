@@ -5,7 +5,7 @@ import sys
 import tempfile
 import threading
 from collections import deque
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -453,10 +453,7 @@ class ProjectStore:
             )
             if current is None:
                 return None
-            project = Project(
-                id=current.id, name=current.name, path=current.path,
-                python=python, created_at=current.created_at
-            )
+            project = replace(current, python=python)
             self.save([
                 project if item.id == project_id else item
                 for item in projects

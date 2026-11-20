@@ -369,24 +369,23 @@ export function useReadiness(projectId: string) {
 }
 
 /** 環境のジョブ. 動いている間は出力を読み直し, 終わったら準備と Python を読み直す */
-export function useEnvironmentJob(projectId: string, active: boolean) {
+export function useEnvironmentJob(projectId: string) {
   const client = useQueryClient()
   const query = useQuery({
     queryKey: keys.environment(projectId),
     queryFn: () => api.getEnvironmentJob(projectId),
-    enabled: active,
     refetchInterval: (current) =>
       current.state.data?.status === 'running' ? LIVE_INTERVAL : false,
   })
   const status = query.data?.status
   const previous = useRef(status)
   useEffect(() => {
+    // 終わったときは, サーバーが覚えた結果を捨てているので読み直すだけでよい
     if (previous.current === 'running' && status !== 'running') {
-      void api.getReadiness(projectId, true).then((readiness) => {
-        client.setQueryData(keys.readiness(projectId), readiness)
-      })
+      void client.invalidateQueries({ queryKey: keys.readiness(projectId) })
       void client.invalidateQueries({ queryKey: keys.project(projectId), exact: true })
       void client.invalidateQueries({ queryKey: keys.requirements(projectId) })
+      void client.invalidateQueries({ queryKey: ['projects', projectId, 'requires'] })
     }
     previous.current = status
   }, [status, projectId, client])

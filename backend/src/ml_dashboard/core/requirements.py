@@ -60,6 +60,9 @@ class ReportCache:
         self.lock = threading.Lock()
         # 同じ鍵の確かめを 1 つずつにするロック
         self.key_locks: dict[tuple[str, str], threading.Lock] = {}
+        # Python ごとの, 覚えた結果を捨てた時刻 (それより前に始めた確かめ
+        # の結果は覚えない)
+        self.forgotten: dict[str, float] = {}
 
     def get(
         self, key: tuple[str, str], since: Optional[float] = None
@@ -112,7 +115,10 @@ class ReportCache:
 
         return lock
 
-    def put(self, key: tuple[str, str], report: RequirementReport) -> None:
+    def put(
+        self, key: tuple[str, str], report: RequirementReport,
+        started: Optional[float] = None
+    ) -> None:
         """
         確かめた結果を覚える関数
 
@@ -122,12 +128,20 @@ class ReportCache:
             プロジェクトの Python とディレクトリ
         report: RequirementReport
             確かめた結果
+        started: Optional[float] = None
+            確かめを始めた時刻 (time.monotonic). 捨てた時刻より前なら
+            覚えない (環境に入れている途中の結果を残さないため)
 
         Returns
         ----------
         None
         """
         with self.lock:
+            forgotten = self.forgotten.get(key[0])
+            if started is not None and forgotten is not None and (
+                started < forgotten
+            ):
+                return
             self.entries[key] = (time.monotonic(), report)
 
     def forget(self, python: str) -> None:
@@ -144,6 +158,7 @@ class ReportCache:
         None
         """
         with self.lock:
+            self.forgotten[python] = time.monotonic()
             for key in [key for key in self.entries if key[0] == python]:
                 del self.entries[key]
 
@@ -161,6 +176,7 @@ class ReportCache:
         """
         with self.lock:
             self.entries.clear()
+            self.forgotten.clear()
 
 
 # プロセスの中で共有する, 確かめた結果
@@ -395,7 +411,7 @@ def check_requirements(
             report = cached
             return report
         report = run_check(python, project_dir)
-        REPORT_CACHE.put(key, report)
+        REPORT_CACHE.put(key, report, started)
 
     return report
 

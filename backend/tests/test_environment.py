@@ -232,8 +232,6 @@ def test_create_environment(client: TestClient, project_dir: Path) -> None:
     started = client.post(url_job, json={"commands": commands})
     assert started.status_code == 201
     assert started.json()["status"] == "running"
-    busy = client.post(url_job, json={"commands": commands})
-    assert busy.status_code in (201, 400, 409)
     job = wait_job(client, project_id)
     assert job["status"] == "succeeded"
     assert job["return_code"] == 0
@@ -468,4 +466,137 @@ def test_outdated_ml_found(
     assert readiness["commands"] == [echo_install(
         str(python), ["--force-reinstall", "--no-deps", FOUND], None
     )]
+    assert readiness["ready"] is False
+
+
+def wait_for_file(
+    python: str, arguments: list[str], uv: Optional[str]
+) -> list[str]:
+    """
+    印のファイルができるまで終わらないコマンドを返す関数
+
+    Parameters
+    ----------
+    python: str
+        入れる先の Python
+    arguments: list[str]
+        pip install に渡す引数 (使わない)
+    uv: Optional[str]
+        uv のパス (使わない)
+
+    Returns
+    ----------
+    command: list[str]
+        引数のリスト (印のファイルは入れる先の Python と同じ場所の done)
+    """
+    done = Path(python).parent / "done"
+    command = [
+        sys.executable, "-c",
+        "import pathlib, sys, time\n"
+        "while not pathlib.Path(sys.argv[1]).exists(): time.sleep(0.05)",
+        str(done)
+    ]
+
+    return command
+
+
+def test_busy_environment(
+    client: TestClient, project_dir: Path, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    環境のジョブが動いている間は, もう 1 つのジョブと学習の起動を断る
+    ことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        差し替えに使う
+
+    Returns
+    ----------
+    None
+    """
+    monkeypatch.setattr(environment, "install_command", wait_for_file)
+    config = project_dir / "configs" / "default" / "train.yaml"
+    config.write_text(
+        "experiment:\n  name: demo\n  output_dir: outputs\n"
+        "requires: [eda]\n",
+        encoding="utf-8"
+    )
+    python = tmp_path / "env" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    python.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+    python.chmod(0o755)
+    project_id = register(client, project_dir, str(python))
+    readiness = client.get(f"/api/projects/{project_id}/readiness").json()
+    assert readiness["missing"] == ["eda"]
+    assert len(readiness["commands"]) == 1
+
+    url = f"/api/projects/{project_id}/environment"
+    started = client.post(url, json={"commands": readiness["commands"]})
+    assert started.status_code == 201
+    try:
+        busy = client.post(url, json={"commands": readiness["commands"]})
+        assert busy.status_code == 409
+        training = client.post(
+            f"/api/projects/{project_id}/jobs", json={"script": "train.py"}
+        )
+        assert training.status_code == 409
+    finally:
+        (python.parent / "done").write_text("")
+    assert wait_job(client, project_id)["status"] == "succeeded"
+    assert client.get(f"/api/projects/{project_id}").json()["python"] == (
+        str(python)
+    )
+
+
+def test_missing_other_environment_and_absolute_dataset(
+    client: TestClient, project_dir: Path, tmp_path: Path
+) -> None:
+    """
+    利用者が選んだ他の環境が無い場合は何も動かさず, 絶対パスの
+    データセットをそのまま確かめることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    dataset = tmp_path / "shared" / "dataset"
+    dataset.mkdir(parents=True)
+    config = project_dir / "configs" / "default" / "train.yaml"
+    config.write_text(
+        "experiment:\n  name: demo\n  output_dir: outputs\n"
+        f"data:\n  root: {dataset.parent}\n"
+        "  dataset: ${data.root}/dataset\n",
+        encoding="utf-8"
+    )
+    python = tmp_path / "gone" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    python.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+    python.chmod(0o755)
+    project_id = register(client, project_dir, str(python))
+    python.unlink()
+
+    readiness = client.get(f"/api/projects/{project_id}/readiness").json()
+    assert readiness["dataset"]["path"] == str(dataset)
+    assert readiness["dataset"]["exists"] is True
+    assert readiness["managed"] is False
+    assert readiness["environment_exists"] is False
+    assert readiness["commands"] == []
     assert readiness["ready"] is False

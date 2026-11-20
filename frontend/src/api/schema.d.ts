@@ -2545,6 +2545,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description 学習の準備で環境に入れている */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -2636,6 +2643,13 @@ export interface operations {
             };
             /** @description プロジェクトか実験が見つからない */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 学習の準備で環境に入れている */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

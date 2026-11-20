@@ -9,7 +9,7 @@ import {
   XCircle,
   type LucideIcon,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import type { EnvironmentJob, ProjectReadiness } from '../../api/client'
 import {
@@ -37,10 +37,12 @@ const STATE: Record<ReadinessState, { icon: LucideIcon; label: string; className
 export function ReadinessCard({ projectId }: { projectId: string }) {
   const readiness = useReadiness(projectId)
   const recheck = useRecheckReadiness(projectId)
-  const job = useEnvironmentJob(projectId, true)
+  const job = useEnvironmentJob(projectId)
   const start = useStartEnvironmentJob(projectId)
   const [confirming, setConfirming] = useState(false)
-  const running = job.data?.status === 'running'
+  // 読み込む前だけ準備の結果のジョブを使う (読めない間に古い実行中を出し続けないため)
+  const currentJob = job.isPending ? (readiness.data?.job ?? null) : (job.data ?? null)
+  const running = currentJob?.status === 'running'
 
   return (
     <Card
@@ -49,10 +51,13 @@ export function ReadinessCard({ projectId }: { projectId: string }) {
       actions={
         <Button
           icon={RefreshCw}
-          onClick={() => recheck.mutate()}
-          disabled={recheck.isPending || readiness.isPending || running}
+          onClick={() => {
+            start.reset()
+            recheck.mutate()
+          }}
+          disabled={recheck.isPending || readiness.isFetching || running}
         >
-          {recheck.isPending ? '確かめています' : '確かめ直す'}
+          {recheck.isPending || readiness.isFetching ? '確かめています' : '確かめ直す'}
         </Button>
       }
     >
@@ -63,15 +68,24 @@ export function ReadinessCard({ projectId }: { projectId: string }) {
       ) : (
         <ReadinessBody
           readiness={readiness.data}
-          job={job.data ?? readiness.data.job ?? null}
+          job={currentJob}
+          checking={readiness.isFetching || recheck.isPending}
           confirming={confirming && !running}
-          onConfirm={() => setConfirming(true)}
+          onConfirm={() => {
+            start.reset()
+            setConfirming(true)
+          }}
           onCancel={() => setConfirming(false)}
           onStart={() => {
-            start.mutate(readiness.data.commands, { onSettled: () => setConfirming(false) })
+            start.mutate(readiness.data.commands, {
+              onSettled: () => setConfirming(false),
+              // 確かめた後に変わった場合は, 確かめ直して新しいコマンドを出す
+              onError: () => recheck.mutate(),
+            })
           }}
           starting={start.isPending}
-          startError={start.error ?? recheck.error}
+          startError={start.error}
+          recheckError={recheck.error}
         />
       )}
     </Card>
@@ -81,25 +95,38 @@ export function ReadinessCard({ projectId }: { projectId: string }) {
 function ReadinessBody({
   readiness,
   job,
+  checking,
   confirming,
   onConfirm,
   onCancel,
   onStart,
   starting,
   startError,
+  recheckError,
 }: {
   readiness: ProjectReadiness
   job: EnvironmentJob | null
+  checking: boolean
   confirming: boolean
   onConfirm: () => void
   onCancel: () => void
   onStart: () => void
   starting: boolean
   startError: Error | null
+  recheckError: Error | null
 }) {
   const items = readinessItems(readiness)
   const action = environmentAction(readiness)
   const running = job?.status === 'running'
+  // 確認を開いたら「実行する」へ, 閉じたら元のボタンへフォーカスを移す
+  const runRef = useRef<HTMLButtonElement>(null)
+  const actionRef = useRef<HTMLButtonElement>(null)
+  const opened = useRef(false)
+  useEffect(() => {
+    if (confirming) runRef.current?.focus()
+    else if (opened.current) actionRef.current?.focus()
+    opened.current = confirming
+  }, [confirming])
   return (
     <div className="space-y-3 text-sm">
       <ul className="space-y-2" aria-label="学習の準備の項目">
@@ -150,20 +177,30 @@ function ReadinessBody({
       )}
       {readiness.unknown.length > 0 && (
         <p className="text-xs text-ink-2">
-          requires の {readiness.unknown.join(', ')} は ML-Found の登録簿に無いので入れません
-          (プロジェクトの機能は学習のスクリプトが確かめます).
+          requires の {readiness.unknown.join(', ')} は ML-Found の登録簿に無いので,
+          ここでは入れられません (プロジェクトの機能は学習のスクリプトが確かめます).
         </p>
       )}
       {readiness.requires_error && <ErrorBox error={readiness.requires_error} live={false} />}
       {readiness.check_error && <ErrorBox error={readiness.check_error} live={false} />}
       {startError && <ErrorBox error={startError} />}
+      {recheckError && <ErrorBox error={recheckError} />}
 
       {readiness.ready && !running && (
-        <p className="text-good-text">学習を始める準備ができています.</p>
+        <p className="flex items-center gap-2 text-good-text">
+          <CheckCircle2 className="size-4" aria-hidden />
+          学習を始める準備ができています.
+        </p>
       )}
 
       {action && !running && !confirming && (
-        <Button variant="primary" icon={PackagePlus} onClick={onConfirm}>
+        <Button
+          ref={actionRef}
+          variant="primary"
+          icon={PackagePlus}
+          onClick={onConfirm}
+          disabled={checking}
+        >
           {action}
         </Button>
       )}
@@ -194,7 +231,7 @@ function ReadinessBody({
             </p>
           )}
           <div className="flex gap-2">
-            <Button variant="primary" onClick={onStart} disabled={starting}>
+            <Button ref={runRef} variant="primary" onClick={onStart} disabled={starting}>
               {starting ? '始めています' : '実行する'}
             </Button>
             <Button variant="ghost" onClick={onCancel} disabled={starting}>
@@ -214,28 +251,35 @@ function JobLog({ job }: { job: EnvironmentJob }) {
   const failed = job.status === 'failed' || job.status === 'interrupted'
   const Icon = running ? Loader2 : failed ? XCircle : CheckCircle2
   return (
-    <details open={running || failed} className="rounded-lg border border-line">
-      <summary className="flex cursor-pointer items-center gap-2 px-3 py-2">
-        <Icon
-          className={clsx(
-            'size-4',
-            running && 'animate-spin text-accent-text',
-            failed && 'text-critical-text',
-            !running && !failed && 'text-good-text',
+    <>
+      <p role="status" className="sr-only">
+        環境のジョブ: {JOB_STATUS[job.status]}
+      </p>
+      <details open={running || failed} className="rounded-lg border border-line">
+        <summary className="flex cursor-pointer items-center gap-2 px-3 py-2">
+          <Icon
+            className={clsx(
+              'size-4',
+              running && 'animate-spin text-accent-text',
+              failed && 'text-critical-text',
+              !running && !failed && 'text-good-text',
+            )}
+            aria-hidden
+          />
+          <span>環境のジョブ: {JOB_STATUS[job.status]}</span>
+          {job.return_code != null && job.return_code !== 0 && (
+            <span className="text-xs text-ink-3">(終了コード {job.return_code})</span>
           )}
-          aria-hidden
-        />
-        <span role="status">環境のジョブ: {JOB_STATUS[job.status]}</span>
-        {job.return_code != null && job.return_code !== 0 && (
-          <span className="text-xs text-ink-3">(終了コード {job.return_code})</span>
-        )}
-      </summary>
-      <pre
-        aria-label="環境のジョブの出力"
-        className="max-h-72 overflow-auto border-t border-line bg-surface-2 px-3 py-2 font-mono text-xs whitespace-pre-wrap"
-      >
-        {job.output || '(出力はまだありません)'}
-      </pre>
-    </details>
+        </summary>
+        <pre
+          role="log"
+          tabIndex={0}
+          aria-label="環境のジョブの出力"
+          className="max-h-72 overflow-auto border-t border-line bg-surface-2 px-3 py-2 font-mono text-xs whitespace-pre-wrap"
+        >
+          {job.output || '(出力はまだありません)'}
+        </pre>
+      </details>
+    </>
   )
 }

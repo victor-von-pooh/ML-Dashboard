@@ -80,7 +80,10 @@ def target_python(project: Project) -> tuple[str, bool]:
     registered = project.python
     inside = registered.startswith(str(venv_dir) + os.sep)
     if inside or registered == sys.executable:
-        python = str(venv_python(Path(project.path)))
+        # .venv/bin/python3 などを登録した場合はそのまま使う
+        python = registered if inside else str(
+            venv_python(Path(project.path))
+        )
         managed = True
         return python, managed
     python = registered
@@ -422,6 +425,7 @@ class EnvironmentJobs:
 
         # このプロセスで動かしているジョブのスレッドと, 排他のロック
         self.threads: dict[str, threading.Thread] = {}
+        self.starting: set[str] = set()
         self.lock = threading.Lock()
 
     def job_dir(self, project_id: str) -> Path:
@@ -479,26 +483,46 @@ class EnvironmentJobs:
         job: Optional[EnvironmentJob]
             出力の末尾を付けたジョブ, 無い場合は None
         """
+        # 終わりの書き込みと入れ違わないように, ロックの中で読む
         directory = self.job_dir(project_id)
-        data = read_json(directory / "job.json")
-        if not data:
-            return None
-        try:
-            job = EnvironmentJob.model_validate(data)
-        except ValueError:
-            return None
-
-        # 動かしたプロセスが居ない実行中のジョブは, 見届けられなかったもの
+        job = None
         with self.lock:
-            thread = self.threads.get(project_id)
-            if job.status == "running" and (
-                thread is None or not thread.is_alive()
-            ):
+            data = read_json(directory / "job.json")
+            if not data:
+                return job
+            try:
+                job = EnvironmentJob.model_validate(data)
+            except ValueError:
+                return job
+
+            # 動かしたスレッドが居ない実行中のジョブは, 見届けられないもの
+            if job.status == "running" and not self.running(project_id):
                 job.status = "interrupted"
                 self.save(job)
         job.output = output_tail(directory / "output.log")
 
         return job
+
+    def running(self, project_id: str) -> bool:
+        """
+        プロジェクトの環境のジョブがこのプロセスで動いているかを返す関数
+
+        Parameters
+        ----------
+        project_id: str
+            プロジェクトの ID
+
+        Returns
+        ----------
+        alive: bool
+            動いている (か始めている) 場合は True
+        """
+        thread = self.threads.get(project_id)
+        alive = project_id in self.starting or (
+            thread is not None and thread.is_alive()
+        )
+
+        return alive
 
     def start(
         self, project: Project, commands: list[list[str]]
@@ -518,11 +542,12 @@ class EnvironmentJobs:
         job: EnvironmentJob
             始めたジョブ
         """
+        # 確かめは時間がかかるので, 始める印だけをロックの中で付ける
         with self.lock:
-            thread = self.threads.get(project.id)
-            if thread is not None and thread.is_alive():
+            if self.running(project.id):
                 raise RuntimeError("環境のジョブが動いています")
-
+            self.starting.add(project.id)
+        try:
             # 利用者が確かめた後に結果が変わった場合は動かさない
             readiness = check_readiness(project, refresh=True)
             if not readiness.commands and not readiness.switch_python:
@@ -532,20 +557,24 @@ class EnvironmentJobs:
                     "確かめた後に入れるものが変わりました. 確かめ直して"
                     "ください"
                 )
-
             job = EnvironmentJob(
                 project_id=project.id, status="running",
                 started_at=now_iso(), commands=commands
             )
-            self.save(job)
-            (self.job_dir(project.id) / "output.log").write_bytes(b"")
-            thread = threading.Thread(
-                target=self.run, args=(job, project, readiness.managed,
-                                       readiness.target_python),
-                daemon=True
-            )
-            self.threads[project.id] = thread
-            thread.start()
+            with self.lock:
+                self.save(job)
+                (self.job_dir(project.id) / "output.log").write_bytes(b"")
+                thread = threading.Thread(
+                    target=self.run,
+                    args=(job, project, readiness.managed,
+                          readiness.target_python),
+                    daemon=True
+                )
+                self.threads[project.id] = thread
+                thread.start()
+        finally:
+            with self.lock:
+                self.starting.discard(project.id)
 
         return job
 
@@ -572,37 +601,61 @@ class EnvironmentJobs:
         None
         """
         path = self.job_dir(project.id) / "output.log"
-        return_code: Optional[int] = 0
+        return_code: Optional[int] = None
+        succeeded = False
         try:
-            with path.open("ab") as output:
-                for command in job.commands:
-                    output.write(f"$ {' '.join(command)}\n".encode())
-                    output.flush()
-                    return_code = subprocess.call(
-                        command, cwd=project.path, stdout=output,
-                        stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                        env=child_env()
-                    )
-                    if return_code != 0:
-                        break
-        except OSError as error:
-            with path.open("ab") as output:
-                output.write(f"動かせません: {error}\n".encode())
-            return_code = None
+            return_code = self.run_commands(job, project, path)
+            succeeded = return_code == 0
 
-        # 作った .venv を学習に使う Python にする
-        succeeded = return_code == 0
-        if succeeded and managed and project.python != python:
-            try:
-                self.store.set_python(project.id, python)
-            except ValueError as error:
-                with path.open("ab") as output:
-                    output.write(f"{error}\n".encode())
-                succeeded = False
-        REPORT_CACHE.forget(python)
+            # 作った .venv を学習に使う Python にする
+            if succeeded and managed and project.python != python:
+                moved = self.store.set_python(project.id, python)
+                if moved is None:
+                    raise ValueError("プロジェクトの登録が外されました")
+        except Exception as error:
+            succeeded = False
+            with path.open("ab") as output:
+                output.write(f"{type(error).__name__}: {error}\n".encode())
+        finally:
+            # 途中の確かめの結果を捨て, 終わりを記録
+            REPORT_CACHE.forget(python)
+            job.status = "succeeded" if succeeded else "failed"
+            job.return_code = return_code
+            job.finished_at = now_iso()
+            with self.lock:
+                self.save(job)
 
-        job.status = "succeeded" if succeeded else "failed"
-        job.return_code = return_code
-        job.finished_at = now_iso()
-        with self.lock:
-            self.save(job)
+    def run_commands(
+        self, job: EnvironmentJob, project: Project, path: Path
+    ) -> int:
+        """
+        コマンドを順に動かし, 失敗したところで止める関数
+
+        Parameters
+        ----------
+        job: EnvironmentJob
+            ジョブ
+        project: Project
+            登録したプロジェクト
+        path: Path
+            出力を書くファイル
+
+        Returns
+        ----------
+        return_code: int
+            最後に動かしたコマンドの終了コード (無ければ 0)
+        """
+        return_code = 0
+        with path.open("ab") as output:
+            for command in job.commands:
+                output.write(f"$ {' '.join(command)}\n".encode())
+                output.flush()
+                return_code = subprocess.call(
+                    command, cwd=project.path, stdout=output,
+                    stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                    env=child_env()
+                )
+                if return_code != 0:
+                    break
+
+        return return_code
