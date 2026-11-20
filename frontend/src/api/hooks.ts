@@ -18,6 +18,8 @@ export const keys = {
   params: (projectId: string) => ['projects', projectId, 'params'] as const,
   notes: (projectId: string) => ['projects', projectId, 'notes'] as const,
   requirements: (projectId: string) => ['projects', projectId, 'requirements'] as const,
+  readiness: (projectId: string) => ['projects', projectId, 'readiness'] as const,
+  environment: (projectId: string) => ['projects', projectId, 'environment'] as const,
   requires: (projectId: string, text: string, script: string, defaultConfig: string) =>
     ['projects', projectId, 'requires', script, defaultConfig, text] as const,
   jobs: ['jobs'] as const,
@@ -354,4 +356,56 @@ export function useRequiresStatus(
 /** requires の問い合わせの鍵が, 中身を除いて同じか */
 function sameRequiresTarget(previous: readonly unknown[], next: readonly unknown[]): boolean {
   return [0, 1, 2, 3, 4].every((index) => previous[index] === next[index])
+}
+
+/** 学習の準備. 環境のジョブが動いている間は読み直し続ける */
+export function useReadiness(projectId: string) {
+  return useQuery({
+    queryKey: keys.readiness(projectId),
+    queryFn: () => api.getReadiness(projectId),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  })
+}
+
+/** 環境のジョブ. 動いている間は出力を読み直し, 終わったら準備と Python を読み直す */
+export function useEnvironmentJob(projectId: string) {
+  const client = useQueryClient()
+  const query = useQuery({
+    queryKey: keys.environment(projectId),
+    queryFn: () => api.getEnvironmentJob(projectId),
+    refetchInterval: (current) =>
+      current.state.data?.status === 'running' ? LIVE_INTERVAL : false,
+  })
+  const status = query.data?.status
+  const previous = useRef(status)
+  useEffect(() => {
+    // 終わったときは, サーバーが覚えた結果を捨てているので読み直すだけでよい
+    if (previous.current === 'running' && status !== 'running') {
+      void client.invalidateQueries({ queryKey: keys.readiness(projectId) })
+      void client.invalidateQueries({ queryKey: keys.project(projectId), exact: true })
+      void client.invalidateQueries({ queryKey: keys.requirements(projectId) })
+      void client.invalidateQueries({ queryKey: ['projects', projectId, 'requires'] })
+    }
+    previous.current = status
+  }, [status, projectId, client])
+  return query
+}
+
+/** 確かめたコマンドで環境のジョブを始める */
+export function useStartEnvironmentJob(projectId: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (commands: string[][]) => api.startEnvironmentJob(projectId, commands),
+    onSuccess: (job) => client.setQueryData(keys.environment(projectId), job),
+  })
+}
+
+/** 覚えた結果を使わずに学習の準備を確かめ直す */
+export function useRecheckReadiness(projectId: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.getReadiness(projectId, true),
+    onSuccess: (readiness) => client.setQueryData(keys.readiness(projectId), readiness),
+  })
 }

@@ -14,6 +14,7 @@ import {
   type ButtonHTMLAttributes,
   type KeyboardEvent,
   type ReactNode,
+  type Ref,
 } from 'react'
 
 import type { RunStatus } from '../api/client'
@@ -57,7 +58,11 @@ export function Button({
   className,
   children,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant; icon?: LucideIcon }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: ButtonVariant
+  icon?: LucideIcon
+  ref?: Ref<HTMLButtonElement>
+}) {
   return (
     <button
       type="button"

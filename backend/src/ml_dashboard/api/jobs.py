@@ -51,6 +51,11 @@ BAD_REQUEST: dict[int | str, dict[str, str]] = {
     400: {"description": "受け付けられないリクエスト"}
 }
 
+# 学習の準備で環境に入れている間の応答
+INSTALLING: dict[int | str, dict[str, str]] = {
+    409: {"description": "学習の準備で環境に入れている"}
+}
+
 # 起動の前にあるかを確かめるパスの項目の名前の最後の語 (_ か - で区切った語.
 # 大文字と小文字は区別なし. profile などの語の一部とは不一致)
 PATH_KEY_WORDS = frozenset({"path", "dir", "file"})
@@ -1011,7 +1016,7 @@ def validate_config(
 
 @router.post(
     "/projects/{project_id}/jobs", status_code=201,
-    responses=NOT_FOUND | BAD_REQUEST
+    responses=NOT_FOUND | BAD_REQUEST | INSTALLING
 )
 def create_job(
     request: Request, project_id: str, body: JobCreate
@@ -1035,6 +1040,10 @@ def create_job(
     """
     # 一覧にあるスクリプトだけを受け付け
     project = get_project(request, project_id)
+    if request.app.state.environments.running(project.id):
+        raise HTTPException(
+            409, "学習の準備で環境に入れている間は学習を起動できません"
+        )
     if body.script not in list_scripts(Path(project.path)):
         raise HTTPException(
             400, f"学習のスクリプトが見つかりません: {body.script}"
@@ -1184,7 +1193,10 @@ def get_job(request: Request, job_id: str) -> JobInfo:
     return info
 
 
-@router.post("/jobs/{job_id}/rerun", status_code=201, responses=NOT_FOUND)
+@router.post(
+    "/jobs/{job_id}/rerun", status_code=201,
+    responses=NOT_FOUND | INSTALLING
+)
 def rerun_job(request: Request, job_id: str) -> JobInfo:
     """
     終わったジョブと同じスクリプトと config で, もう一度学習を起動する関数

@@ -25,6 +25,9 @@ export type PolicyGuards = Schemas['PolicyGuards']
 export type Requirement = Schemas['Requirement']
 export type RequirementReport = Schemas['RequirementReport']
 export type RequiresStatus = Schemas['RequiresStatus']
+export type ProjectReadiness = Schemas['ProjectReadiness']
+export type EnvironmentJob = Schemas['EnvironmentJob']
+export type ConfigPath = Schemas['ConfigPath']
 // 既定値のある項目もサーバーは必ず返すので, 全て必須として扱う
 export type RunNote = Required<Schemas['RunNote']>
 export type RunParams = Schemas['RunParams']
@@ -186,6 +189,19 @@ export const api = {
         script: script || undefined,
         default_config: defaultConfig || undefined,
       }),
+    }),
+  // 学習の準備 (データセット, モデルの定義, 環境). refresh は環境を確かめ直す
+  getReadiness: (projectId: string, refresh = false) =>
+    request<ProjectReadiness>(
+      `/api/projects/${encodeURIComponent(projectId)}/readiness${refresh ? '?refresh=true' : ''}`,
+    ),
+  getEnvironmentJob: (projectId: string) =>
+    request<EnvironmentJob | null>(`/api/projects/${encodeURIComponent(projectId)}/environment`),
+  // 利用者が確かめたコマンド (学習の準備の commands) で環境を作るか足りないものを入れる
+  startEnvironmentJob: (projectId: string, commands: string[][]) =>
+    request<EnvironmentJob>(`/api/projects/${encodeURIComponent(projectId)}/environment`, {
+      method: 'POST',
+      body: JSON.stringify({ commands }),
     }),
   listJobs: () => request<JobInfo[]>('/api/jobs'),
   getJob: (jobId: string) => request<JobInfo>(`/api/jobs/${encodeURIComponent(jobId)}`),

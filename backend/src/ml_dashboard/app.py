@@ -11,10 +11,12 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
 
+from ml_dashboard.api.environment import router as environment_router
 from ml_dashboard.api.jobs import router as jobs_router
 from ml_dashboard.api.notes import router as notes_router
 from ml_dashboard.api.requirements import router as requirements_router
 from ml_dashboard.api.routes import router
+from ml_dashboard.core.environment import EnvironmentJobs
 from ml_dashboard.core.jobs import JobManager
 from ml_dashboard.core.notes import NoteStore
 from ml_dashboard.core.projects import ProjectError, ProjectStore
@@ -290,6 +292,7 @@ def create_app(
     home = data_dir or get_data_dir()
     app.state.store = ProjectStore(home)
     app.state.jobs = JobManager(home)
+    app.state.environments = EnvironmentJobs(home, app.state.store)
     app.state.notes = NoteStore(home)
 
     # トークンの無い呼び出し, 他のサイトからの書き込み,
@@ -339,6 +342,7 @@ def create_app(
     app.include_router(jobs_router)
     app.include_router(notes_router)
     app.include_router(requirements_router)
+    app.include_router(environment_router)
     mount_frontend(app, STATIC_DIR)
 
     return app

@@ -875,6 +875,93 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Readiness
+         * @description プロジェクトの学習の準備 (データセット, モデルの定義, 環境) を返す関数
+         *
+         *     Parameters
+         *     ----------
+         *     request: Request
+         *         リクエスト
+         *     project_id: str
+         *         プロジェクトの ID
+         *     refresh: bool = False
+         *         覚えた確かめの結果を使わずに確かめ直す場合は True
+         *
+         *     Returns
+         *     ----------
+         *     readiness: ProjectReadiness
+         *         確かめた結果, 入れるコマンド, 最後の環境のジョブ
+         */
+        get: operations["read_readiness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/environment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Environment Job
+         * @description プロジェクトの最後の環境のジョブと出力の末尾を返す関数
+         *
+         *     Parameters
+         *     ----------
+         *     request: Request
+         *         リクエスト
+         *     project_id: str
+         *         プロジェクトの ID
+         *
+         *     Returns
+         *     ----------
+         *     job: Optional[EnvironmentJob]
+         *         ジョブ, 無い場合は null
+         */
+        get: operations["read_environment_job"];
+        put?: never;
+        /**
+         * Start Environment Job
+         * @description プロジェクトの .venv を作るか, 足りないものを入れるジョブを始める関数
+         *
+         *     画面で利用者が確かめたコマンドが, 今の確かめの結果と同じ場合だけ
+         *     動かす (確かめた内容と違うものを入れないため)
+         *
+         *     Parameters
+         *     ----------
+         *     request: Request
+         *         リクエスト
+         *     project_id: str
+         *         プロジェクトの ID
+         *     body: EnvironmentRequest
+         *         利用者が確かめたコマンド
+         *
+         *     Returns
+         *     ----------
+         *     job: EnvironmentJob
+         *         始めたジョブ
+         */
+        post: operations["start_environment_job"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -906,6 +993,19 @@ export interface components {
             /** Note */
             note: string;
         };
+        /** ConfigPath */
+        ConfigPath: {
+            /** Key */
+            key: string;
+            /** Value */
+            value?: string | null;
+            /** Path */
+            path?: string | null;
+            /** Exists */
+            exists?: boolean | null;
+            /** Error */
+            error?: string | null;
+        };
         /** ConfigText */
         ConfigText: {
             /** Path */
@@ -921,6 +1021,37 @@ export interface components {
             items: {
                 [key: string]: string;
             };
+        };
+        /** EnvironmentJob */
+        EnvironmentJob: {
+            /** Project Id */
+            project_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "succeeded" | "failed" | "interrupted";
+            /** Started At */
+            started_at: string;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Return Code */
+            return_code?: number | null;
+            /**
+             * Commands
+             * @default []
+             */
+            commands: string[][];
+            /**
+             * Output
+             * @default
+             */
+            output: string;
+        };
+        /** EnvironmentRequest */
+        EnvironmentRequest: {
+            /** Commands */
+            commands: string[][];
         };
         /** Evaluation */
         Evaluation: {
@@ -1242,6 +1373,68 @@ export interface components {
             /** Path */
             path: string;
         };
+        /** ProjectReadiness */
+        ProjectReadiness: {
+            dataset: components["schemas"]["ConfigPath"];
+            model_spec?: components["schemas"]["ConfigPath"] | null;
+            /** Python */
+            python: string;
+            /** Target Python */
+            target_python: string;
+            /** Managed */
+            managed: boolean;
+            /** Environment Exists */
+            environment_exists: boolean;
+            /** Ml Found */
+            ml_found?: boolean | null;
+            /**
+             * Requires
+             * @default []
+             */
+            requires: string[];
+            /**
+             * Missing
+             * @default []
+             */
+            missing: string[];
+            /**
+             * Manual
+             * @default []
+             */
+            manual: components["schemas"]["Requirement"][];
+            /**
+             * Unknown
+             * @default []
+             */
+            unknown: string[];
+            /**
+             * Outdated
+             * @default []
+             */
+            outdated: string[];
+            /** Requires Error */
+            requires_error?: string | null;
+            /** Check Error */
+            check_error?: string | null;
+            /**
+             * Installer
+             * @enum {string}
+             */
+            installer: "uv" | "venv";
+            /**
+             * Commands
+             * @default []
+             */
+            commands: string[][];
+            /**
+             * Switch Python
+             * @default false
+             */
+            switch_python: boolean;
+            /** Ready */
+            ready: boolean;
+            job?: components["schemas"]["EnvironmentJob"] | null;
+        };
         /** Registry */
         Registry: {
             /** Optimizers */
@@ -1325,6 +1518,8 @@ export interface components {
             requirements: components["schemas"]["Requirement"][];
             /** Error */
             error?: string | null;
+            /** Ml Found */
+            ml_found?: boolean | null;
         };
         /** RequiresRequest */
         RequiresRequest: {
@@ -2350,6 +2545,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description 学習の準備で環境に入れている */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -2441,6 +2643,13 @@ export interface operations {
             };
             /** @description プロジェクトか実験が見つからない */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 学習の準備で環境に入れている */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2756,6 +2965,140 @@ export interface operations {
             };
             /** @description プロジェクトか実験が見つからない */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_readiness: {
+        parameters: {
+            query?: {
+                refresh?: boolean;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectReadiness"];
+                };
+            };
+            /** @description プロジェクトか実験が見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_environment_job: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvironmentJob"] | null;
+                };
+            };
+            /** @description プロジェクトか実験が見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_environment_job: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnvironmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvironmentJob"];
+                };
+            };
+            /** @description 入れるものが無い */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description プロジェクトか実験が見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 動いているか, 確かめた後に変わった */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

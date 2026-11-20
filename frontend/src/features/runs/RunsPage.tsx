@@ -26,6 +26,7 @@ import {
 } from '../../components/ui'
 import { formatDateTime, formatDuration, formatMetric, formatRelative } from '../../lib/format'
 import { MAX_COMPARE, summarizeDiff } from '../../lib/metrics'
+import { ReadinessCard } from '../projects/ReadinessCard'
 import { StarButton } from '../run/NotePanel'
 
 type SortKey = 'started' | 'best' | 'duration' | 'epochs'
@@ -346,6 +347,8 @@ function RunsPage({ projectId }: { projectId: string }) {
           </>
         }
       />
+
+      <ReadinessCard projectId={projectId} />
 
       {all.length > 0 && (
         <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
