@@ -68,7 +68,7 @@ export function RunDetailPage() {
   const run = useRun(projectId, runId)
   const running = run.data?.status === 'running'
   const history = useHistory(projectId, runId, running)
-  // task.yaml, evaluations/, samples/, policy/ (無い実験は空で, 画面も今までどおり)
+  // task.yaml, evaluations/, samples/, policy/ (無い実験は空で, 何の実験かの欄と評価, 見本, 方策のタブを出さない)
   const results = useResults(projectId, runId, running)
 
   // 学習が終わったら, 最後のエポックの記録と学習の後の評価と見本を読み直す
@@ -160,7 +160,7 @@ export function RunDetailPage() {
           </span>
         }
         actions={
-          // 起動できない実験 (source.yaml が無い古い実験など) は押せなくし, 理由を出す
+          // 起動できない実験 (source.yaml が無い実験など) は押せなくし, 理由を出す
           // 読めなかった場合は, 起動の画面でエラーを出すのでそのまま開ける
           !relaunch.data?.reason ? (
             <Link

@@ -79,7 +79,7 @@ class RunSummary(BaseModel):
     final_metrics: dict[str, Optional[float]]
     progress: Optional[Progress]
     error: Optional[str]
-    # 起動のしかた (source.yaml), 書いていない古い実験は None
+    # 起動のしかた (source.yaml), 書いていない実験は None
     source: Optional[RunSource] = None
 
 
@@ -137,14 +137,14 @@ class RunDetail(RunSummary):
     files: list[RunFile]
     has_git_diff: bool
     # final_model.pt の重み (best, last, エポックの途中で止めて戻せなかった
-    # partial), run.json が無い古い実験は None
+    # partial), run.json が無い実験は None
     final_weights: Optional[Literal["best", "last", "partial"]] = None
     # パラメータとバッファの一覧 (model_summary.csv, 多い場合は先頭だけ) と
-    # 全体の行数, ファイルが無い古い実験は None
+    # 全体の行数, ファイルが無い実験は None
     model_summary: Optional[list[ModelParam]] = None
     model_summary_rows: Optional[int] = None
     # Optimizer ごとの名前, クラス, 受け持つ部分, Scheduler (run.json の
-    # optimizers), 書いていない古い実験は None
+    # optimizers), 書いていない実験は None
     optimizers: Optional[list[OptimizerInfo]] = None
     # 監視する指標 (ベストモデルを選ばない実験でも最後の値を出すため)
     monitor: Optional[str] = None
@@ -238,7 +238,7 @@ class Evaluation(BaseModel):
 
 
 class Sample(BaseModel):
-    # 見本の出力 (ML-Found の samples/index.json の 1 項目. 前からの形の
+    # 見本の出力 (ML-Found の samples/index.json の 1 項目.
     # samples/ の直下の番号付きの画像は, 画像の推移で見るので含めない)
     name: str
     # エポック, 学習の後は None
@@ -355,7 +355,8 @@ class RequirementReport(BaseModel):
     python: str
     checked_at: str
     requirements: list[Requirement] = []
-    # 確かめられなかった理由 (Python が動かない, ML-Found が古いなど)
+    # 確かめられなかった理由 (Python が動かない, ML-Found に
+    # describe_requirements が無いなど)
     error: Optional[str] = None
 
 

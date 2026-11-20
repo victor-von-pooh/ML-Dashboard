@@ -590,7 +590,7 @@ def read_samples(run_dir: Path, notices: list[str]) -> list[Sample]:
     Returns
     ----------
     samples: list[Sample]
-        一覧の見本 (書いた順). 前からの形の直下の画像は, 画像の推移で
+        一覧の見本 (書いた順). samples/ の直下の番号付きの画像は, 画像の推移で
         見るので含めない
     """
     from ml_found.experiment.results import load_samples, read_samples_index

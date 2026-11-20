@@ -244,7 +244,7 @@ def test_policy_weights_not_served(
     assert spec.status_code == 200
 
     # 方策を持つ実験の他の重み (final_model.pt は方策と同じ重み) も返さず,
-    # 方策を持たない実験の重みは今までどおり返す
+    # 方策を持たない実験の重みは返す
     run_dir = project_dir / "outputs" / RUN
     (run_dir / "final_model.pt").write_bytes(WEIGHTS)
     final = client.get(f"{base}/files/final_model.pt")

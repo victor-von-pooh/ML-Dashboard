@@ -67,7 +67,7 @@ describe('groupSamples', () => {
 })
 
 describe('画像の推移と見本のディレクトリ', () => {
-  it('前からの直下の画像と名前ごとのディレクトリの画像を別の並びにし, final は入れない', () => {
+  it('samples/ の直下の番号付きの画像と名前ごとのディレクトリの画像を別の並びにし, final は入れない', () => {
     const files: RunFile[] = [
       'samples/epoch_010.png',
       'samples/epoch_020.png',

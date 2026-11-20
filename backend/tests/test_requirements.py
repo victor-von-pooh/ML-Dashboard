@@ -217,8 +217,8 @@ def test_report_errors(
 
 def test_parse_and_report_shapes() -> None:
     """
-    印の無い出力, ML-Found が古い場合, 形の違う項目と危ない URL の扱いを
-    確かめる関数
+    印の無い出力, ML-Found が describe_requirements を持たない場合,
+    形の違う項目と危ない URL の扱いを確かめる関数
 
     Parameters
     ----------
@@ -234,7 +234,7 @@ def test_parse_and_report_shapes() -> None:
 
     old = to_report("py", "now", {"error": "ImportError: cannot import"})
     assert old.requirements == []
-    assert old.error is not None and "古い" in old.error
+    assert old.error is not None and "持たない版" in old.error
 
     good = {
         "name": "x", "description": "d",

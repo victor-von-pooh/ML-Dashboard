@@ -89,6 +89,8 @@ test('何の実験か, データ全体の評価, 見本を見る', async ({ page
   await expect(page.getByRole('img', { name: 'points の点群を上から見た図' })).toBeVisible()
   await expect(page.getByText(/を正しく分けた/)).toBeVisible()
   await expect(page.getByText('学習の後の予測の要約')).toBeVisible()
+  // 直下の番号付きの画像の置き場所は, 今の形の名前で案内する
+  await expect(page.getByText(/samples\/ の直下の番号付きの画像/)).toBeVisible()
 })
 
 test('2 つの実験を比べ, config の違いと同じエポックの画像を並べる', async ({ page }) => {

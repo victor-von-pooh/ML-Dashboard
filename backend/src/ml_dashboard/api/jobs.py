@@ -1395,8 +1395,7 @@ def plan_relaunch(
     source = read_source(run_dir)
     if source is None:
         return RelaunchPlan(
-            reason="起動のしかた (source.yaml) が記録されていない実験です "
-            "(古い版の ML-Found で流した実験など)"
+            reason="起動のしかた (source.yaml) が記録されていない実験です"
         )
     if source.script is None:
         return RelaunchPlan(

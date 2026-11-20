@@ -24,6 +24,8 @@ test.beforeAll(async ({ request }) => {
 
 test('強化学習の指標を学習曲線で見て, 方策の守りを確かめる', async ({ page, request }) => {
   await page.goto(`/projects/${projectId}/runs/${RUN_ID}`)
+  // source.yaml の無い実験は, もう一度の起動の理由に条件だけを出す
+  await expect(page.getByText(/source\.yaml\) が記録されていない実験です$/)).toBeVisible()
 
   // 報酬, 歩数, 違反, 成功はただの指標として曲線に並び, valid/reward を監視する
   for (const metric of ['reward', 'length', 'violations', 'success']) {

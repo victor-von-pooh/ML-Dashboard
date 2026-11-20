@@ -385,7 +385,7 @@ def read_model_summary(
     total: Optional[int]
         ファイルの全体の行数
     """
-    # 古い ML-Found の実験は表示なし, 同じファイルなら前の結果を使用
+    # model_summary.csv の無い実験は表示なし, 同じファイルなら前の結果を使用
     try:
         stat = path.stat()
     except OSError:
@@ -857,7 +857,7 @@ def last_metrics(
 
 def judge_status(entries: list[LogEntry]) -> RunStatus:
     """
-    ログから実験の状態を判定する関数 (run.json が無い古い実験で使う)
+    ログから実験の状態を判定する関数 (run.json が無い実験で使う)
 
     Parameters
     ----------
@@ -1265,7 +1265,7 @@ def optimizers_from_config(
     config の optimizers (名前付きの複数の Optimizer) から, Optimizer ごとの
     情報を作る関数
 
-    run.json に optimizers を書かない古い版の ML-Found の実験のため
+    run.json に optimizers を書かない版の ML-Found の実験のため
 
     Parameters
     ----------
