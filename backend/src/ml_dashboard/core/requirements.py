@@ -497,7 +497,7 @@ def describe_next_step(requirement: Requirement) -> str:
             f"{install.url} に従って入れる"
         )
     else:
-        step = f"{requirement.name}: 入れ方は ML-Found の README を見る"
+        step = f"{requirement.name}: 入れ方は ML-Found の docs/DESIGN.md の「追加の依存」を見る"
 
     return step
 
