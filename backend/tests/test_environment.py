@@ -3,12 +3,14 @@ import sys
 import time
 from collections.abc import Iterator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Optional
 
 import pytest
 from fastapi.testclient import TestClient
 
 from ml_dashboard.core import environment
+from ml_dashboard.core.jobs import JobManager
 from ml_dashboard.core.requirements import REPORT_CACHE, REPORT_MARK
 
 # ML-Found と段階のライブラリの pip の指定
@@ -600,3 +602,62 @@ def test_missing_other_environment_and_absolute_dataset(
     assert readiness["environment_exists"] is False
     assert readiness["commands"] == []
     assert readiness["ready"] is False
+
+
+def test_environment_while_training(
+    client: TestClient, project_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    学習のジョブが動いている間は, 環境のジョブを始めないことを確かめる
+    関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        差し替えに使う
+
+    Returns
+    ----------
+    None
+    """
+    config = project_dir / "configs" / "default" / "train.yaml"
+    config.write_text(READY_CONFIG, encoding="utf-8")
+    project_id = register(client, project_dir)
+    readiness = client.get(f"/api/projects/{project_id}/readiness").json()
+
+    # このプロジェクトの学習が動いている形の一覧に差し替え
+    running = SimpleNamespace(project_id=project_id, status="running")
+    monkeypatch.setattr(JobManager, "list_jobs", JobsStub([running]).list_jobs)
+    url = f"/api/projects/{project_id}/environment"
+    response = client.post(url, json={"commands": readiness["commands"]})
+    assert response.status_code == 409
+    assert "学習が動いている" in response.json()["detail"]
+    assert client.get(url).json() is None
+
+
+class JobsStub:
+    def __init__(self, jobs: list[SimpleNamespace]):
+        # 返すジョブの一覧
+        self.jobs = jobs
+
+    def list_jobs(self, *args: Any) -> list[SimpleNamespace]:
+        """
+        保存したジョブの一覧を返す関数
+
+        Parameters
+        ----------
+        *args: Any
+            使わない引数 (自身と登録したプロジェクト)
+
+        Returns
+        ----------
+        jobs: list[SimpleNamespace]
+            保存したジョブ
+        """
+        jobs = self.jobs
+
+        return jobs

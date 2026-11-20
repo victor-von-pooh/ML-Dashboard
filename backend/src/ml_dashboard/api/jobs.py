@@ -1085,6 +1085,12 @@ def create_job(
         if config_path is None:
             config_path = jobs.job_dir(job_id) / "experiment.yaml"
             config_path.write_text(body.config_text or "", encoding="utf-8")
+        # 確かめの後に環境のジョブが始まった場合は起動しない
+        if request.app.state.environments.running(project.id):
+            jobs.discard(job_id)
+            raise HTTPException(
+                409, "学習の準備で環境に入れている間は学習を起動できません"
+            )
         job = jobs.start(
             job_id, project, body.script, config_path, body.default_config
         )

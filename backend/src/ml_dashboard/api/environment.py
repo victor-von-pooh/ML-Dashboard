@@ -3,6 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from ml_dashboard.api.jobs import get_jobs, project_map
 from ml_dashboard.api.routes import NOT_FOUND, get_project
 from ml_dashboard.core.environment import EnvironmentJobs, check_readiness
 from ml_dashboard.core.models import EnvironmentJob, ProjectReadiness
@@ -121,6 +122,11 @@ def start_environment_job(
         始めたジョブ
     """
     project = get_project(request, project_id)
+    if training_running(request, project.id):
+        raise HTTPException(
+            409, "学習が動いている間は環境に入れられません. 学習が"
+            "終わるか止めてから入れてください"
+        )
     try:
         job = get_environment_jobs(request).start(project, body.commands)
     except ValueError as error:
@@ -129,3 +135,32 @@ def start_environment_job(
         raise HTTPException(409, str(error)) from error
 
     return job
+
+
+def training_running(request: Request, project_id: str) -> bool:
+    """
+    プロジェクトの学習のジョブが動いているかを返す関数
+
+    動いている学習の環境のパッケージを入れ替えると, 後から読み込む所で
+    学習が壊れるため, 環境のジョブを始める前に確かめる
+
+    Parameters
+    ----------
+    request: Request
+        リクエスト
+    project_id: str
+        プロジェクトの ID
+
+    Returns
+    ----------
+    running: bool
+        動いている学習のジョブがある場合は True
+    """
+    # 状態は取得のたびに更新されるので, 一覧から今の状態を見る
+    jobs = get_jobs(request).list_jobs(project_map(request))
+    running = any(
+        job.project_id == project_id and job.status == "running"
+        for job in jobs
+    )
+
+    return running
