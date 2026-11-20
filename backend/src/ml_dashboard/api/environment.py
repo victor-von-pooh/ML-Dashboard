@@ -1,3 +1,4 @@
+from functools import partial
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -121,14 +122,12 @@ def start_environment_job(
     job: EnvironmentJob
         始めたジョブ
     """
+    # 学習が動いていないことは, 学習の起動と共有するロックの中で確かめる
     project = get_project(request, project_id)
-    if training_running(request, project.id):
-        raise HTTPException(
-            409, "学習が動いている間は環境に入れられません. 学習が"
-            "終わるか止めてから入れてください"
-        )
     try:
-        job = get_environment_jobs(request).start(project, body.commands)
+        job = get_environment_jobs(request).start(
+            project, body.commands, partial(training_running, request)
+        )
     except ValueError as error:
         raise HTTPException(400, str(error)) from error
     except (RuntimeError, LookupError) as error:

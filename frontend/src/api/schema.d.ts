@@ -82,6 +82,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/problems/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Recorded Projects
+         * @description ML-Pathfinder の問題の設定に記録された, 登録していない学習の
+         *     プロジェクトを返す関数
+         *
+         *     Parameters
+         *     ----------
+         *     request: Request
+         *         リクエスト
+         *
+         *     Returns
+         *     ----------
+         *     result: RecordedProjects
+         *         今あり, default の config を持ち, 登録していないプロジェクト
+         *         (更新の新しい順)
+         */
+        get: operations["list_recorded_projects"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}": {
         parameters: {
             query?: never;
@@ -1435,6 +1467,30 @@ export interface components {
             ready: boolean;
             job?: components["schemas"]["EnvironmentJob"] | null;
         };
+        /** RecordedProject */
+        RecordedProject: {
+            /** Path */
+            path: string;
+            /** Name */
+            name: string;
+            /** Problem */
+            problem: string;
+            /** Problem Path */
+            problem_path: string;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** RecordedProjects */
+        RecordedProjects: {
+            /** Root */
+            root: string;
+            /** Projects */
+            projects: components["schemas"]["RecordedProject"][];
+            /** Skipped */
+            skipped: string[];
+            /** Error */
+            error?: string | null;
+        };
         /** Registry */
         Registry: {
             /** Optimizers */
@@ -2019,6 +2075,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_recorded_projects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordedProjects"];
                 };
             };
         };

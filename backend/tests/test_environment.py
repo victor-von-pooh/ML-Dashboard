@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from ml_dashboard.core import environment
+from ml_dashboard.core.environment import EnvironmentJobs
 from ml_dashboard.core.jobs import JobManager
 from ml_dashboard.core.requirements import REPORT_CACHE, REPORT_MARK
 
@@ -659,5 +660,137 @@ class JobsStub:
             保存したジョブ
         """
         jobs = self.jobs
+
+        return jobs
+
+
+class RunningStub:
+    def __init__(self) -> None:
+        # 呼ばれた回数 (1 回目だけ動いていないと答える)
+        self.calls = 0
+
+    def running(self, *args: Any) -> bool:
+        """
+        最初の確かめの後に環境のジョブが始まった形で答える関数
+
+        Parameters
+        ----------
+        *args: Any
+            使わない引数 (自身とプロジェクトの ID)
+
+        Returns
+        ----------
+        alive: bool
+            2 回目からは True
+        """
+        self.calls += 1
+        alive = self.calls > 1
+
+        return alive
+
+
+def test_training_recheck(
+    client: TestClient, project_dir: Path, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    config の確かめの後に環境のジョブが始まった場合は, 学習を起動せず
+    409 を返し, 作ったジョブのディレクトリを消すことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        差し替えに使う
+
+    Returns
+    ----------
+    None
+    """
+    # 最初の確かめは通り, 起動の前の確かめ直しで動いていると答える
+    project_id = register(client, project_dir)
+    stub = RunningStub()
+    monkeypatch.setattr(EnvironmentJobs, "running", stub.running)
+    response = client.post(
+        f"/api/projects/{project_id}/jobs",
+        json={"script": "train.py", "config_text": "{}\n"}
+    )
+    assert response.status_code == 409, response.text
+    assert "環境に入れている" in response.json()["detail"]
+    assert stub.calls == 2
+
+    # ジョブのディレクトリ (中身を書いた config ごと) は残さない
+    jobs_dir = tmp_path / "home" / "jobs"
+    assert not jobs_dir.exists() or not list(jobs_dir.iterdir())
+    assert client.get("/api/jobs").json() == []
+
+
+def test_launch_lock_shared(
+    client: TestClient, project_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    学習の起動と環境のジョブの開始が同じロックを使い, 学習の確かめを
+    そのロックの中で行うことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        差し替えに使う
+
+    Returns
+    ----------
+    None
+    """
+    config = project_dir / "configs" / "default" / "train.yaml"
+    config.write_text(READY_CONFIG, encoding="utf-8")
+    project_id = register(client, project_dir)
+    readiness = client.get(f"/api/projects/{project_id}/readiness").json()
+
+    # 学習の一覧を読む間, 共有のロックを持っていること
+    environments = client.app.state.environments  # type: ignore[attr-defined]
+    held: list[bool] = []
+    stub = LockProbe(environments.launch_lock, project_id, held)
+    monkeypatch.setattr(JobManager, "list_jobs", stub.list_jobs)
+    url = f"/api/projects/{project_id}/environment"
+    response = client.post(url, json={"commands": readiness["commands"]})
+    assert response.status_code == 409
+    assert held == [True]
+
+
+class LockProbe:
+    def __init__(self, lock: Any, project_id: str, held: list[bool]):
+        # 確かめるロック, 学習が動いている形にするプロジェクトと, 呼ばれた
+        # ときにロックを持っていたかの記録
+        self.lock = lock
+        self.project_id = project_id
+        self.held = held
+
+    def list_jobs(self, *args: Any) -> list[SimpleNamespace]:
+        """
+        ロックを持っているかを記録し, 動いている学習を返す関数
+
+        Parameters
+        ----------
+        *args: Any
+            使わない引数 (自身と登録したプロジェクト)
+
+        Returns
+        ----------
+        jobs: list[SimpleNamespace]
+            プロジェクトの動いている学習のジョブ 1 つ
+        """
+        self.held.append(self.lock.locked())
+        jobs = [
+            SimpleNamespace(project_id=self.project_id, status="running")
+        ]
 
         return jobs
