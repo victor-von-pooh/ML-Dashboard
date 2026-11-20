@@ -586,6 +586,78 @@
         }
       }
     },
+    "/api/projects/{project_id}/runs/{name}/{date}/{time}/samples/cloud": {
+      "get": {
+        "summary": "Get Sample Cloud",
+        "description": "点群の見本の点を, ファイルのままの座標と元の座標で返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\nname: str\n    実験の名前\ndate: str\n    日付のディレクトリ名\ntime: str\n    時刻のディレクトリ名\npath: str\n    見本の一覧の点群の見本の, 実験のディレクトリからの相対パス\n\nReturns\n----------\ncloud: SampleCloud\n    間引いた点, 元の座標, 単位, 元の座標に戻せない理由",
+        "operationId": "get_sample_cloud",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "date",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Date"
+            }
+          },
+          {
+            "name": "time",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Time"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SampleCloud"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "プロジェクトか実験が見つからない"
+          },
+          "422": {
+            "description": "読めない形か大きすぎる点群のファイル"
+          }
+        }
+      }
+    },
     "/api/projects/{project_id}/runs/{name}/{date}/{time}/files/{file_path}": {
       "get": {
         "summary": "Get File",
@@ -4679,6 +4751,25 @@
               }
             ],
             "title": "Created At"
+          },
+          "classes": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SampleClass"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classes"
+          },
+          "newer_version": {
+            "type": "boolean",
+            "title": "Newer Version",
+            "default": false
           }
         },
         "type": "object",
@@ -4689,6 +4780,98 @@
           "size"
         ],
         "title": "Sample"
+      },
+      "SampleClass": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "color": {
+            "type": "string",
+            "title": "Color"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "color"
+        ],
+        "title": "SampleClass"
+      },
+      "SampleCloud": {
+        "properties": {
+          "vertices": {
+            "type": "integer",
+            "title": "Vertices"
+          },
+          "points": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Points"
+          },
+          "original": {
+            "anyOf": [
+              {
+                "items": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original"
+          },
+          "units": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Units"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "vertices",
+          "points"
+        ],
+        "title": "SampleCloud"
       },
       "ScanRequest": {
         "properties": {

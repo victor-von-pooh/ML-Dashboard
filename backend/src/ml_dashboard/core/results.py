@@ -15,6 +15,8 @@ from ml_dashboard.core.models import (
     RunResults,
     RunTask,
     Sample,
+    SampleClass,
+    SampleCloud,
     TaskOrigin,
 )
 from ml_dashboard.core.projects import (
@@ -47,7 +49,11 @@ MAX_EVALUATION_ROWS = 2000
 EVALUATION_KINDS = ("table", "curve")
 
 # 見本の種類 (知らない種類はその他のファイルとして扱う)
-SAMPLE_KINDS = ("image", "text", "audio", "point_cloud", "file")
+SAMPLE_KINDS = ("image", "text", "audio", "point_cloud", "mask", "file")
+
+# 点群の見本で読む PLY の大きさの上限と, 返す点の数の上限
+MAX_CLOUD_BYTES = 20 * 1024 * 1024
+MAX_CLOUD_POINTS = 20000
 
 # 正解の出どころの種類 (知らない種類は分からないものとして扱う)
 ORIGIN_TYPES = ("process", "annotation", "measurement", "synthetic", "unknown")
@@ -561,19 +567,96 @@ def to_sample(run_dir: Path, item: Any) -> Optional[Sample]:
     except RunNotFoundError:
         return None
     kind = data.get("kind")
+    kind = kind if kind in SAMPLE_KINDS else "file"
 
     sample = Sample(
         name=name,
         epoch=int_or_none(data.get("epoch")),
-        kind=kind if kind in SAMPLE_KINDS else "file",
+        kind=kind,
         path=path.relative_to(run_dir).as_posix(),
         size=path.stat().st_size,
         split=text_or_none(data.get("split")),
         caption=text_or_none(data.get("caption")),
-        created_at=text_or_none(data.get("created_at"))
+        created_at=text_or_none(data.get("created_at")),
+        classes=(
+            sample_classes(data.get("classes")) if kind == "mask" else None
+        ),
+        newer_version=data.get("newer_version") is True
     )
 
     return sample
+
+
+def sample_classes(value: Any) -> Optional[list[SampleClass]]:
+    """
+    領域の見本の番号の表から, 凡例の行を取り出す関数
+
+    Parameters
+    ----------
+    value: Any
+        一覧の項目の classes
+
+    Returns
+    ----------
+    classes: Optional[list[SampleClass]]
+        番号の順の凡例の行 (形の違う行は除く). リストでなければ None
+    """
+    if not isinstance(value, list):
+        return None
+    classes = []
+    for row in value:
+        data = dict_or_empty(row)
+        class_id = int_or_none(data.get("id"))
+        color = text_or_none(data.get("color"))
+        if class_id is None or color is None or not is_hex_color(color):
+            continue
+        classes.append(SampleClass(
+            id=class_id, name=text_or_none(data.get("name")), color=color
+        ))
+    classes.sort(key=class_order)
+
+    return classes
+
+
+def is_hex_color(text: str) -> bool:
+    """
+    #rrggbb の形の色かを判定する関数
+
+    Parameters
+    ----------
+    text: str
+        色の文字
+
+    Returns
+    ----------
+    valid: bool
+        # の後に 16 進の 6 文字が続くか (画面の style にそのまま使うため)
+    """
+    valid = (
+        len(text) == 7 and text[0] == "#"
+        and all(char in "0123456789abcdefABCDEF" for char in text[1:])
+    )
+
+    return valid
+
+
+def class_order(row: SampleClass) -> int:
+    """
+    凡例の行を並べる順を返す関数
+
+    Parameters
+    ----------
+    row: SampleClass
+        凡例の行
+
+    Returns
+    ----------
+    order: int
+        番号
+    """
+    order = row.id
+
+    return order
 
 
 def read_samples(run_dir: Path, notices: list[str]) -> list[Sample]:
@@ -593,7 +676,8 @@ def read_samples(run_dir: Path, notices: list[str]) -> list[Sample]:
         一覧の見本 (書いた順). samples/ の直下の番号付きの画像は, 画像の推移で
         見るので含めない
     """
-    from ml_found.experiment.results import load_samples, read_samples_index
+    from ml_found import load_samples
+    from ml_found.experiment.results import read_samples_index
 
     samples: list[Sample] = []
     index = run_dir / SAMPLES_DIR / SAMPLES_INDEX
@@ -786,3 +870,185 @@ def read_results(
     )
 
     return results
+
+
+class SampleCloudError(Exception):
+    pass
+
+
+def parse_ascii_ply(text: str) -> tuple[int, list[list[float]]]:
+    """
+    ascii の PLY の頂点の座標を, 間引いて読む関数
+
+    Parameters
+    ----------
+    text: str
+        PLY のファイルの中身
+
+    Returns
+    ----------
+    cloud: tuple[int, list[list[float]]]
+        頂点の数と, 間引いた (MAX_CLOUD_POINTS まで) x, y, z の並び
+        (数でない値を持つ点は除く)
+
+    Raises
+    ----------
+    SampleCloudError
+        ascii の PLY でない場合, 頂点の要素が先頭に無い場合, x, y, z の
+        どれかが無い場合, 読める点が無い場合
+    """
+    # 頭の部分 (形式, 頂点の数, 頂点の性質の名前)
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "ply":
+        raise SampleCloudError("PLY のファイルではありません")
+    form = ""
+    vertices = -1
+    in_vertex = False
+    properties: list[str] = []
+    header_end = -1
+    for index, line in enumerate(lines[1:], start=1):
+        words = line.split()
+        if not words:
+            continue
+        if words[0] == "format":
+            form = words[1] if len(words) > 1 else ""
+        elif words[0] == "element":
+            in_vertex = len(words) > 2 and words[1] == "vertex"
+            if in_vertex:
+                vertices = int(words[2]) if words[2].isdigit() else -1
+            elif vertices < 0:
+                raise SampleCloudError("頂点の要素が先頭にありません")
+        elif words[0] == "property" and in_vertex:
+            properties.append(words[-1])
+        elif words[0] == "end_header":
+            header_end = index
+            break
+    if form != "ascii" or header_end < 0:
+        raise SampleCloudError("ascii の PLY ではありません")
+    if vertices <= 0 or not {"x", "y", "z"} <= set(properties):
+        raise SampleCloudError("頂点の x, y, z がありません")
+
+    # 決まった間隔で間引いた頂点 (頂点の要素は先頭にある前提)
+    columns = [properties.index(axis) for axis in ("x", "y", "z")]
+    step = max(1, -(-vertices // MAX_CLOUD_POINTS))
+    points = []
+    for index in range(0, vertices, step):
+        position = header_end + 1 + index
+        if position >= len(lines):
+            break
+        words = lines[position].split()
+        try:
+            point = [float(words[column]) for column in columns]
+        except (IndexError, ValueError):
+            continue
+        if all(math.isfinite(value) for value in point):
+            points.append(point)
+    if not points:
+        raise SampleCloudError("読める頂点がありません")
+    cloud = (vertices, points)
+
+    return cloud
+
+
+def find_cloud_item(run_dir: Path, relative: str) -> dict[str, Any]:
+    """
+    見本の一覧から, パスの合う点群の見本の項目を探す関数
+
+    Parameters
+    ----------
+    run_dir: Path
+        実験のディレクトリ
+    relative: str
+        実験のディレクトリからの相対パス (samples/<名前>/epoch_0005.ply)
+
+    Returns
+    ----------
+    item: dict[str, Any]
+        load_samples が返した項目 (convention と newer_version を持つ)
+
+    Raises
+    ----------
+    RunNotFoundError
+        一覧が無いか読めない場合と, パスの合う点群の見本が無い場合
+    """
+    from ml_found import load_samples
+
+    if not has_samples_index(run_dir):
+        raise RunNotFoundError("見本の一覧 (samples/index.json) がありません")
+    for loaded in load_samples(run_dir):
+        data = dict_or_empty(loaded)
+        file = text_or_none(data.get("file"))
+        if (
+            data.get("legacy") is not True
+            and data.get("kind") == "point_cloud"
+            and f"{SAMPLES_DIR}/{file}" == relative
+        ):
+            return data
+    raise RunNotFoundError(f"点群の見本が見つかりません: {relative}")
+
+
+def read_sample_cloud(run_dir: Path, relative: str) -> SampleCloud:
+    """
+    点群の見本の点を, ファイルのままの座標と元の座標で返す関数
+
+    Parameters
+    ----------
+    run_dir: Path
+        実験のディレクトリ
+    relative: str
+        見本の一覧の点群の見本の, 実験のディレクトリからの相対パス
+
+    Returns
+    ----------
+    cloud: SampleCloud
+        間引いた点と, ML-Found の original_coordinates で値の決まりから
+        戻した元の座標と単位
+
+    Raises
+    ----------
+    RunNotFoundError
+        一覧に無い見本と, samples/ の外かファイルの無い見本の場合
+    SampleCloudError
+        大きすぎるか, 読めない形の PLY の場合
+    """
+    # ML-Found は 1 つのスレッドから読み込み (初めて使う場合)
+    import_ml_found()
+    from ml_found import original_coordinates
+
+    # 一覧の点群の見本だけを, 他のファイルと同じ確かめで読む
+    item = find_cloud_item(run_dir, relative)
+    path = resolve_run_file(run_dir, relative)
+    size = path.stat().st_size
+    if size > MAX_CLOUD_BYTES:
+        raise SampleCloudError(
+            f"点群のファイルが大きすぎます ({size} バイト. 上限は "
+            f"{MAX_CLOUD_BYTES} バイト)"
+        )
+    text = path.read_bytes().decode("utf-8", errors="replace")
+    vertices, points = parse_ascii_ply(text)
+
+    # 値の決まりの単位と, 正規化 (scale か shift) を戻した元の座標.
+    # 新しい版の一覧の項目は値の決まりを読まない
+    convention = item.get("convention")
+    given = dict_or_empty(convention)
+    units = text_or_none(given.get("units"))
+    original = None
+    reason = None
+    if item.get("newer_version") is True:
+        reason = (
+            "見本の一覧 (samples/index.json) の版が, この画面の ML-Found の"
+            "知っている版より新しいので, 値の決まりを読まず, 元の座標に"
+            "戻せません. ファイルのままの座標で出します"
+        )
+    elif "scale" in given or "shift" in given:
+        try:
+            original = original_coordinates(points, convention).tolist()
+        except ValueError as error:
+            reason = f"元の座標に戻せません: {error}"
+
+    cloud = SampleCloud(
+        vertices=vertices, points=points, original=original, units=units,
+        reason=reason
+    )
+
+    return cloud

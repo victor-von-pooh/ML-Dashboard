@@ -126,51 +126,12 @@ export function formatCell(value: unknown): string {
 /** 点群の点 (x, y, z) */
 export type Point3 = [number, number, number]
 
-/** ascii の PLY から読んだ点と, ファイルの頂点の数 (間引いたかを示すため) */
-export interface PlyPoints {
-  points: Point3[]
-  vertices: number
+/** 領域の見本の凡例の名前 (名前の無い番号は「名前なし」) */
+export function className(name: string | null | undefined): string {
+  return name ?? '名前なし'
 }
 
-/**
- * ascii の PLY から頂点の x, y, z を読む. バイナリの PLY と形の違うファイルは null.
- * 点が maxPoints より多い場合は等間隔に間引く
- */
-export function parseAsciiPly(text: string, maxPoints = 20000): PlyPoints | null {
-  const lines = text.split(/\r?\n/)
-  if (lines[0]?.trim() !== 'ply') return null
-  let format = ''
-  let vertices = -1
-  let inVertex = false
-  const properties: string[] = []
-  let headerEnd = -1
-  for (let index = 1; index < lines.length; index += 1) {
-    const words = (lines[index] ?? '').trim().split(/\s+/)
-    if (words[0] === 'format') format = words[1] ?? ''
-    else if (words[0] === 'element') {
-      inVertex = words[1] === 'vertex'
-      if (inVertex) vertices = Number(words[2])
-      else if (vertices < 0) return null
-    } else if (words[0] === 'property' && inVertex) {
-      // list の性質 (property list ...) は頂点には無い前提
-      properties.push(words[words.length - 1] ?? '')
-    } else if (words[0] === 'end_header') {
-      headerEnd = index
-      break
-    }
-  }
-  const columns = ['x', 'y', 'z'].map((name) => properties.indexOf(name))
-  if (format !== 'ascii' || headerEnd < 0 || !(vertices > 0) || columns.some((i) => i < 0)) {
-    return null
-  }
-
-  // 頂点の要素は先頭にある前提 (ML-Found の書く形と多くの道具の形)
-  const step = Math.max(1, Math.ceil(vertices / maxPoints))
-  const points: Point3[] = []
-  for (let index = 0; index < vertices; index += step) {
-    const words = (lines[headerEnd + 1 + index] ?? '').trim().split(/\s+/)
-    const point = columns.map((column) => Number(words[column])) as Point3
-    if (point.every(Number.isFinite)) points.push(point)
-  }
-  return points.length > 0 ? { points, vertices } : null
+/** 点群の図の軸の名前 (単位があれば添える) */
+export function axisLabel(axis: string, units: string | null | undefined): string {
+  return units ? `${axis} (${units})` : axis
 }

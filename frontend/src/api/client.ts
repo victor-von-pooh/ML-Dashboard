@@ -21,6 +21,8 @@ export type RunResults = Schemas['RunResults']
 export type RunTask = Schemas['RunTask']
 export type Evaluation = Schemas['Evaluation']
 export type Sample = Schemas['Sample']
+export type SampleClass = Schemas['SampleClass']
+export type SampleCloud = Schemas['SampleCloud']
 export type RunPolicy = Schemas['RunPolicy']
 export type PolicySpace = Schemas['PolicySpace']
 export type PolicyGuards = Schemas['PolicyGuards']
@@ -135,6 +137,10 @@ export const api = {
   getResults: (projectId: string, runId: string) =>
     request<RunResults>(
       `/api/projects/${encodeURIComponent(projectId)}/runs/${encodeRunId(runId)}/results`,
+    ),
+  getSampleCloud: (projectId: string, runId: string, path: string) =>
+    request<SampleCloud>(
+      `/api/projects/${encodeURIComponent(projectId)}/runs/${encodeRunId(runId)}/samples/cloud?path=${encodeURIComponent(path)}`,
     ),
   getLog: (projectId: string, runId: string) =>
     request<LogEntry[]>(

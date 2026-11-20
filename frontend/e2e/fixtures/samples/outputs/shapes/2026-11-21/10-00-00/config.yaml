@@ -1,0 +1,9 @@
+experiment:
+  name: shapes
+  output_dir: outputs
+  seed: 42
+  device: cpu
+trainer:
+  epochs: 2
+  monitor: valid/loss
+  mode: min
