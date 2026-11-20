@@ -1,11 +1,21 @@
 # TODO
 
 このリポジトリでまだやっていないことを, 優先度の順に並べる. 終えたら消す.
-優先度: 高 = 今の流れ (問題の設定 → データ → モデル → 学習 → 推論) が途中で切れるか, リポジトリの間で食い違う. 中 = 使い勝手や手間. 低 = あるとよい. 条件待ち = 実例か利用者の判断が要る.
+優先度: 高 = 「表の予測を画面だけで通す」に要るものか, リポジトリの間の食い違い. 中 = 「点群と領域を画面で通す」に要るもの. 低 = その先. 条件待ち = 実例か利用者の判断が要る.
 
 ## 優先度 高
 
-無し
+### プロジェクトの準備の画面
+- 何を: プロジェクトごとに, 学習を始めるのに要るもの (問題の設定, config が指すデータセットとモデルの定義, 学習の環境と追加の依存) がそろっているかを並べ, 足りないものはどの段階のアプリで作るかを出す
+- なぜ: 今は学習を起動してから足りないものが誤りで分かり, どの段階に戻ればよいかを利用者が考えるため
+- 終わりの条件: プロジェクトを開くと準備の一覧が出て, 足りないものごとに次の一手が出る. 全てそろうと学習を起動できる
+- つながり: ML-Quest の「書き出したプロジェクトの場所を問題の設定に残す」, ML-Fathom の「データセットをプロジェクトに書き出す」, ML-CreateArchitecture の「定義をプロジェクトに保存する」, ML-Dashboard の「学習の環境を画面から作る」
+
+### 学習の環境を画面から作る
+- 何を: プロジェクトの学習の Python の環境が無いか, 要る機能が足りない場合に, 画面から仮想環境を作り, 足りない機能を ML-Found の登録簿の入れ方で入れる. 入れる前にコマンドと入れる先を見せて確かめる
+- なぜ: 今は追加の依存の画面が入れ方のコマンドを示すだけで, 利用者が端末で環境を作って入れるため
+- 終わりの条件: 環境の無いプロジェクトで, 画面の操作だけで環境ができ, 追加の依存の確かめが全て「入っている」と出る. 公式の手順でしか入らない機能は今のまま案内する
+- つながり: ML-Found の「追加の依存の登録簿に段階のライブラリを足す」
 
 ## 優先度 中
 
@@ -19,13 +29,27 @@
 - 何を: 点群の見本を, 見本の値の決まり (`convention`. 単位と正規化で動かした量) から正規化の前の座標に戻して出す
 - なぜ: 正規化した学習では, 見本の点群が正規化した座標のままで, 元の大きさと位置が分からない
 - 終わりの条件: `convention` を持つ点群の見本で, 正規化した座標と元の座標を切り替えて見られる. 単位を軸に添える
-- つながり: ML-Found の「点群の見本の shift の向きを ML-EDA とそろえる」(向きが決まってから戻し方を実装する)
+- つながり: ML-Found (`load_samples` が返す値の決まり `convention` と, 元の座標に戻す `original_coordinates` を使う. 知っている版より新しい見本の一覧の項目 (`newer_version`) は, 元の座標に戻せないと出す)
+
+## 優先度 低
+
+### 候補のモデルを並べて起動し比べる
+- 何を: 1 つのプロジェクトで, モデルの定義の候補 (`models/` の複数の定義) を選んで同じ設定でまとめて起動し, 比較の画面で定義ごとに並べて選ぶ
+- なぜ: 今は候補ごとに定義を置き換えて手で起動し, どの実験がどの定義かを利用者が覚えるため
+- 終わりの条件: 候補を選んでまとめて起動でき, 比較の画面で実験を定義の名前で分けて並べられる
+- つながり: ML-Found の「モデルの定義を実験に写す」(実験が使った定義を残すこと), ML-Dashboard の「データ全体の評価を一覧と比較に出す」
 
 ### データ全体の評価を一覧と比較に出す
 - 何を: データ全体の評価 (`evaluations/`) のテスト用の値を, 実験の一覧と比較の列に出す. 守る指標 (`guard`) が比べる相手より落ちた実験に印を付ける. 比べる相手との差の列 (`<指標>_diff`) を差として色分けする
 - なぜ: 今は実験の詳細の評価のタブを 1 つずつ開かないと, テストの値と守る指標が落ちたかが分からない
 - 終わりの条件: 一覧と比較で評価の値を並べ替えと絞り込みに使え, 守る指標の落ちが印 (色, アイコン, 文字) で分かる
 - つながり: 無し
+
+### ML-Found の内部のモジュールを使わない
+- 何を: `backend/src/ml_dashboard/api/jobs.py` と `backend/src/ml_dashboard/core/results.py` が読み込む ML-Found の内部のモジュールをやめ, ML-Found の公開の関数 (`ml_found` と下のパッケージの `__all__` にある名前) だけを使う. 今使っている公開でない名前は, `ml_found.training.optim` の `named_views`, `uses_named_optimizers`, `resolve_optimizer_class`, `resolve_scheduler_class`, `check_optim_config`, `missing_data_size_params`, `try_build_optim`, `ml_found.training.registry` の `check_optim_params`, `check_param_values`, `ml_found.experiment.setup` の `check_name`, `check_resume_path`, `check_trainer_config`, `ml_found.config.loader` の `params_sections`, `parse_overrides`, `ml_found.experiment.results` の `read_samples_index`, `ml_found.rl.bundle` の `file_sha256`. 公開の名前を内部のモジュールから読んでいる所 (`load_config`, `get_device`, `describe_optimizers`, `load_task`, `load_samples`, `read_policy_spec` など) も公開の場所から読む
+- なぜ: 画面は自分の組のライブラリの公開の口だけを使う方針 (ML_tester の VISION.md の方針の柱 2) と食い違い, ML-Found の中のモジュールの名前や引数を変えると画面が壊れうる
+- 終わりの条件: ML-Found の内部のモジュール (`ml_found.training.optim` など) を名指す読み込みが無く, 起動の前の確かめと結果の表示が今と同じに動く
+- つながり: ML-Found の「画面が使う確かめの関数を公開する」
 
 ### 学習曲線の横軸を選ぶ
 - 何を: 学習曲線の横軸を, エポックのほかに `history.csv` の他の列 (環境のステップ数, 見たサンプルの数など) から選べるようにする
@@ -38,14 +62,6 @@
 - なぜ: 今は評価のタブに行ごとの表が出るだけで, 方策が最後まで動けた割合と守りが働いた割合を数え直さないと分からない
 - 終わりの条件: 方策の一式と守り付きの評価を持つ実験で, 方策のタブに終え方ごとの割合と成功の割合が出る. 評価の無い実験はそう出す. バックエンドと画面のテストがある
 - つながり: ML-Found (守り付きの評価 `evaluate_policy` の列)
-
-### ML-Found の内部のモジュールを使わない
-- 何を: `backend/src/ml_dashboard/api/jobs.py` と `backend/src/ml_dashboard/core/results.py` が読み込む ML-Found の内部のモジュールをやめ, ML-Found の公開の関数 (`ml_found` と下のパッケージの `__all__` にある名前) だけを使う. 今使っている公開でない名前は, `ml_found.training.optim` の `named_views`, `uses_named_optimizers`, `resolve_optimizer_class`, `resolve_scheduler_class`, `check_optim_config`, `missing_data_size_params`, `try_build_optim`, `ml_found.training.registry` の `check_optim_params`, `check_param_values`, `ml_found.experiment.setup` の `check_name`, `check_resume_path`, `check_trainer_config`, `ml_found.config.loader` の `params_sections`, `parse_overrides`, `ml_found.experiment.results` の `read_samples_index`, `ml_found.rl.bundle` の `file_sha256`. 公開の名前を内部のモジュールから読んでいる所 (`load_config`, `get_device`, `describe_optimizers`, `load_task`, `load_samples`, `read_policy_spec` など) も公開の場所から読む
-- なぜ: 画面は自分の組のライブラリの公開の口だけを使う方針 (ML_tester の VISION.md の方針の柱 2) と食い違い, ML-Found の中のモジュールの名前や引数を変えると画面が壊れうる
-- 終わりの条件: ML-Found の内部のモジュール (`ml_found.training.optim` など) を名指す読み込みが無く, 起動の前の確かめと結果の表示が今と同じに動く
-- つながり: ML-Found の「画面が使う確かめの関数を公開する」
-
-## 優先度 低
 
 ### 見本の横に同じエポックの評価
 - 何を: 見本のタブで, 選んだエポックの指標の値 (`history.csv`) を見本の横に並べる
