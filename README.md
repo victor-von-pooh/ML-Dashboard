@@ -45,8 +45,6 @@ ML-Found が実験ごとに残すディレクトリ (`history.csv`, `config.yaml
 - **学習の起動とジョブ**: config を書き換えて ML-Found で確かめてから起動し, 進み具合を見て止める. 実験の設定でもう一度起動できる
 - **追加の依存**: 強化学習の環境, MuJoCo, ROS 2, CUDA が入っているかと入れ方を見る
 
-画面ごとの使い方は [docs/GUIDE.md](docs/GUIDE.md) (`demo` だけで試せる), 設計の方針は [docs/DESIGN.md](docs/DESIGN.md) にまとめた.
-
 ## 使い方
 
 ### 必要なもの
@@ -69,6 +67,12 @@ make serve   # 画面をビルドして http://127.0.0.1:8765 で起動 (Ctrl-C 
 
 開いたら「プロジェクトを追加」で, clone したディレクトリの中の `demo` を絶対パスか `~` からのパス (例: `~/ML-Dashboard/demo`) で登録する. 自分のプロジェクトの登録, ポートやデータの置き場の変え方は [docs/GUIDE.md](docs/GUIDE.md) の 1 章と 2 章にある.
 
+## 文書
+
+- [操作ガイド](docs/GUIDE.md): 画面の順の操作ガイド (`demo` だけで試せる)
+- [設計](docs/DESIGN.md): 今の設計と決まり (ML-Found との約束, 画面, API)
+- [TODO](TODO.md): まだやっていないこと (優先度の順)
+
 ## 開発
 
 ```bash
@@ -87,7 +91,7 @@ make api            # バックエンドの API を変えたら, 画面の型を
 | `frontend/e2e/` | 画面の通しのテスト (Playwright) |
 | `ML-Found/` | submodule |
 | `docs/GUIDE.md` | 画面ごとの使い方と, 試す手順 |
-| `docs/DESIGN.md` | 設計の方針と次に足すもの |
+| `docs/DESIGN.md` | 今の設計と決まり |
 
 ## ライセンス
 
