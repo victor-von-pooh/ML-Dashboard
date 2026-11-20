@@ -257,6 +257,14 @@ class Evaluation(BaseModel):
     total_rows: int
 
 
+class SampleClass(BaseModel):
+    # 領域の見本の番号の表の 1 行 (ML-Found の samples/index.json の
+    # classes). color は PNG での色 (#rrggbb)
+    id: int
+    name: Optional[str] = None
+    color: str
+
+
 class Sample(BaseModel):
     # 見本の出力 (ML-Found の samples/index.json の 1 項目.
     # samples/ の直下の番号付きの画像は, 画像の推移で見るので含めない)
@@ -270,6 +278,24 @@ class Sample(BaseModel):
     split: Optional[str] = None
     caption: Optional[str] = None
     created_at: Optional[str] = None
+    # 領域の見本の凡例 (mask だけ. 無ければ None)
+    classes: Optional[list[SampleClass]] = None
+    # 知っている版より新しい見本の一覧の項目か (値の決まりを読まない)
+    newer_version: bool = False
+
+
+class SampleCloud(BaseModel):
+    # 点群の見本の点 (間引いた点. 元の座標とファイルのままの座標は同じ順)
+    vertices: int
+    # ファイルのままの座標 (正規化した学習では正規化した座標)
+    points: list[list[float]]
+    # ML-Found の original_coordinates で戻した元の座標. 値の決まりに
+    # scale も shift も無い場合と, 戻せない場合は None
+    original: Optional[list[list[float]]] = None
+    # 座標の単位 (値の決まりの units. 無ければ None)
+    units: Optional[str] = None
+    # 元の座標に戻せない理由 (戻せた場合と, 戻す必要が無い場合は None)
+    reason: Optional[str] = None
 
 
 # 要素ごとの範囲 (null は制限なし)

@@ -1,15 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
-import { Download } from 'lucide-react'
+import clsx from 'clsx'
+import { Download, Info } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 
-import { runFileUrl, type Sample } from '../../api/client'
+import { api, runFileUrl, type Sample, type SampleClass } from '../../api/client'
 import { Card, ErrorBox, Spinner } from '../../components/ui'
 import { cssVar } from '../../lib/colors'
 import { formatBytes } from '../../lib/format'
 import { useTheme } from '../../lib/themeContext'
 import {
+  axisLabel,
+  className,
   groupSamples,
-  parseAsciiPly,
   sampleEpochLabel,
   type Point3,
   type SampleGroup,
@@ -19,9 +21,8 @@ import {
 const MAX_TEXT_BYTES = 2 * 1024 * 1024
 const MAX_TEXT_CHARS = 20000
 
-// 点群を上から見た図にする大きさの上限と, 描く点の数
+// 点群を上から見た図にする大きさの上限 (バックエンドの上限と同じ)
 const MAX_CLOUD_BYTES = 20 * 1024 * 1024
-const MAX_CLOUD_POINTS = 20000
 
 /** 実験のファイルを文字で読む */
 async function fetchText(url: string): Promise<string> {
@@ -112,41 +113,124 @@ function CloudView({ points, label }: { points: Point3[]; label: string }) {
   )
 }
 
-function PointCloudSample({ url, sample }: { url: string; sample: Sample }) {
+/** 点群の座標の選び (元の座標か, ファイルのままの正規化した座標) */
+type CloudCoordinates = 'original' | 'normalized'
+
+const COORDINATE_LABELS: Record<CloudCoordinates, string> = {
+  original: '元の座標',
+  normalized: '正規化した座標',
+}
+
+function PointCloudSample({
+  url,
+  sample,
+  projectId,
+  runId,
+}: {
+  url: string
+  sample: Sample
+  projectId: string
+  runId: string
+}) {
   const drawable = sample.path.toLowerCase().endsWith('.ply') && sample.size <= MAX_CLOUD_BYTES
-  const text = useQuery({
-    queryKey: ['sample-text', url, sample.size, sample.created_at],
-    queryFn: () => fetchText(url),
+  // 点の読み込みと元の座標への戻しはバックエンド (ML-Found の original_coordinates)
+  const cloud = useQuery({
+    queryKey: ['sample-cloud', projectId, runId, sample.path, sample.size, sample.created_at],
+    queryFn: () => api.getSampleCloud(projectId, runId, sample.path),
     enabled: drawable,
     staleTime: Infinity,
+    retry: false,
   })
-  const cloud = useMemo(
-    () => (text.data ? parseAsciiPly(text.data, MAX_CLOUD_POINTS) : null),
-    [text.data],
-  )
+  const [coordinates, setCoordinates] = useState<CloudCoordinates>('original')
+  const data = cloud.data
+  const original = data?.original ?? null
+  // 元の座標があれば選べ, 無ければファイルのままの座標だけ
+  const shown = original && coordinates === 'original' ? original : (data?.points ?? null)
+  const viewing: CloudCoordinates | null = original ? coordinates : null
+  // 単位は元の座標か, 正規化していない (scale も shift も無い) 点群の座標に添える
+  const units = viewing === 'normalized' ? null : (data?.units ?? null)
+  const toggleLabel = `${sample.name} の点群の座標`
   return (
     <div className="space-y-2">
-      {drawable && text.data === undefined && !text.error && <Spinner />}
-      {text.error && <p className="text-xs text-ink-3">点群を読めなかったので図にしていません</p>}
-      {cloud ? (
+      {drawable && cloud.isPending && <Spinner />}
+      {cloud.error && (
+        <p className="text-xs text-ink-3">点群を図にしていません: {cloud.error.message}</p>
+      )}
+      {data?.reason && (
+        <p className="flex items-start gap-1 text-xs text-ink-2">
+          <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          {data.reason}
+        </p>
+      )}
+      {original && (
+        <div className="flex flex-wrap gap-1" role="group" aria-label={toggleLabel}>
+          {(['original', 'normalized'] as const).map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setCoordinates(item)}
+              aria-pressed={coordinates === item}
+              className={clsx(
+                'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                coordinates === item
+                  ? 'border-accent bg-accent-soft text-accent-text'
+                  : 'border-line text-ink-2 hover:bg-surface-2',
+              )}
+            >
+              {COORDINATE_LABELS[item]}
+            </button>
+          ))}
+        </div>
+      )}
+      {data && shown && (
         <figure className="space-y-1">
-          <CloudView points={cloud.points} label={`${sample.name} の点群を上から見た図`} />
+          <CloudView
+            points={shown as Point3[]}
+            label={`${sample.name} の点群を上から見た図${viewing ? ` (${COORDINATE_LABELS[viewing]})` : ''}`}
+          />
           <figcaption className="text-xs text-ink-3">
-            上から見た図 (x を横, y を縦.{' '}
-            {cloud.vertices > cloud.points.length
-              ? `${cloud.vertices.toLocaleString()} 点を ${cloud.points.length.toLocaleString()} 点に間引いて描画`
-              : `${cloud.points.length.toLocaleString()} 点`}
+            上から見た図 ({axisLabel('x', units)} を横, {axisLabel('y', units)} を縦.{' '}
+            {viewing && `${COORDINATE_LABELS[viewing]}. `}
+            {data.vertices > shown.length
+              ? `${data.vertices.toLocaleString()} 点を ${shown.length.toLocaleString()} 点に間引いて描画`
+              : `${shown.length.toLocaleString()} 点`}
             )
           </figcaption>
         </figure>
-      ) : (
-        text.data !== undefined && (
-          <p className="text-xs text-ink-3">
-            ascii の PLY ではないので図にしていません. ダウンロードして点群の道具で開いてください
-          </p>
-        )
       )}
       <DownloadLink url={url} sample={sample} />
+    </div>
+  )
+}
+
+/** 領域の見本の凡例 (番号, 名前, 色). 色は PNG の色そのもの */
+function MaskLegend({ classes, label }: { classes: SampleClass[]; label: string }) {
+  return (
+    <ul aria-label={label} className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-2">
+      {classes.map((row) => (
+        <li key={row.id} className="flex items-center gap-1.5">
+          <span
+            aria-hidden
+            className="inline-block size-3 rounded-sm border border-line"
+            style={{ backgroundColor: row.color }}
+          />
+          <span className="tabular font-mono text-ink-3">{row.id}</span>
+          <span className={row.name ? 'text-ink' : 'text-ink-3'}>{className(row.name)}</span>
+          <span className="font-mono text-ink-3">{row.color}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function ImageView({ url, label }: { url: string; label: string }) {
+  return (
+    <div className="flex justify-center overflow-hidden rounded-lg border border-line bg-surface-2">
+      <img
+        src={url}
+        alt={label}
+        className="h-auto max-h-[480px] w-full object-contain [image-rendering:pixelated]"
+      />
     </div>
   )
 }
@@ -164,13 +248,15 @@ function SampleContent({
   const label = `${sample.name} の${sampleEpochLabel(sample.epoch)}`
   switch (sample.kind) {
     case 'image':
+      return <ImageView url={url} label={label} />
+    case 'mask':
+      // 番号の表が無い見本は絵だけ
       return (
-        <div className="flex justify-center overflow-hidden rounded-lg border border-line bg-surface-2">
-          <img
-            src={url}
-            alt={label}
-            className="h-auto max-h-[480px] w-full object-contain [image-rendering:pixelated]"
-          />
+        <div className="space-y-2">
+          <ImageView url={url} label={`${label} (領域を色分けした絵)`} />
+          {sample.classes && sample.classes.length > 0 && (
+            <MaskLegend classes={sample.classes} label={`${sample.name} の領域の凡例`} />
+          )}
         </div>
       )
     case 'text':
@@ -183,7 +269,7 @@ function SampleContent({
         </div>
       )
     case 'point_cloud':
-      return <PointCloudSample url={url} sample={sample} />
+      return <PointCloudSample url={url} sample={sample} projectId={projectId} runId={runId} />
     default:
       return <DownloadLink url={url} sample={sample} />
   }

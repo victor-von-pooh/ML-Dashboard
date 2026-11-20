@@ -363,6 +363,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/runs/{name}/{date}/{time}/samples/cloud": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Sample Cloud
+         * @description 点群の見本の点を, ファイルのままの座標と元の座標で返す関数
+         *
+         *     Parameters
+         *     ----------
+         *     request: Request
+         *         リクエスト
+         *     project_id: str
+         *         プロジェクトの ID
+         *     name: str
+         *         実験の名前
+         *     date: str
+         *         日付のディレクトリ名
+         *     time: str
+         *         時刻のディレクトリ名
+         *     path: str
+         *         見本の一覧の点群の見本の, 実験のディレクトリからの相対パス
+         *
+         *     Returns
+         *     ----------
+         *     cloud: SampleCloud
+         *         間引いた点, 元の座標, 単位, 元の座標に戻せない理由
+         */
+        get: operations["get_sample_cloud"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}/runs/{name}/{date}/{time}/files/{file_path}": {
         parameters: {
             query?: never;
@@ -1902,6 +1942,35 @@ export interface components {
             caption?: string | null;
             /** Created At */
             created_at?: string | null;
+            /** Classes */
+            classes?: components["schemas"]["SampleClass"][] | null;
+            /**
+             * Newer Version
+             * @default false
+             */
+            newer_version: boolean;
+        };
+        /** SampleClass */
+        SampleClass: {
+            /** Id */
+            id: number;
+            /** Name */
+            name?: string | null;
+            /** Color */
+            color: string;
+        };
+        /** SampleCloud */
+        SampleCloud: {
+            /** Vertices */
+            vertices: number;
+            /** Points */
+            points: number[][];
+            /** Original */
+            original?: number[][] | null;
+            /** Units */
+            units?: string | null;
+            /** Reason */
+            reason?: string | null;
         };
         /** ScanRequest */
         ScanRequest: {
@@ -2414,6 +2483,47 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    get_sample_cloud: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                name: string;
+                date: string;
+                time: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SampleCloud"];
+                };
+            };
+            /** @description プロジェクトか実験が見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 読めない形か大きすぎる点群のファイル */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

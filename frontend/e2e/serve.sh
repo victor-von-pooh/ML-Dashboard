@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 画面の通しのテスト (Playwright) 用に, デモのプロジェクトで実験を 2 つ作り,
-# 強化学習の確かめ用のプロジェクトを写してから
+# 強化学習と見本の確かめ用のプロジェクトを写してから
 # ダッシュボードを起動する. 画面は pnpm build で作っておく
 set -euo pipefail
 
@@ -14,6 +14,8 @@ mkdir -p "$WORK"
 rsync -a --exclude outputs ../../demo/ "$WORK/demo/"
 # 強化学習の実験 (Gymnasium を入れずに方策の一式を見るため, 学習せずに置いたもの)
 rsync -a fixtures/rl/ "$WORK/rl/"
+# 領域と点群の見本の確かめ用のプロジェクト (見本は下で ML-Found の save_sample で書く)
+rsync -a fixtures/samples/ "$WORK/samples/"
 
 # 書き出したプロジェクトの一覧の確かめ用に, ML-Pathfinder の置き場と, そこに
 # 記録した (まだ登録していない) 学習のプロジェクトと, 記録の無い問題の設定
@@ -37,6 +39,9 @@ for config in quick.yaml quick_sgd.yaml; do
     exit 1
   fi
 done
+
+# 領域と点群の見本 (新しい版の一覧の見本も)
+uv run python "$WORK/../make_samples.py" "$WORK/samples"
 
 # データの置き場と ML-Pathfinder の置き場も作業用のディレクトリにし,
 # 決まったトークンで起動

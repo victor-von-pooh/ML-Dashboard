@@ -392,3 +392,188 @@ def test_results_guards(
     response = client.get(results_url(project_id, RESULTS_RUN))
     assert response.status_code == 200
     assert response.json()["task"]["base_run"] is None
+
+
+def test_mask_and_cloud_samples(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    ML-Found の save_sample で書いた領域の見本の凡例と, 点群の見本の元の
+    座標への戻しを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    import numpy as np
+    from ml_found import save_sample
+
+    # 名前のある領域の見本, 名前の無い領域の見本, 正規化した点群, 値の
+    # 決まりの無い点群, 単位だけの点群
+    run_dir = project_dir / "outputs" / RESULTS_RUN
+    mask = np.array([[0, 1], [2, 2]])
+    save_sample(run_dir, "mask", mask, epoch=1, kind="mask",
+                classes=["background", "road"])
+    save_sample(run_dir, "plain", mask, kind="mask")
+    points = np.array([[0.0, 0.5, 1.0], [1.0, 0.0, -1.0]])
+    save_sample(run_dir, "cloud", points, kind="point_cloud",
+                convention={"units": "m", "scale": 2.0,
+                            "shift": [1.0, 0.0, -3.0]})
+    save_sample(run_dir, "raw", points, kind="point_cloud")
+    save_sample(run_dir, "metric", points, kind="point_cloud",
+                convention={"units": "mm"})
+    project_id = register(client, project_dir)
+    samples = {
+        item["name"]: item
+        for item in client.get(results_url(project_id, RESULTS_RUN))
+        .json()["samples"]
+    }
+
+    # 領域は mask の種類で, 番号の順の凡例 (名前の無い番号は null)
+    assert samples["mask"]["kind"] == "mask"
+    assert samples["mask"]["path"] == "samples/mask/epoch_0001.png"
+    assert samples["mask"]["classes"] == [
+        {"id": 0, "name": "background", "color": "#000000"},
+        {"id": 1, "name": "road", "color": "#800000"},
+        {"id": 2, "name": None, "color": "#008000"}
+    ]
+    assert [row["name"] for row in samples["plain"]["classes"]] == [
+        None, None, None
+    ]
+    assert samples["cloud"]["classes"] is None
+    assert samples["cloud"]["newer_version"] is False
+
+    # 元の座標は 値 × scale - shift (ML-Found の original_coordinates)
+    url = f"/api/projects/{project_id}/runs/{RESULTS_RUN}/samples/cloud"
+    cloud = client.get(url, params={"path": samples["cloud"]["path"]})
+    assert cloud.status_code == 200
+    assert cloud.json() == {
+        "vertices": 2, "points": points.tolist(),
+        "original": [[-1.0, 1.0, 5.0], [1.0, 0.0, 1.0]],
+        "units": "m", "reason": None
+    }
+
+    # scale も shift も無ければファイルのままの座標だけ (単位は添える)
+    raw = client.get(url, params={"path": samples["raw"]["path"]}).json()
+    assert raw["original"] is None and raw["units"] is None
+    assert raw["reason"] is None
+    metric = client.get(url, params={"path": samples["metric"]["path"]})
+    assert metric.json()["units"] == "mm"
+    assert metric.json()["original"] is None
+
+    # 一覧に無いパス, 点群でない見本, 外への移動は 404
+    for path in ("samples/cloud/other.ply", samples["mask"]["path"],
+                 "samples/../config.yaml"):
+        assert client.get(url, params={"path": path}).status_code == 404
+
+    # 新しい版の一覧の項目は, 値の決まりを読まず元の座標に戻せないと出す
+    index = run_dir / "samples" / "index.json"
+    data = json.loads(index.read_text())
+    data["format_version"] = 99
+    write_json(index, data)
+    listed = client.get(results_url(project_id, RESULTS_RUN)).json()
+    assert all(item["newer_version"] for item in listed["samples"])
+    newer = client.get(url, params={"path": samples["cloud"]["path"]})
+    assert newer.status_code == 200
+    assert newer.json()["original"] is None
+    assert newer.json()["units"] is None
+    assert "新しい" in newer.json()["reason"]
+
+
+def test_cloud_sample_files(
+    client: TestClient, project_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    点群の見本のファイルが読めない形か大きすぎる場合と, 多い点の間引きを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        大きさの上限の差し替え
+
+    Returns
+    ----------
+    None
+    """
+    from ml_found import save_sample
+
+    # ML-Found の書く ascii の PLY と, 写した binary の PLY
+    run_dir = project_dir / "outputs" / RESULTS_RUN
+    many = [[float(index), 0.0, 0.0] for index in range(50001)]
+    save_sample(run_dir, "many", many, kind="point_cloud")
+    binary = run_dir.parent / "binary.ply"
+    binary.write_bytes(
+        b"ply\nformat binary_little_endian 1.0\nelement vertex 1\n"
+        b"property float x\nproperty float y\nproperty float z\n"
+        b"end_header\n" + bytes(12)
+    )
+    save_sample(run_dir, "binary", binary, kind="point_cloud")
+    project_id = register(client, project_dir)
+    url = f"/api/projects/{project_id}/runs/{RESULTS_RUN}/samples/cloud"
+
+    # 5 万 1 点は 3 点ごとに間引いて 1 万 6667 点
+    data = client.get(
+        url, params={"path": "samples/many/final.ply"}
+    ).json()
+    assert data["vertices"] == 50001
+    assert len(data["points"]) == 16667
+    assert data["points"][1] == [3.0, 0.0, 0.0]
+
+    # binary の PLY と大きすぎるファイルは 422
+    response = client.get(url, params={"path": "samples/binary/final.ply"})
+    assert response.status_code == 422
+    assert "ascii" in response.json()["detail"]
+    monkeypatch.setattr(results_module, "MAX_CLOUD_BYTES", 10)
+    response = client.get(url, params={"path": "samples/many/final.ply"})
+    assert response.status_code == 422
+    assert "大きすぎます" in response.json()["detail"]
+
+
+def test_parse_ascii_ply() -> None:
+    """
+    ascii の PLY の読み方 (性質の順, 読めない点, 頂点の無いファイル) を
+    確かめる関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    None
+    """
+    # x, y, z の順でない性質と, 数でない点を除くこと
+    text = (
+        "ply\nformat ascii 1.0\nelement vertex 3\nproperty float z\n"
+        "property float x\nproperty float y\nproperty uchar red\n"
+        "end_header\n3 1 2 255\nnan 0 0 0\n6 4 5 0\n"
+    )
+    assert results_module.parse_ascii_ply(text) == (
+        3, [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+    )
+
+    # PLY でないもの, 頂点の要素が先頭に無いもの, z の無いもの
+    broken = [
+        "not ply",
+        "ply\nformat ascii 1.0\nelement face 1\nelement vertex 1\n"
+        "property float x\nend_header\n",
+        "ply\nformat ascii 1.0\nelement vertex 1\nproperty float x\n"
+        "property float y\nend_header\n1 2\n",
+        "ply\nformat ascii 1.0\nelement vertex 1\nproperty float x\n"
+        "property float y\nproperty float z\nend_header\nA B C\n"
+    ]
+    for item in broken:
+        with pytest.raises(results_module.SampleCloudError):
+            results_module.parse_ascii_ply(item)

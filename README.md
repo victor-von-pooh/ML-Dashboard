@@ -15,7 +15,7 @@ ML-Found が実験ごとに残すディレクトリ (`history.csv`, `config.yaml
   </tr>
   <tr>
     <td><b>評価</b>. 何の実験か (受け持ち, 正解の出どころ) と, データ全体の評価の表と曲線. 守る指標の表を先頭に置く</td>
-    <td><b>見本</b>. 名前ごとに, エポックを選んで画像, 文, 音, 点群を見る</td>
+    <td><b>見本</b>. 名前ごとに, エポックを選んで画像, 文, 音, 点群, 領域を見る</td>
   </tr>
   <tr>
     <td><img src="docs/images/launch.png" alt="学習の起動: ML-Found の登録簿から作るフォームと YAML の欄, ML-Found が補う値のお知らせ"></td>

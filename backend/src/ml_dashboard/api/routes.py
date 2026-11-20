@@ -16,6 +16,7 @@ from ml_dashboard.core.models import (
     RunParams,
     RunResults,
     RunSummary,
+    SampleCloud,
 )
 from ml_dashboard.core.problems import recorded_projects
 from ml_dashboard.core.projects import (
@@ -27,7 +28,11 @@ from ml_dashboard.core.projects import (
     list_experiment_configs,
     list_scripts,
 )
-from ml_dashboard.core.results import read_results
+from ml_dashboard.core.results import (
+    SampleCloudError,
+    read_results,
+    read_sample_cloud,
+)
 from ml_dashboard.core.runs import (
     AUDIO_SUFFIXES,
     IMAGE_SUFFIXES,
@@ -540,6 +545,52 @@ def get_results(
     results = read_results(run_dir, project, get_store(request))
 
     return results
+
+
+@router.get(
+    RUN_PATH + "/samples/cloud",
+    responses={
+        **NOT_FOUND,
+        422: {"description": "読めない形か大きすぎる点群のファイル"}
+    }
+)
+def get_sample_cloud(
+    request: Request, project_id: str, name: str, date: str, time: str,
+    path: str
+) -> SampleCloud:
+    """
+    点群の見本の点を, ファイルのままの座標と元の座標で返す関数
+
+    Parameters
+    ----------
+    request: Request
+        リクエスト
+    project_id: str
+        プロジェクトの ID
+    name: str
+        実験の名前
+    date: str
+        日付のディレクトリ名
+    time: str
+        時刻のディレクトリ名
+    path: str
+        見本の一覧の点群の見本の, 実験のディレクトリからの相対パス
+
+    Returns
+    ----------
+    cloud: SampleCloud
+        間引いた点, 元の座標, 単位, 元の座標に戻せない理由
+    """
+    output_dirs = get_project_output_dirs(get_project(request, project_id))
+    try:
+        run_dir = resolve_run_dir(output_dirs, f"{name}/{date}/{time}")
+        cloud = read_sample_cloud(run_dir, path)
+    except RunNotFoundError as error:
+        raise HTTPException(404, str(error)) from error
+    except SampleCloudError as error:
+        raise HTTPException(422, str(error)) from error
+
+    return cloud
 
 
 @router.get(

@@ -8,13 +8,24 @@ import {
   groupSamples,
   numericColumns,
   labelOf,
-  parseAsciiPly,
+  axisLabel,
+  className,
   ROLE_LABELS,
   sampleEpochLabel,
 } from './results'
 
 function sample(name: string, epoch: number | null, path: string, kind = 'image'): Sample {
-  return { name, epoch, kind, path, size: 1, split: null, caption: null, created_at: null }
+  return {
+    name,
+    epoch,
+    kind,
+    path,
+    size: 1,
+    split: null,
+    caption: null,
+    created_at: null,
+    newer_version: false,
+  }
 }
 
 function evaluation(rows: Evaluation['rows'], columns: string[], x: string | null): Evaluation {
@@ -150,26 +161,11 @@ describe('formatCell', () => {
   })
 })
 
-describe('parseAsciiPly', () => {
-  const header = (count: number, format = 'ascii') =>
-    `ply\nformat ${format} 1.0\nelement vertex ${count}\nproperty float x\nproperty float y\nproperty float z\nend_header\n`
-
-  it('ascii の頂点を読み, 多い場合は間引く', () => {
-    expect(parseAsciiPly(`${header(2)}0 1 2\n3 4 5\n`)).toEqual({
-      points: [
-        [0, 1, 2],
-        [3, 4, 5],
-      ],
-      vertices: 2,
-    })
-    const lines = Array.from({ length: 10 }, (_, index) => `${index} 0 0`).join('\n')
-    const thinned = parseAsciiPly(`${header(10)}${lines}\n`, 4)
-    expect(thinned?.points).toHaveLength(4)
-    expect(thinned?.vertices).toBe(10)
-  })
-
-  it('バイナリと PLY でないファイルは null', () => {
-    expect(parseAsciiPly(`${header(1, 'binary_little_endian')}xxxx`)).toBeNull()
-    expect(parseAsciiPly('hello')).toBeNull()
+describe('className と axisLabel', () => {
+  it('名前の無い番号は「名前なし」, 単位は軸の名前に括弧で添える', () => {
+    expect(className('road')).toBe('road')
+    expect(className(null)).toBe('名前なし')
+    expect(axisLabel('x', 'm')).toBe('x (m)')
+    expect(axisLabel('y', null)).toBe('y')
   })
 })
