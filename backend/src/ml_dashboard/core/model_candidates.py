@@ -4,7 +4,11 @@ import stat
 from pathlib import Path
 from typing import Optional
 
-from ml_dashboard.core.model_spec import MODEL_SPEC_FILE, read_copy
+from ml_dashboard.core.model_spec import (
+    MODEL_SPEC_FILE,
+    in_run_shape,
+    read_copy,
+)
 from ml_dashboard.core.models import (
     ModelSpecInfo,
     ModelSpecList,
@@ -27,7 +31,8 @@ MAX_SPEC_BYTES = 16 * 1024 * 1024
 MAX_ORIGIN_HOPS = 10
 
 # 読んだ定義の sha256 の覚え (場所から, (i-node, 大きさ, 更新の時刻) と
-# sha256)
+# sha256) と, 覚える数の上限
+MAX_SHA_CACHE = 1000
 SPEC_SHA_CACHE: dict[str, tuple[tuple[int, int, int], Optional[str]]] = {}
 
 
@@ -85,8 +90,34 @@ def spec_sha256(path: Path) -> Optional[str]:
     content, _ = read_copy(path)
     sha256 = None if content is None else hashlib.sha256(content).hexdigest()
     SPEC_SHA_CACHE[str(path)] = (key, sha256)
+    forget_sha_cache()
 
     return sha256
+
+
+def forget_sha_cache() -> None:
+    """
+    覚えた sha256 が上限を超えたら, 消えたファイルと古いものを捨てる関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    None
+    """
+    if len(SPEC_SHA_CACHE) <= MAX_SHA_CACHE:
+        return
+
+    # 消えたファイルの分の破棄
+    for path in list(SPEC_SHA_CACHE):
+        if not os.path.lexists(path):
+            SPEC_SHA_CACHE.pop(path, None)
+
+    # まだ多ければ, 先に覚えたものから破棄
+    while len(SPEC_SHA_CACHE) > MAX_SHA_CACHE:
+        SPEC_SHA_CACHE.pop(next(iter(SPEC_SHA_CACHE)))
 
 
 def spec_problem(project_dir: Path, path: Path) -> Optional[str]:
@@ -269,8 +300,16 @@ def find_origin(
     current = path
     for _ in range(MAX_ORIGIN_HOPS + 1):
         key = copy_run_key(project_dir, current)
-        if key is None or key not in sources:
-            return current, key is None
+        if key is None:
+            return current, True
+
+        # 読んだ実験に無い場所は, 実験の形 (消した実験) なら分からない写し,
+        # それ以外は model_spec.yaml という名前の普通の定義
+        if key not in sources:
+            target = Path(current)
+            if not target.is_absolute():
+                target = project_dir / target
+            return current, not in_run_shape(project_dir, target)
         source = sources[key]
         previous = source.model_spec if source is not None else None
         if (

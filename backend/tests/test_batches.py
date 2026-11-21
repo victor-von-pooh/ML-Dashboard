@@ -1,14 +1,15 @@
 import hashlib
 import os
+import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import pytest
 from fastapi.testclient import TestClient
 
 from ml_dashboard.core import batches as batches_module
-from ml_dashboard.core.batches import BatchManager
+from ml_dashboard.core.batches import BatchManager, is_active
 from ml_dashboard.core.model_candidates import (
     describe_models,
     list_model_specs,
@@ -216,7 +217,7 @@ def test_describe_models(project_dir: Path) -> None:
         run_key(outputs / "c"): source(copy_of("b")),
         # 中身の違う写しと, 読んでいない実験の写し
         run_key(outputs / "d"): source(copy_of("a"), "b" * 64),
-        run_key(outputs / "e"): source(copy_of("gone")),
+        run_key(outputs / "e"): source(copy_of("09-59-59")),
         # 互いを指す写し
         run_key(outputs / "f"): source(copy_of("g")),
         run_key(outputs / "g"): source(copy_of("f")),
@@ -242,6 +243,12 @@ def test_describe_models(project_dir: Path) -> None:
         assert not model(name).origin_known
     assert model("h").name == "net" and model("h").sha256 is None
     assert model("i") is None
+
+    # 実験の形でない model_spec.yaml という名前の定義は, 普通の定義
+    own = describe_models(project_dir, {
+        run_key(outputs / "j"): source("models/model_spec.yaml")
+    })[run_key(outputs / "j")]
+    assert own is not None and own.name == "model_spec" and own.origin_known
 
 
 def test_batch_runs_candidates(
@@ -402,39 +409,258 @@ def test_batch_refuses(client: TestClient, project_dir: Path) -> None:
     assert client.get("/api/batches").json() == []
 
 
-def test_batch_candidate_changed(
-    client: TestClient, project_dir: Path
-) -> None:
+class FakeHooks:
+    # まとまりの進め方の口の代わり. 呼ばれた順を記録し, 誤りや待つものを
+    # 差し込める
+    def __init__(self) -> None:
+        # 差し込む値と記録を用意
+        self.busy_calls = 0
+        self.waiting: list[str] = []
+        self.wait_rounds = 0
+        self.launched: list[str] = []
+        self.launch_errors: dict[str, Exception] = {}
+        self.finish_errors: dict[str, Exception] = {}
+        self.sha: dict[str, str] = {}
+        self.run_sha: Optional[str] = None
+        self.seen_waiting: list[list[str]] = []
+        self.manager: Optional[BatchManager] = None
+        self.batch_id = ""
+
+    def busy(self) -> list[str]:
+        """
+        待つものを返す関数 (初めの wait_rounds 回だけ waiting を返す)
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        ----------
+        waiting: list[str]
+            待っているジョブ
+        """
+        self.busy_calls += 1
+        if self.manager is not None:
+            batch = self.manager.load(self.batch_id)
+            if batch is not None:
+                self.seen_waiting.append(list(batch.waiting_for))
+        waiting = self.waiting if self.busy_calls <= self.wait_rounds else []
+
+        return waiting
+
+    def check(self, candidate: BatchCandidate, text: str) -> Optional[str]:
+        """
+        起動の前の確かめ (いつも通す) の関数
+
+        Parameters
+        ----------
+        candidate: BatchCandidate
+            候補
+        text: str
+            config の中身
+
+        Returns
+        ----------
+        reason: Optional[str]
+            いつも None
+        """
+        reason = None
+
+        return reason
+
+    def launch(self, candidate: BatchCandidate, text: str) -> Optional[str]:
+        """
+        起動の代わりに候補の場所を記録する関数
+
+        Parameters
+        ----------
+        candidate: BatchCandidate
+            候補
+        text: str
+            config の中身
+
+        Returns
+        ----------
+        job_id: Optional[str]
+            候補の場所から作ったジョブの ID
+        """
+        if candidate.path in self.launch_errors:
+            raise self.launch_errors[candidate.path]
+        self.launched.append(candidate.path)
+        job_id = f"job-{candidate.path}"
+
+        return job_id
+
+    def finished(self, job_id: str) -> bool:
+        """
+        ジョブが終わったか (いつも終わった) を返す関数
+
+        Parameters
+        ----------
+        job_id: str
+            ジョブの ID
+
+        Returns
+        ----------
+        finished: bool
+            いつも True
+        """
+        if job_id in self.finish_errors:
+            raise self.finish_errors[job_id]
+        finished = True
+
+        return finished
+
+    def run_sha256(self, job_id: str) -> Optional[str]:
+        """
+        実験の写しの sha256 を返す関数
+
+        Parameters
+        ----------
+        job_id: str
+            ジョブの ID
+
+        Returns
+        ----------
+        sha256: Optional[str]
+            差し込んだ値
+        """
+        sha256 = self.run_sha
+
+        return sha256
+
+    def current_sha256(self, candidate: BatchCandidate) -> Optional[str]:
+        """
+        候補の定義の今の sha256 を返す関数
+
+        Parameters
+        ----------
+        candidate: BatchCandidate
+            候補
+
+        Returns
+        ----------
+        sha256: Optional[str]
+            差し込んだ値, 無ければ作ったときの値
+        """
+        sha256 = self.sha.get(candidate.path, candidate.sha256)
+
+        return sha256
+
+
+def make_batch(
+    manager: BatchManager, paths: list[str]
+) -> str:
     """
-    まとまりを作った後に定義を書き換えた候補は起動せず, 次へ進むことを
-    確かめる関数
+    候補の場所からまとまりを作る関数
 
     Parameters
     ----------
-    client: TestClient
-        API を呼ぶクライアント
-    project_dir: Path
-        プロジェクトのディレクトリ
+    manager: BatchManager
+        まとまりの管理
+    paths: list[str]
+        候補の場所
+
+    Returns
+    ----------
+    batch_id: str
+        作ったまとまりの ID
+    """
+    batch = manager.create("p", "train.py", None, [
+        (BatchCandidate(path=path, name=path, sha256="0" * 64), "{}\n")
+        for path in paths
+    ])
+    batch_id = batch.id
+
+    return batch_id
+
+
+def test_runner_errors_and_marks(tmp_path: Path) -> None:
+    """
+    進め方の誤りで止まらず次の候補へ進み, 待っているジョブ, 書き換えた
+    定義, 写しの違いの印を残すことを確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
 
     Returns
     ----------
     None
     """
-    make_specs(project_dir, "import time\ntime.sleep(0.5)\n")
-    project_id = register(client, project_dir)
-    response = client.post(
-        f"/api/projects/{project_id}/batches",
-        json={
-            "script": "train.py", "config_text": "{}\n",
-            "specs": ["models/a.yaml", "models/b.yaml"]
-        }
+    manager = BatchManager(tmp_path)
+    hooks = FakeHooks()
+    batch_id = make_batch(manager, ["a", "b", "c", "d"])
+    hooks.manager = manager
+    hooks.batch_id = batch_id
+    hooks.waiting = ["job-other"]
+    hooks.wait_rounds = 2
+    hooks.launch_errors["b"] = OSError("書けません")
+    hooks.finish_errors["job-c"] = ValueError("登録が外されています")
+    hooks.sha["d"] = "1" * 64
+    hooks.run_sha = "2" * 64
+    manager.run(batch_id, hooks)
+
+    batch = manager.load(batch_id)
+    assert batch is not None
+    states = [(item.state, item.reason) for item in batch.candidates]
+    assert states[0] == ("finished", None)
+    assert states[1][0] == "failed"
+    assert "起動できなかった" in (states[1][1] or "")
+    assert states[2][0] == "failed"
+    assert "進め方の誤り" in (states[2][1] or "")
+    assert states[3][0] == "failed" and "定義の中身が変わった" in (
+        states[3][1] or ""
     )
-    assert response.status_code == 201
-    (project_dir / "models" / "b.yaml").write_text("nodes: {changed: {}}\n")
-    batch = wait_batch(client, response.json()["id"])
-    assert batch["candidates"][0]["state"] == "finished"
-    assert batch["candidates"][1]["state"] == "failed"
-    assert "定義の中身が変わった" in batch["candidates"][1]["reason"]
+    # 待っている間はジョブの ID を記録し, 起動したら消す
+    assert ["job-other"] in hooks.seen_waiting
+    assert batch.waiting_for == []
+    # 写しが作ったときの中身と違えば印
+    assert batch.candidates[0].mismatch
+    assert not is_active(batch)
+
+
+def test_runner_closes_remaining(tmp_path: Path) -> None:
+    """
+    進め方が途中で止まっても, 待つ候補を残さないことを確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    manager = BatchManager(tmp_path)
+    batch_id = make_batch(manager, ["a", "b"])
+
+    class Broken(FakeHooks):
+        def busy(self) -> list[str]:
+            """
+            いつも止まる関数
+
+            Parameters
+            ----------
+            None
+
+            Returns
+            ----------
+            waiting: list[str]
+                返さない
+            """
+            raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        manager.run(batch_id, Broken())
+    batch = manager.load(batch_id)
+    assert batch is not None
+    assert [item.state for item in batch.candidates] == [
+        "cancelled", "cancelled"
+    ]
+    assert not is_active(batch)
 
 
 def test_orphan_batches(tmp_path: Path) -> None:
@@ -481,6 +707,74 @@ def test_orphan_batches(tmp_path: Path) -> None:
     untouched = restarted.load(other.id)
     assert untouched is not None
     assert untouched.candidates[0].state == "waiting"
+
+    # pid が今のプロセスと同じで起動の時刻が違う (使い回された pid) 持ち主
+    reused = manager.create("q", "train.py", None, [(candidate, "{}\n")])
+    reused.owner = BatchOwner(
+        hostname=manager.owner.hostname, pid=manager.owner.pid,
+        started_at="2026-11-01T00:00:00.000001+09:00"
+    )
+    manager.save(reused)
+    assert manager.orphaned(reused)
+    after = BatchManager(tmp_path).load(reused.id)
+    assert after is not None and after.candidates[0].state == "cancelled"
+
+    # 動いている別のプロセスが持ち主のまとまりも, 学習中の候補はジョブの
+    # 状態で読み直し, 終わっていれば新しいまとまりを妨げない
+    foreign = manager.create("r", "train.py", None, [(candidate, "{}\n")])
+    foreign.owner = BatchOwner(
+        hostname=manager.owner.hostname, pid=os.getppid(),
+        started_at="2026-11-01T00:00:00+09:00"
+    )
+    foreign.candidates[0].state = "running"
+    foreign.candidates[0].job_id = "0123456789ab"
+    manager.save(foreign)
+    assert manager.active_for("r", lambda job_id: True) is not None
+    assert manager.active_for("r", lambda job_id: False) is None
+    refreshed = manager.load(foreign.id)
+    assert refreshed is not None
+    assert refreshed.candidates[0].state == "finished"
+
+
+def test_batch_create_once(client: TestClient, project_dir: Path) -> None:
+    """
+    同じプロジェクトにまとまりを同時に 2 つ作れないことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    make_specs(project_dir, "import time\ntime.sleep(60)\n")
+    project_id = register(client, project_dir)
+    body = {
+        "script": "train.py", "config_text": "{}\n",
+        "specs": ["models/a.yaml", "models/b.yaml"]
+    }
+    codes: list[int] = []
+
+    def post() -> None:
+        codes.append(client.post(
+            f"/api/projects/{project_id}/batches", json=body
+        ).status_code)
+
+    threads = [threading.Thread(target=post) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert sorted(codes) == [201, 409]
+
+    # 学習中の候補を止めて片付け
+    batch = client.get("/api/batches").json()[0]
+    client.post(f"/api/batches/{batch['id']}/stop")
+    wait_batch(client, batch["id"])
 
 
 def test_runs_have_model(client: TestClient, project_dir: Path) -> None:

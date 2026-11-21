@@ -6,9 +6,9 @@ import threading
 import time
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Protocol
 
 from pydantic import ValidationError
 
@@ -26,6 +26,10 @@ BATCH_ID = re.compile(r"[0-9a-f]{12}")
 
 # 次の候補を起動できるか, 候補のジョブが終わったかを確かめる間隔 (秒)
 POLL_SEC = 2.0
+
+# このプロセスが起動した時刻 (持ち主の見分けに使う. モジュールを読んだときに
+# 1 回だけ, マイクロ秒まで取る)
+PROCESS_STARTED_AT = datetime.now().astimezone().isoformat()
 
 # 待つ候補と学習中の候補の状態
 ACTIVE_STATES = ("waiting", "running")
@@ -71,20 +75,26 @@ def is_active(batch: Batch) -> bool:
     return active
 
 
-@dataclass
-class BatchHooks:
-    # まとまりの進め方がジョブと起動の確かめに使う関数. busy は学習中の
+class BatchHooks(Protocol):
+    # まとまりの進め方がジョブと起動の確かめに使う口. busy は学習中の
     # ジョブの ID (環境のジョブの間は "environment"), check は起動の前の
     # 確かめ (通らなければ理由), launch は起動してジョブの ID を返す (学習中
     # のジョブがあれば None), finished はジョブが終わったか, run_sha256 は
-    # ジョブの実験の写しの sha256, stop はジョブの中断
-    busy: Callable[[], list[str]]
-    check: Callable[[BatchCandidate, str], Optional[str]]
-    launch: Callable[[BatchCandidate, str], Optional[str]]
-    finished: Callable[[str], bool]
-    run_sha256: Callable[[str], Optional[str]]
-    stop: Callable[[str], None]
-    current_sha256: Callable[[BatchCandidate], Optional[str]]
+    # ジョブの実験の写しの sha256, current_sha256 は候補の定義の今の sha256
+
+    def busy(self) -> list[str]: ...
+
+    def check(self, candidate: BatchCandidate, text: str) -> Optional[str]: ...
+
+    def launch(
+        self, candidate: BatchCandidate, text: str
+    ) -> Optional[str]: ...
+
+    def finished(self, job_id: str) -> bool: ...
+
+    def run_sha256(self, job_id: str) -> Optional[str]: ...
+
+    def current_sha256(self, candidate: BatchCandidate) -> Optional[str]: ...
 
 
 class BatchManager:
@@ -93,12 +103,14 @@ class BatchManager:
         self.batches_dir = data_dir / "batches"
         self.owner = BatchOwner(
             hostname=socket.gethostname(), pid=os.getpid(),
-            started_at=now_iso()
+            started_at=PROCESS_STARTED_AT
         )
 
-        # まとまりごとのロックと, ロックの表を作るロックを用意
+        # まとまりごとのロック, ロックの表を作るロック, まとまりを作る間の
+        # ロック (進めている途中のまとまりの確かめと作るのを 1 つずつ) を用意
         self.locks: dict[str, threading.RLock] = {}
         self.table_lock = threading.Lock()
+        self.create_lock = threading.Lock()
 
         # 前のプロセスが持ち主のまとまりの待つ候補を取りやめに設定
         self.cancel_orphans()
@@ -284,17 +296,85 @@ class BatchManager:
         None
         """
         # 学習中の候補はジョブとして残るので, 待つ候補だけを取りやめ
-        for batch in self.list_batches():
-            if not self.orphaned(batch):
-                continue
-            with self.lock(batch.id):
-                for candidate in batch.candidates:
-                    if candidate.state == "waiting":
-                        candidate.state = "cancelled"
-                        candidate.reason = "ダッシュボードを止めたため"
+        for listed in self.list_batches():
+            with self.lock(listed.id):
+                batch = self.load(listed.id)
+                if batch is None or not self.orphaned(batch):
+                    continue
+                if self.cancel_waiting(batch, "ダッシュボードを止めたため"):
+                    self.save(batch)
+
+    def cancel_waiting(self, batch: Batch, reason: str) -> bool:
+        """
+        まとまりの待つ候補を取りやめにする関数 (保存はしない)
+
+        Parameters
+        ----------
+        batch: Batch
+            まとまり (ロックの中で読んだもの)
+        reason: str
+            取りやめた理由
+
+        Returns
+        ----------
+        changed: bool
+            取りやめた候補があったかどうか
+        """
+        changed = False
+        for candidate in batch.candidates:
+            if candidate.state == "waiting":
+                candidate.state = "cancelled"
+                candidate.reason = reason
+                changed = True
+
+        return changed
+
+    def refresh_foreign(
+        self, batch_id: str, job_running: Callable[[str], bool]
+    ) -> Optional[Batch]:
+        """
+        持ち主がこのプロセスでないまとまりを, ジョブの状態から読み直す関数
+
+        持ち主が居なければ待つ候補を取りやめ, 学習中の候補はジョブが終わって
+        いれば終わったにする (pid の使い回しなどで持ち主を見分けられない場合
+        も, ジョブの状態で学習中の候補を読み直すため)
+
+        Parameters
+        ----------
+        batch_id: str
+            まとまりの ID
+        job_running: Callable[[str], bool]
+            ジョブが学習中かを返す関数
+
+        Returns
+        ----------
+        batch: Optional[Batch]
+            読み直したまとまり, 無い場合は None
+        """
+        with self.lock(batch_id):
+            batch = self.load(batch_id)
+            if batch is None or self.owned(batch):
+                return batch
+            changed = False
+            if self.orphaned(batch):
+                changed = self.cancel_waiting(
+                    batch, "ダッシュボードを止めたため"
+                )
+            for candidate in batch.candidates:
+                if (
+                    candidate.state == "running" and candidate.job_id
+                    and not job_running(candidate.job_id)
+                ):
+                    candidate.state = "finished"
+                    changed = True
+            if changed:
                 self.save(batch)
 
-    def active_for(self, project_id: str) -> Optional[Batch]:
+        return batch
+
+    def active_for(
+        self, project_id: str, job_running: Callable[[str], bool]
+    ) -> Optional[Batch]:
         """
         プロジェクトの進めている途中のまとまりを探す関数
 
@@ -302,14 +382,20 @@ class BatchManager:
         ----------
         project_id: str
             プロジェクトの ID
+        job_running: Callable[[str], bool]
+            ジョブが学習中かを返す関数 (他のプロセスのまとまりの読み直し)
 
         Returns
         ----------
         batch: Optional[Batch]
             終わっていないまとまり, 無ければ None
         """
-        for batch in self.list_batches():
-            if batch.project_id == project_id and is_active(batch):
+        # 他のプロセスが持ち主のまとまりは, ジョブの状態から読み直す
+        for listed in self.list_batches():
+            if listed.project_id != project_id:
+                continue
+            batch = self.refresh_foreign(listed.id, job_running)
+            if batch is not None and is_active(batch):
                 return batch
 
         return None
@@ -428,10 +514,68 @@ class BatchManager:
         batch = self.load(batch_id)
         if batch is None:
             return
-        for index in range(len(batch.candidates)):
-            job_id = self.launch_next(batch_id, index, hooks)
-            if job_id is not None:
-                self.wait_job(batch_id, index, job_id, hooks)
+
+        # 1 つの候補の誤りで進め方が止まらないように, 候補ごとに受け止める
+        try:
+            for index in range(len(batch.candidates)):
+                try:
+                    job_id = self.launch_next(batch_id, index, hooks)
+                    if job_id is not None:
+                        self.wait_job(batch_id, index, job_id, hooks)
+                except Exception as error:
+                    self.give_up(batch_id, index, error)
+        finally:
+            self.close_remaining(batch_id)
+
+    def give_up(self, batch_id: str, index: int, error: Exception) -> None:
+        """
+        進め方の誤りで候補を起動できなかったか待てなかったことを残す関数
+
+        Parameters
+        ----------
+        batch_id: str
+            まとまりの ID
+        index: int
+            候補の番号
+        error: Exception
+            起きた誤り
+
+        Returns
+        ----------
+        None
+        """
+        # 保存もできない場合は, 最後の close_remaining に任せる
+        try:
+            self.finish_candidate(
+                batch_id, index, "failed",
+                f"進め方の誤り: {type(error).__name__}: {error}"
+            )
+        except Exception:
+            pass
+
+    def close_remaining(self, batch_id: str) -> None:
+        """
+        進め方を終えるときに, 残った待つ候補を取りやめにする関数
+
+        Parameters
+        ----------
+        batch_id: str
+            まとまりの ID
+
+        Returns
+        ----------
+        None
+        """
+        # 途中で止まった進め方の後に, まとまりが進行中のまま残らないため
+        try:
+            with self.lock(batch_id):
+                batch = self.load(batch_id)
+                if batch is not None and self.cancel_waiting(
+                    batch, "進め方が止まったため"
+                ):
+                    self.save(batch)
+        except Exception:
+            pass
 
     def set_waiting(self, batch_id: str, waiting_for: list[str]) -> bool:
         """

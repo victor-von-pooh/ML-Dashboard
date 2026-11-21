@@ -18,11 +18,11 @@ from ml_dashboard.api.jobs import (
 )
 from ml_dashboard.api.routes import NOT_FOUND, get_project
 from ml_dashboard.core.batches import (
-    BatchHooks,
     BatchManager,
     is_active,
     is_batch_id,
 )
+from ml_dashboard.core.jobs import JobManager
 from ml_dashboard.core.model_candidates import (
     list_model_specs,
     spec_problem,
@@ -209,68 +209,123 @@ def build_candidates(
     return candidates
 
 
-def running_jobs(request: Request, project_id: str) -> list[str]:
+def app_projects(app: Any) -> dict[str, Project]:
     """
-    プロジェクトの学習中のジョブを集める関数
+    登録したプロジェクトを ID で引ける辞書にする関数 (要求の外でも使う)
 
     Parameters
     ----------
-    request: Request
-        リクエスト (アプリの状態を読む)
-
-    project_id: str
-        プロジェクトの ID
+    app: Any
+        アプリ (FastAPI)
 
     Returns
     ----------
-    job_ids: list[str]
-        学習中のジョブの ID
+    projects: dict[str, Project]
+        ID ごとのプロジェクト
     """
-    job_ids = [
-        job.id for job in get_jobs(request).list_jobs(project_map(request))
-        if job.project_id == project_id and job.status == "running"
-    ]
+    projects = {project.id: project for project in app.state.store.load()}
 
-    return job_ids
+    return projects
 
 
-def make_hooks(request: Request, batch: Batch) -> BatchHooks:
+def job_running(app: Any, job_id: str) -> bool:
     """
-    まとまりの進め方が使う, 起動と確かめの関数を作る関数
+    ジョブが学習中かを, 状態を読み直して返す関数
 
     Parameters
     ----------
-    request: Request
-        リクエスト (アプリの状態を読む. 要求が終わった後も使う)
-    batch: Batch
-        まとまり
+    app: Any
+        アプリ (FastAPI)
+    job_id: str
+        ジョブの ID
 
     Returns
     ----------
-    hooks: BatchHooks
-        起動と確かめの関数
+    running: bool
+        学習中かどうか, 無いジョブは False
     """
-    jobs = get_jobs(request)
-    environments = request.app.state.environments
+    job = app.state.jobs.get(job_id, app_projects(app))
+    running = job is not None and job.status == "running"
 
-    def current_project() -> Project:
-        project = project_map(request).get(batch.project_id)
+    return running
+
+
+class BatchRunner:
+    # まとまりの進め方がジョブと起動の確かめに使う口 (BatchHooks) の実装.
+    # 要求が終わった後も動くので, 要求でなくアプリの状態を使う
+    def __init__(self, app: Any, batch: Batch):
+        # アプリ, ジョブ, 環境のジョブとまとまりを保存
+        self.app = app
+        self.jobs: JobManager = app.state.jobs
+        self.environments = app.state.environments
+        self.batch = batch
+
+    def project(self) -> Project:
+        """
+        まとまりのプロジェクトを今の登録から取得する関数
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        ----------
+        project: Project
+            プロジェクト
+        """
+        project = app_projects(self.app).get(self.batch.project_id)
         if project is None:
             raise ValueError("プロジェクトの登録が外されています")
+
         return project
 
-    def busy() -> list[str]:
-        if environments.running(batch.project_id):
-            return [ENVIRONMENT_MARK]
-        return running_jobs(request, batch.project_id)
+    def busy(self) -> list[str]:
+        """
+        次の候補が待つものを返す関数
 
-    def check(candidate: BatchCandidate, text: str) -> Optional[str]:
-        # 起動の直前の確かめ直し (追加の依存も覚えた結果を使わない)
+        Parameters
+        ----------
+        None
+
+        Returns
+        ----------
+        waiting: list[str]
+            環境のジョブの間は ENVIRONMENT_MARK, それ以外は学習中のジョブの
+            ID (無ければ空)
+        """
+        if self.environments.running(self.batch.project_id):
+            return [ENVIRONMENT_MARK]
+        waiting = [
+            job.id for job in self.jobs.list_jobs(app_projects(self.app))
+            if job.project_id == self.batch.project_id
+            and job.status == "running"
+        ]
+
+        return waiting
+
+    def check(self, candidate: BatchCandidate, text: str) -> Optional[str]:
+        """
+        候補の config を起動の直前に確かめ直す関数
+
+        Parameters
+        ----------
+        candidate: BatchCandidate
+            候補
+        text: str
+            候補の書き換えた config の中身
+
+        Returns
+        ----------
+        reason: Optional[str]
+            起動しない理由, 通れば None
+        """
+        # 追加の依存も覚えた結果を使わずに確かめ直す
         try:
-            project = current_project()
-            default = resolve_default(project, batch.default_config)
+            project = self.project()
+            default = resolve_default(project, self.batch.default_config)
             require_valid(validate_text(
-                project, text, batch.script, default, refresh_requires=True
+                project, text, self.batch.script, default,
+                refresh_requires=True
             ))
         except HTTPException as error:
             return str(error.detail)
@@ -280,66 +335,115 @@ def make_hooks(request: Request, batch: Batch) -> BatchHooks:
 
         return reason
 
-    def launch(candidate: BatchCandidate, text: str) -> Optional[str]:
-        # 学習中のジョブと環境のジョブが無いことの確かめと起動を同じロックで
-        project = current_project()
-        with environments.launch_lock:
-            if busy():
+    def launch(self, candidate: BatchCandidate, text: str) -> Optional[str]:
+        """
+        学習中のジョブと環境のジョブが無ければ候補を起動する関数
+
+        Parameters
+        ----------
+        candidate: BatchCandidate
+            候補
+        text: str
+            候補の書き換えた config の中身
+
+        Returns
+        ----------
+        job_id: Optional[str]
+            起動したジョブの ID, 学習中のジョブがあれば None
+        """
+        # 無いことの確かめと起動を同じ launch_lock の中で実行
+        project = self.project()
+        with self.environments.launch_lock:
+            if self.busy():
                 return None
-            job_id = jobs.create()
+            job_id = self.jobs.create()
             try:
-                config = jobs.job_dir(job_id) / "experiment.yaml"
+                config = self.jobs.job_dir(job_id) / "experiment.yaml"
                 config.write_text(text, encoding="utf-8")
-                job = jobs.start(
-                    job_id, project, batch.script, config,
-                    batch.default_config
+                self.jobs.start(
+                    job_id, project, self.batch.script, config,
+                    self.batch.default_config
                 )
             except Exception:
-                jobs.discard(job_id)
+                self.jobs.discard(job_id)
                 raise
-        return job.id
 
-    def finished(job_id: str) -> bool:
-        job = jobs.get(job_id, project_map(request))
-        return job is None or job.status != "running"
+        return job_id
 
-    def run_sha256(job_id: str) -> Optional[str]:
-        # 学習を始めた実験の写しの sha256 (写していなければ None)
-        projects = project_map(request)
-        job = jobs.get(job_id, projects)
-        project = projects.get(batch.project_id)
+    def finished(self, job_id: str) -> bool:
+        """
+        候補のジョブが終わったかを返す関数
+
+        Parameters
+        ----------
+        job_id: str
+            ジョブの ID
+
+        Returns
+        ----------
+        finished: bool
+            終わったか, 無いジョブは True
+        """
+        finished = not job_running(self.app, job_id)
+
+        return finished
+
+    def run_sha256(self, job_id: str) -> Optional[str]:
+        """
+        候補のジョブの実験に写した定義の sha256 を返す関数
+
+        Parameters
+        ----------
+        job_id: str
+            ジョブの ID
+
+        Returns
+        ----------
+        sha256: Optional[str]
+            写しの sha256, 実験がまだ無いか写していなければ None
+        """
+        projects = app_projects(self.app)
+        job = self.jobs.get(job_id, projects)
+        project = projects.get(self.batch.project_id)
         if job is None or project is None:
             return None
-        run_dir = jobs.find_run(job, project)
+        run_dir = self.jobs.find_run(job, project)
         source = read_source(run_dir) if run_dir is not None else None
         spec = source.model_spec if source is not None else None
-        if spec is None or spec.status != "copied":
-            return None
-        return spec.sha256
+        copied = spec is not None and spec.status == "copied"
+        sha256 = spec.sha256 if spec is not None and copied else None
 
-    def stop(job_id: str) -> None:
-        jobs.stop(job_id, project_map(request), False)
+        return sha256
 
-    def current_sha256(candidate: BatchCandidate) -> Optional[str]:
-        project = current_project()
-        path = Path(project.path) / candidate.path
-        if spec_problem(Path(project.path), path) is not None:
-            return None
-        return spec_sha256(path)
+    def current_sha256(self, candidate: BatchCandidate) -> Optional[str]:
+        """
+        候補の定義の今の sha256 を返す関数
 
-    hooks = BatchHooks(
-        busy=busy, check=check, launch=launch, finished=finished,
-        run_sha256=run_sha256, stop=stop, current_sha256=current_sha256
-    )
+        Parameters
+        ----------
+        candidate: BatchCandidate
+            候補
 
-    return hooks
+        Returns
+        ----------
+        sha256: Optional[str]
+            今の中身の sha256, 選べない場所か読めない場合は None
+        """
+        project_dir = Path(self.project().path)
+        path = project_dir / candidate.path
+        sha256 = (
+            spec_sha256(path) if spec_problem(project_dir, path) is None
+            else None
+        )
+
+        return sha256
 
 
 def to_batch_info(request: Request, batch: Batch) -> BatchInfo:
     """
     まとまりを画面に返す形にする関数
 
-    持ち主が他のプロセスのまとまりの学習中の候補は, ジョブの状態を読み直す
+    持ち主が他のプロセスのまとまりは, ジョブの状態から読み直す
 
     Parameters
     ----------
@@ -354,25 +458,14 @@ def to_batch_info(request: Request, batch: Batch) -> BatchInfo:
         まとまり, 終わったか, 持ち主がこのプロセスか, プロジェクトの名前
     """
     manager = get_batches(request)
-    owned = manager.owned(batch)
-    projects = project_map(request)
-
-    # 進め方が居ないまとまりの学習中の候補は, ジョブが終われば終わった
-    if not owned and manager.orphaned(batch):
-        changed = False
-        for candidate in batch.candidates:
-            if candidate.state != "running" or candidate.job_id is None:
-                continue
-            job = get_jobs(request).get(candidate.job_id, projects)
-            if job is None or job.status != "running":
-                candidate.state = "finished"
-                changed = True
-        if changed:
-            with manager.lock(batch.id):
-                manager.save(batch)
-    project = projects.get(batch.project_id)
+    app = request.app
+    refreshed = manager.refresh_foreign(
+        batch.id, lambda job_id: job_running(app, job_id)
+    ) or batch
+    project = app_projects(app).get(refreshed.project_id)
     info = BatchInfo(
-        **batch.model_dump(), finished=not is_active(batch), owned=owned,
+        **refreshed.model_dump(), finished=not is_active(refreshed),
+        owned=manager.owned(refreshed),
         project_name=project.name if project is not None else None
     )
 
@@ -402,6 +495,34 @@ def read_model_specs(request: Request, project_id: str) -> ModelSpecList:
     specs = list_model_specs(Path(project.path))
 
     return specs
+
+
+def refuse_active(request: Request, project_id: str) -> None:
+    """
+    プロジェクトに進めている途中のまとまりがあれば 409 にする関数
+
+    Parameters
+    ----------
+    request: Request
+        リクエスト
+    project_id: str
+        プロジェクトの ID
+
+    Returns
+    ----------
+    None
+    """
+    app = request.app
+    active = get_batches(request).active_for(
+        project_id, lambda job_id: job_running(app, job_id)
+    )
+    if active is not None:
+        raise HTTPException(
+            409,
+            "このプロジェクトには進めている途中の候補のまとまり "
+            f"({active.id}) があります. 終わるか取りやめてから作って"
+            "ください"
+        )
 
 
 @router.post(
@@ -438,15 +559,7 @@ def create_batch(
         raise HTTPException(
             409, "学習の準備で環境に入れている間は学習を起動できません"
         )
-    manager = get_batches(request)
-    active = manager.active_for(project.id)
-    if active is not None:
-        raise HTTPException(
-            409,
-            "このプロジェクトには進めている途中の候補のまとまり "
-            f"({active.id}) があります. 終わるか取りやめてから作って"
-            "ください"
-        )
+    refuse_active(request, project.id)
     if body.script not in list_scripts(Path(project.path)):
         raise HTTPException(
             400, f"学習のスクリプトが見つかりません: {body.script}"
@@ -465,11 +578,15 @@ def create_batch(
         )
     candidates = build_candidates(project, body, default)
 
-    # 記録を作ってから, 進め方のスレッドを開始
-    batch = manager.create(
-        project.id, body.script, body.default_config, candidates
-    )
-    manager.start(batch, make_hooks(request, batch))
+    # 確かめ直しと作るのを同じロックの中で行い, 2 つのまとまりを同時に
+    # 作らない. 作ってから進め方のスレッドを開始
+    manager = get_batches(request)
+    with manager.create_lock:
+        refuse_active(request, project.id)
+        batch = manager.create(
+            project.id, body.script, body.default_config, candidates
+        )
+    manager.start(batch, BatchRunner(request.app, batch))
     info = to_batch_info(request, batch)
 
     return info
@@ -516,34 +633,40 @@ def stop_batch(request: Request, batch_id: str) -> BatchInfo:
         更新したまとまり
     """
     if not is_batch_id(batch_id):
-        raise HTTPException(404, f"候補のまとまりが見つかりません: {batch_id}")
+        raise HTTPException(
+            404, f"候補のまとまりが見つかりません: {batch_id}"
+        )
     projects = project_map(request)
+    jobs = get_jobs(request)
     batch = get_batches(request).stop(
-        batch_id,
-        lambda job_id: _stop_job(request, job_id, projects)
+        batch_id, lambda job_id: stop_job(jobs, projects, job_id)
     )
     if batch is None:
-        raise HTTPException(404, f"候補のまとまりが見つかりません: {batch_id}")
+        raise HTTPException(
+            404, f"候補のまとまりが見つかりません: {batch_id}"
+        )
     info = to_batch_info(request, batch)
 
     return info
 
 
-def _stop_job(request: Request, job_id: str, projects: dict[str, Any]) -> None:
+def stop_job(
+    jobs: JobManager, projects: dict[str, Project], job_id: str
+) -> None:
     """
     候補のジョブを普通に中断する関数 (エポックの区切りで止める)
 
     Parameters
     ----------
-    request: Request
-        リクエスト
+    jobs: JobManager
+        ジョブの管理
+    projects: dict[str, Project]
+        ID ごとの登録したプロジェクト
     job_id: str
         ジョブの ID
-    projects: dict[str, Any]
-        ID ごとの登録したプロジェクト
 
     Returns
     ----------
     None
     """
-    get_jobs(request).stop(job_id, projects, False)
+    jobs.stop(job_id, projects, False)
