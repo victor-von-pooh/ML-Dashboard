@@ -4200,6 +4200,45 @@
         ],
         "title": "RunLink"
       },
+      "RunModelSpec": {
+        "properties": {
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          }
+        },
+        "type": "object",
+        "title": "RunModelSpec"
+      },
       "RunNote": {
         "properties": {
           "note": {
@@ -4558,6 +4597,16 @@
               }
             ],
             "title": "Overrides"
+          },
+          "model_spec": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunModelSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
