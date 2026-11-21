@@ -15,6 +15,7 @@ from ml_dashboard.core.models import (
     RunModel,
     RunSource,
 )
+from ml_dashboard.core.projects import ProjectError, get_output_dirs
 
 # プロジェクトのモデルの定義の置き場 (利用者の決め) と, 候補にする拡張子
 MODELS_DIR = "models"
@@ -269,7 +270,7 @@ def copy_run_key(project_dir: Path, path: str) -> Optional[str]:
 
 def find_origin(
     project_dir: Path, path: str, sha256: Optional[str],
-    sources: dict[str, Optional[RunSource]]
+    sources: dict[str, Optional[RunSource]], output_dirs: list[Path]
 ) -> tuple[str, bool]:
     """
     写しから起動し直した実験の, 元の定義の場所を辿る関数
@@ -285,6 +286,8 @@ def find_origin(
     sources: dict[str, Optional[RunSource]]
         同じ一覧で読んだプロジェクトの実験 (ディレクトリの鍵から起動の
         しかた)
+    output_dirs: list[Path]
+        プロジェクトの出力先 (一覧ごとに 1 回だけ読んだもの)
 
     Returns
     ----------
@@ -309,7 +312,9 @@ def find_origin(
             target = Path(current)
             if not target.is_absolute():
                 target = project_dir / target
-            return current, not in_run_shape(project_dir, target)
+            return current, not in_run_shape(
+                project_dir, target, output_dirs
+            )
         source = sources[key]
         previous = source.model_spec if source is not None else None
         if (
@@ -341,6 +346,11 @@ def describe_models(
     models: dict[str, Optional[RunModel]]
         ディレクトリの鍵から定義. 定義の場所の記録が無い実験は None
     """
+    # 出力先は一覧ごとに 1 回だけ読む (消した実験の写しの見分けに使う)
+    try:
+        output_dirs = get_output_dirs(project_dir)
+    except ProjectError:
+        output_dirs = []
     models: dict[str, Optional[RunModel]] = {}
     for key, source in sources.items():
         spec = source.model_spec if source is not None else None
@@ -350,7 +360,9 @@ def describe_models(
 
         # 写した中身の分かる実験だけ sha256 を使い, 写しなら元を辿る
         sha256 = spec.sha256 if spec.status == "copied" else None
-        origin, known = find_origin(project_dir, spec.path, sha256, sources)
+        origin, known = find_origin(
+            project_dir, spec.path, sha256, sources, output_dirs
+        )
         models[key] = RunModel(
             name=spec_name(origin) if known else "写し", path=origin,
             sha256=sha256, origin_known=known

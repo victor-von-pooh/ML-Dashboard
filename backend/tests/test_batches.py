@@ -609,8 +609,9 @@ def test_runner_errors_and_marks(tmp_path: Path) -> None:
     assert states[0] == ("finished", None)
     assert states[1][0] == "failed"
     assert "起動できなかった" in (states[1][1] or "")
-    assert states[2][0] == "failed"
-    assert "進め方の誤り" in (states[2][1] or "")
+    # 学習を始めた後に待てなかった候補は, 起動できなかったとしない
+    assert states[2][0] == "finished"
+    assert "終わりを待てなかった" in (states[2][1] or "")
     assert states[3][0] == "failed" and "定義の中身が変わった" in (
         states[3][1] or ""
     )
@@ -734,9 +735,12 @@ def test_orphan_batches(tmp_path: Path) -> None:
     # 別のプロセスが進めているまとまりは, このプロセスから取りやめない
     assert not manager.owned(foreign) and not manager.orphaned(foreign)
     assert manager.active_for("r", lambda job_id: False) is None
+    # 持ち主が居るまとまりの記録は上書きしない (読み直した結果を返すだけ)
     refreshed = manager.load(foreign.id)
     assert refreshed is not None
-    assert refreshed.candidates[0].state == "finished"
+    assert refreshed.candidates[0].state == "running"
+    read = manager.refresh_foreign(foreign.id, lambda job_id: False)
+    assert read is not None and read.candidates[0].state == "finished"
 
 
 def test_batch_create_once(client: TestClient, project_dir: Path) -> None:

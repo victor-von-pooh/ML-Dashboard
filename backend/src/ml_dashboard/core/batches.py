@@ -336,7 +336,8 @@ class BatchManager:
         持ち主がこのプロセスでないまとまりを, ジョブの状態から読み直す関数
 
         持ち主が居なければ待つ候補を取りやめ, 学習中の候補はジョブが終わって
-        いれば終わったにする (pid の使い回しなどで持ち主を見分けられない場合
+        いれば終わったにして保存する. 持ち主が居る場合は保存せず, 読み直した
+        結果を返すだけにする (pid の使い回しなどで持ち主を見分けられない場合
         も, ジョブの状態で学習中の候補を読み直すため)
 
         Parameters
@@ -355,8 +356,9 @@ class BatchManager:
             batch = self.load(batch_id)
             if batch is None or self.owned(batch):
                 return batch
+            orphaned = self.orphaned(batch)
             changed = False
-            if self.orphaned(batch):
+            if orphaned:
                 changed = self.cancel_waiting(
                     batch, "ダッシュボードを止めたため"
                 )
@@ -367,7 +369,10 @@ class BatchManager:
                 ):
                     candidate.state = "finished"
                     changed = True
-            if changed:
+
+            # 持ち主が居る場合は, その記録を別のプロセスから上書きしないため,
+            # 読み直した結果を返すだけにする
+            if changed and orphaned:
                 self.save(batch)
 
         return batch
@@ -546,12 +551,24 @@ class BatchManager:
         ----------
         None
         """
-        # 保存もできない場合は, 最後の close_remaining に任せる
+        # 学習を始めた候補は終わりを待てなかったこと, 始める前の候補は起動
+        # できなかったことの記録 (保存もできない場合は close_remaining に任せる
+        # 処理)
+        message = f"進め方の誤り: {type(error).__name__}: {error}"
         try:
-            self.finish_candidate(
-                batch_id, index, "failed",
-                f"進め方の誤り: {type(error).__name__}: {error}"
+            batch = self.load(batch_id)
+            running = (
+                batch is not None
+                and batch.candidates[index].state == "running"
             )
+            if running:
+                self.finish_candidate(
+                    batch_id, index, "finished",
+                    f"終わりを待てなかったため ({message}). ジョブの状態は"
+                    "ジョブの画面で確かめてください"
+                )
+            else:
+                self.finish_candidate(batch_id, index, "failed", message)
         except Exception:
             pass
 
