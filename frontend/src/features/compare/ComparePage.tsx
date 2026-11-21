@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import { ArrowDown, ArrowUp, GitCompareArrows, X } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
 import { encodeRunId, type History, type RunDetail } from '../../api/client'
@@ -113,14 +113,24 @@ export function ComparePage() {
 
   // 2 種類以上のモデルの定義を使う場合は, 定義で分けて並べ, 実験の名前にも定義を添える
   // (読み込み中は定義が分からないので分けない)
-  const modelGroups = loading ? [] : groupByModel(slots, (slot) => slot.run?.model)
+  // 読めなかった実験は組に入れず, 組の外の最後に並べる
+  const loaded = slots.filter((slot) => slot.run)
+  const unread = slots.filter((slot) => !slot.run)
+  const modelGroups = loading ? [] : groupByModel(loaded, (slot) => slot.run?.model)
   const grouped = modelGroups.length >= 2
   const modelOf = new Map(
     modelGroups.flatMap((group) => group.items.map((slot) => [slot.id, group.label] as const)),
   )
   const label = (runId: string) =>
     grouped ? `${shortLabel(runId)} · ${modelOf.get(runId) ?? ''}` : shortLabel(runId)
-  const ordered = grouped ? modelGroups.flatMap((group) => group.items) : slots
+  const ordered = grouped ? [...modelGroups.flatMap((group) => group.items), ...unread] : slots
+  // 実験の表の組 (定義ごとの見出しと, 見出しの無い読めなかった実験)
+  const tableGroups: { key: string; label: string | null; items: Slot[] }[] = grouped
+    ? [
+        ...modelGroups.map((group) => ({ key: group.key, label: group.label, items: group.items })),
+        ...(unread.length > 0 ? [{ key: 'unread', label: null, items: unread }] : []),
+      ]
+    : [{ key: 'all', label: null, items: slots }]
   const position = new Map(ordered.map((slot, index) => [slot.id, index]))
   const ready = slots.filter((slot): slot is Required<Omit<Slot, 'error'>> & Slot =>
     Boolean(slot.run && slot.history),
@@ -250,22 +260,21 @@ export function ComparePage() {
                   </th>
                 </tr>
               </thead>
-              <tbody>
-                {ordered.map((slot, index) => (
-                  <Fragment key={slot.id}>
-                    {grouped &&
-                      modelOf.get(slot.id) !== modelOf.get(ordered[index - 1]?.id ?? '') && (
-                        <tr className="border-b border-line bg-surface-2/50">
-                          <th
-                            colSpan={6}
-                            scope="rowgroup"
-                            className="px-4 py-1.5 text-left text-xs font-semibold text-ink-2"
-                          >
-                            モデルの定義: <span className="font-mono">{modelOf.get(slot.id)}</span>
-                          </th>
-                        </tr>
-                      )}
-                    <tr className="border-b border-line last:border-b-0">
+              {tableGroups.map((group) => (
+                <tbody key={group.key}>
+                  {group.label && (
+                    <tr className="border-b border-line bg-surface-2/50">
+                      <th
+                        colSpan={6}
+                        scope="rowgroup"
+                        className="px-4 py-1.5 text-left text-xs font-semibold text-ink-2"
+                      >
+                        モデルの定義: <span className="font-mono">{group.label}</span>
+                      </th>
+                    </tr>
+                  )}
+                  {group.items.map((slot) => (
+                    <tr key={slot.id} className="border-b border-line last:border-b-0">
                       <td className="px-4 py-2">
                         <div className="flex items-center gap-2">
                           <span
@@ -328,9 +337,9 @@ export function ComparePage() {
                         </button>
                       </td>
                     </tr>
-                  </Fragment>
-                ))}
-              </tbody>
+                  ))}
+                </tbody>
+              ))}
             </table>
           </div>
         </Card>
@@ -346,6 +355,7 @@ export function ComparePage() {
         <EvaluationCompare
           slots={readyOrdered}
           label={label}
+          groupOf={grouped ? (runId) => modelOf.get(runId) : undefined}
           requested={requestedColumns}
           onChange={setShownColumns}
           sort={evaluationSort}
@@ -499,9 +509,12 @@ function EvaluationCompare({
   onSortChange,
   onSortClear,
   loading,
+  groupOf,
 }: {
   slots: (Slot & { run: RunDetail })[]
   label: (runId: string) => string
+  /** 定義で分ける場合の, 実験の組の名前 (分けない場合は undefined) */
+  groupOf?: (runId: string) => string | undefined
   requested: string[]
   onChange: (keys: string[]) => void
   sort: EvaluationSort | null
@@ -523,7 +536,7 @@ function EvaluationCompare({
 
   // 値の無い実験は末尾. 並べ替えない場合は選んだ順
   const active = sort && shown.some((column) => column.key === sort.key) ? sort : null
-  const rows = active
+  const sortedRows = active
     ? [...slots].sort((a, b) => {
         const x = findValue(a.run.evaluations, active.key)?.value
         const y = findValue(b.run.evaluations, active.key)?.value
@@ -533,6 +546,12 @@ function EvaluationCompare({
         return active.desc ? y - x : x - y
       })
     : slots
+  // 定義で分ける場合は, 組の中で並べ替え, 組ごとに見出しを付ける
+  const groupNames = [...new Set(slots.map((slot) => groupOf?.(slot.id) ?? ''))]
+  const rowGroups = groupNames.map((name) => ({
+    name,
+    rows: sortedRows.filter((slot) => (groupOf?.(slot.id) ?? '') === name),
+  }))
   const onSort = (column: EvaluationColumn) =>
     onSortChange({
       key: column.key,
@@ -590,32 +609,45 @@ function EvaluationCompare({
               })}
             </tr>
           </thead>
-          <tbody>
-            {rows.map((slot) => (
-              <tr key={slot.id} className="border-b border-line last:border-b-0">
-                <td className="px-4 py-2">
-                  <span className="flex items-center gap-2">
-                    <span
-                      className="h-1 w-4 shrink-0 rounded-full"
-                      style={{ background: `var(${slot.color})` }}
-                      aria-hidden
-                    />
-                    {label(slot.id)}
-                  </span>
-                </td>
-                {hasGuard && (
+          {rowGroups.map((group) => (
+            <tbody key={group.name}>
+              {groupOf && group.name && (
+                <tr className="border-b border-line bg-surface-2/50">
+                  <th
+                    colSpan={1 + (hasGuard ? 1 : 0) + shown.length}
+                    scope="rowgroup"
+                    className="px-4 py-1.5 text-left text-xs font-semibold text-ink-2"
+                  >
+                    モデルの定義: <span className="font-mono">{group.name}</span>
+                  </th>
+                </tr>
+              )}
+              {group.rows.map((slot) => (
+                <tr key={slot.id} className="border-b border-line last:border-b-0">
                   <td className="px-4 py-2">
-                    <GuardBadge guard={slot.run.evaluations?.guard} />
+                    <span className="flex items-center gap-2">
+                      <span
+                        className="h-1 w-4 shrink-0 rounded-full"
+                        style={{ background: `var(${slot.color})` }}
+                        aria-hidden
+                      />
+                      {label(slot.id)}
+                    </span>
                   </td>
-                )}
-                {shown.map((column) => (
-                  <td key={column.key} className="tabular px-4 py-2 text-right whitespace-nowrap">
-                    <EvaluationCell value={findValue(slot.run.evaluations, column.key)} />
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
+                  {hasGuard && (
+                    <td className="px-4 py-2">
+                      <GuardBadge guard={slot.run.evaluations?.guard} />
+                    </td>
+                  )}
+                  {shown.map((column) => (
+                    <td key={column.key} className="tabular px-4 py-2 text-right whitespace-nowrap">
+                      <EvaluationCell value={findValue(slot.run.evaluations, column.key)} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          ))}
         </table>
       </div>
     </Card>

@@ -23,7 +23,6 @@ export function CandidatePicker({
   currentSpec,
   chosen,
   onChange,
-  activeBatch,
 }: {
   projectId: string
   script: string
@@ -32,8 +31,6 @@ export function CandidatePicker({
   currentSpec: unknown
   chosen: string[]
   onChange: (paths: string[]) => void
-  /** このプロジェクトで進めている途中のまとまり */
-  activeBatch: BatchInfo | undefined
 }) {
   const specs = useModelSpecs(projectId, script, defaultConfig)
   const hintId = useId()
@@ -59,19 +56,6 @@ export function CandidatePicker({
           {MIN_CANDIDATES} つ以上選ぶと, 同じスクリプトと config で定義ごとに 1 つずつ,
           選んだ順に学習します ({MAX_CANDIDATES} 個まで).
         </p>
-        {activeBatch && (
-          <p className="flex items-start gap-1.5 text-xs text-warning-text">
-            <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-            <span>
-              このプロジェクトには進めている途中の候補のまとまりがあります (
-              <Link to="/jobs" className="underline">
-                ジョブ
-              </Link>
-              ). 終わるまで新しいまとまりは作れません. 普通の起動はできますが,
-              まとまりの次の候補は学習中のジョブを待ちます
-            </span>
-          </p>
-        )}
         {data.notice && <p className="text-xs text-ink-3">{data.notice}</p>}
         {data.specs.length > 0 && (
           <ul
@@ -119,11 +103,52 @@ export function CandidatePicker({
             })}
           </ul>
         )}
-        <p className="flex items-center gap-1.5 text-xs text-ink-3">
+        <p className="flex items-center gap-1.5 text-xs text-ink-3" aria-live="polite">
           <Layers className="size-3.5" aria-hidden />
           選んだ候補: {chosen.length} 個
+          {full && ` (${MAX_CANDIDATES} 個まで選びました. 他の候補は外してから選べます)`}
         </p>
       </div>
     </Card>
+  )
+}
+
+// 環境のジョブを待っていることを表す印 (バックエンドの ENVIRONMENT_MARK)
+const ENVIRONMENT_MARK = 'environment'
+
+/**
+ * このプロジェクトで進めている途中の候補のまとまりの知らせ. 普通の起動はできるが,
+ * まとまりの次の候補は学習中のジョブを待つことと, 待っているジョブを出す
+ */
+export function ActiveBatchNotice({ id, batch }: { id: string; batch: BatchInfo }) {
+  const waiting = batch.waiting_for ?? []
+  const jobs = waiting.filter((item) => item !== ENVIRONMENT_MARK)
+  return (
+    <div id={id} className="mb-4 flex items-start gap-1.5 text-sm text-warning-text">
+      <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
+      <div>
+        <p>
+          このプロジェクトには進めている途中の候補のまとまりがあります (
+          <Link to="/jobs" className="underline">
+            ジョブ
+          </Link>
+          ). 終わるまで新しいまとまりは作れません. 普通の起動はできますが,
+          まとまりの次の候補は学習中のジョブが終わるのを待ちます.
+        </p>
+        {waiting.includes(ENVIRONMENT_MARK) && (
+          <p className="text-xs">次の候補は学習の準備 (環境のジョブ) を待っています.</p>
+        )}
+        {jobs.length > 0 && (
+          <p className="flex flex-wrap gap-1 text-xs">
+            次の候補が待っているジョブ:
+            {jobs.map((job) => (
+              <Link key={job} to={`/jobs/${job}`} className="font-mono underline">
+                {job}
+              </Link>
+            ))}
+          </p>
+        )}
+      </div>
+    </div>
   )
 }

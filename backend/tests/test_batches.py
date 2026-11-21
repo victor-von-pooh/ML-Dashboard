@@ -276,6 +276,18 @@ def test_batch_runs_candidates(
     assert [spec["name"] for spec in specs["specs"]] == ["a", "b"]
     assert specs["default_spec"] == "models/a.yaml"
 
+    # default を指定すればその default の model.spec, 無ければ None.
+    # 一覧に無いスクリプトは読まない
+    (project_dir / "configs" / "default" / "plain.yaml").write_text(
+        "experiment:\n  name: demo\n"
+    )
+    url = f"/api/projects/{project_id}/model-specs"
+    plain = client.get(
+        url, params={"default_config": "configs/default/plain.yaml"}
+    ).json()
+    assert plain["default_spec"] is None and len(plain["specs"]) == 2
+    assert client.get(url, params={"script": "../x.py"}).status_code == 400
+
     response = client.post(
         f"/api/projects/{project_id}/batches",
         json={

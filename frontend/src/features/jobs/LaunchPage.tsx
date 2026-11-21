@@ -20,6 +20,7 @@ import {
   useConfig,
   useCreateBatch,
   useCreateJob,
+  useModelSpecs,
   useProject,
   useRecheckRequirements,
   useRelaunch,
@@ -29,9 +30,10 @@ import {
 import { Button, Card, ErrorBox, PageHeader, Spinner } from '../../components/ui'
 import { formatValue } from '../../lib/format'
 import { deleteYamlValue, getYamlValue, setYamlValue } from '../../lib/yamlEdit'
+import { chosenCandidates } from '../../lib/batches'
 import { configForScript } from '../../lib/scripts'
 import { RequirementCard } from '../requirements/RequirementCard'
-import { CandidatePicker, MIN_CANDIDATES } from './CandidatePicker'
+import { ActiveBatchNotice, CandidatePicker, MIN_CANDIDATES } from './CandidatePicker'
 import { ConfigForm } from './ConfigForm'
 
 // 実験の config の中身 (プロジェクトの experiment の config の一覧に無いもの) を
@@ -214,7 +216,12 @@ function LaunchForm({
   // 起動する config (書き換えた中身か, プロジェクトのファイル)
   // スクリプトか default を替えたら, 候補は選び直す (候補の欄を出すかも変わるため)
   const candidateKey = `${selectedScript}:${defaultConfig ?? ''}`
-  const chosenSpecs = chosen.key === candidateKey ? chosen.paths : []
+  // 選んだ後に一覧から消えたか選べなくなった定義は外す
+  const specs = useModelSpecs(projectId, selectedScript, defaultConfig)
+  const chosenSpecs = chosenCandidates(chosen, candidateKey, specs.data?.specs ?? [])
+  const usingCandidates = chosenSpecs.length >= MIN_CANDIDATES
+  const activeBatchId = useId()
+  const singleNoteId = useId()
   const setChosenSpecs = (paths: string[]) => setChosen({ key: candidateKey, paths })
 
   const launchBody =
@@ -282,6 +289,8 @@ function LaunchForm({
           </Link>
         }
       />
+
+      {activeBatch && <ActiveBatchNotice id={activeBatchId} batch={activeBatch} />}
 
       {runId !== null && (
         <RunSourceNotice
@@ -465,13 +474,13 @@ function LaunchForm({
             currentSpec={getYamlValue(text, 'model.spec')}
             chosen={chosenSpecs}
             onChange={setChosenSpecs}
-            activeBatch={activeBatch}
           />
           {formError && <ErrorBox error={formError} />}
           {create.error && <ErrorBox error={create.error} />}
           {createBatch.error && <ErrorBox error={createBatch.error} />}
-          {chosenSpecs.length >= MIN_CANDIDATES && (
+          {usingCandidates && (
             <Button
+              variant="primary"
               icon={Layers}
               className="h-10 w-full"
               disabled={
@@ -483,12 +492,25 @@ function LaunchForm({
                 activeBatch !== undefined
               }
               onClick={launchCandidates}
+              aria-describedby={
+                [
+                  activeBatch ? activeBatchId : null,
+                  blockedByRequires || requiresPending ? requiresNoticeId : null,
+                ]
+                  .filter(Boolean)
+                  .join(' ') || undefined
+              }
             >
               {chosenSpecs.length} 個の候補を順に学習する
             </Button>
           )}
+          {usingCandidates && (
+            <p id={singleNoteId} className="text-xs text-ink-3">
+              「学習を開始」は選んだ候補を使わず, 今の config で 1 つだけ学習します.
+            </p>
+          )}
           <Button
-            variant="primary"
+            variant={usingCandidates ? 'secondary' : 'primary'}
             icon={Play}
             className="h-10 w-full"
             disabled={
@@ -499,7 +521,14 @@ function LaunchForm({
               requiresPending
             }
             onClick={launch}
-            aria-describedby={blockedByRequires || requiresPending ? requiresNoticeId : undefined}
+            aria-describedby={
+              [
+                blockedByRequires || requiresPending ? requiresNoticeId : null,
+                usingCandidates ? singleNoteId : null,
+              ]
+                .filter(Boolean)
+                .join(' ') || undefined
+            }
           >
             学習を開始
           </Button>

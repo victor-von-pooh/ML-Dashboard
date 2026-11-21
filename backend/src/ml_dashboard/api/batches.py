@@ -473,7 +473,7 @@ def to_batch_info(request: Request, batch: Batch) -> BatchInfo:
 
 
 @router.get(
-    "/projects/{project_id}/model-specs", responses=NOT_FOUND
+    "/projects/{project_id}/model-specs", responses=NOT_FOUND | BAD_REQUEST
 )
 def read_model_specs(
     request: Request, project_id: str, script: Optional[str] = None,
@@ -499,6 +499,10 @@ def read_model_specs(
         定義の一覧, 一覧を作れない理由, default の config の model.spec
     """
     project = get_project(request, project_id)
+    if script is not None and script not in list_scripts(Path(project.path)):
+        raise HTTPException(
+            400, f"学習のスクリプトが見つかりません: {script}"
+        )
     specs = list_model_specs(Path(project.path))
 
     # 候補の欄を出すかを決める default の config の model.spec

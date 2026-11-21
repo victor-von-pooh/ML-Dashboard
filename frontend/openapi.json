@@ -1303,6 +1303,9 @@
           "404": {
             "description": "プロジェクトか実験が見つからない"
           },
+          "400": {
+            "description": "受け付けられないリクエスト"
+          },
           "422": {
             "description": "Validation Error",
             "content": {

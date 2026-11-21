@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { api, type JobInfo, type RunNote } from './client'
+import { api, type BatchInfo, type JobInfo, type RunNote } from './client'
 
 export const keys = {
   projects: ['projects'] as const,
@@ -194,12 +194,17 @@ export function useRerunJob() {
 }
 
 export function useJobs() {
+  const client = useQueryClient()
   return useQuery({
     queryKey: keys.jobs,
     queryFn: api.listJobs,
-    // 実行中が無い間は, サイドバーの数が大まかに合っていればよいので間隔を空ける
+    // 実行中が無い間は, サイドバーの数が大まかに合っていればよいので間隔を空ける.
+    // 進めている途中の候補のまとまりがあれば, 次の候補のジョブがすぐ出るように短くする
     refetchInterval: (query) =>
-      query.state.data?.some((job) => job.status === 'running') ? LIVE_INTERVAL : 30_000,
+      query.state.data?.some((job) => job.status === 'running') ||
+      client.getQueryData<BatchInfo[]>(keys.batches)?.some((batch) => !batch.finished)
+        ? LIVE_INTERVAL
+        : 30_000,
   })
 }
 

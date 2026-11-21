@@ -457,9 +457,10 @@ function RunsPage({ projectId }: { projectId: string }) {
             onChange={(event) => setQuery(event.target.value)}
             aria-label="実験を絞り込む"
             placeholder={
-              evaluationColumns.length > 0
-                ? '名前, config の差分, 評価の値で絞り込む (例: lr=0.001, accuracy>=0.9)'
-                : '名前や config の差分で絞り込む (例: lr=0.001)'
+              (hasModel ? '名前, モデルの定義, ' : '名前, ') +
+              (evaluationColumns.length > 0
+                ? 'config の差分, 評価の値で絞り込む (例: lr=0.001, accuracy>=0.9)'
+                : 'config の差分で絞り込む (例: lr=0.001)')
             }
             className="h-9 w-full rounded-lg border border-line bg-surface pr-3 pl-8 text-sm outline-none focus:border-accent"
           />

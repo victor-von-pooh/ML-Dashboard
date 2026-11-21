@@ -157,6 +157,14 @@ export function RunDetailPage() {
         subtitle={
           <span className="tabular">
             {formatDateTime(data.started_at)} · {data.id}
+            {data.model && (
+              <>
+                {' · '}モデルの定義:{' '}
+                <span className="font-mono" title={data.model.path}>
+                  {data.model.name}
+                </span>
+              </>
+            )}
           </span>
         }
         actions={
@@ -181,6 +189,9 @@ export function RunDetailPage() {
         <p id={relaunchHintId} className="-mt-4 mb-4 text-right text-xs text-ink-3">
           もう一度起動できません: {relaunch.data.reason}
         </p>
+      )}
+      {data.model && data.status === 'completed' && (
+        <NextStageNote hasBundle={data.files.some((file) => file.path.startsWith('inference/'))} />
       )}
       {data.error && <ErrorBox error={data.error} live={false} />}
       {data.notices.map((notice) => (
@@ -359,5 +370,20 @@ export function RunDetailPage() {
         {tab === 'files' && <FilesTab run={data} projectId={projectId} />}
       </div>
     </>
+  )
+}
+
+/** 比べて選んだ実験を次の段階 (推論) で使う案内 */
+function NextStageNote({ hasBundle }: { hasBundle: boolean }) {
+  return (
+    <details className="mb-4 text-xs text-ink-3">
+      <summary className="cursor-pointer">この実験を推論の段階で使うには</summary>
+      <p className="mt-1">
+        {hasBundle
+          ? 'この実験は推論の一式 (inference/) を持つので, ML-Provide の「実験の一覧から登録」で登録できます.'
+          : 'ML-Provide の「学習の結果から作る」で, この実験のディレクトリ (重み) と, 写したモデルの定義 (model_spec.yaml) を選びます.'}{' '}
+        プロジェクトの default の config の model.spec は変わりません.
+      </p>
+    </details>
   )
 }

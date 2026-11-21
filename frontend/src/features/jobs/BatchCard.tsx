@@ -1,5 +1,6 @@
 import { Ban, CheckCircle2, Clock, GitCompareArrows, Loader2, TriangleAlert, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { useId } from 'react'
 import { Link } from 'react-router'
 
 import type { BatchCandidate, BatchInfo, JobInfo } from '../../api/client'
@@ -7,6 +8,7 @@ import { encodeRunId } from '../../api/client'
 import { useStopBatch } from '../../api/hooks'
 import { Button, ErrorBox, StatusBadge } from '../../components/ui'
 import { formatDateTime } from '../../lib/format'
+import { batchState, compareCandidates } from '../../lib/batches'
 import { MAX_COMPARE } from '../../lib/metrics'
 import { jobStatus } from '../../lib/progress'
 
@@ -30,26 +32,27 @@ export function BatchCard({ batch, jobs }: { batch: BatchInfo; jobs: JobInfo[] }
   const stop = useStopBatch()
   const runOf = new Map(jobs.map((job) => [job.id, job.run_id]))
   const jobOf = new Map(jobs.map((job) => [job.id, job]))
-  // 候補のジョブが残した実験 (比べられる数まで)
-  const runIds = batch.candidates
-    .map((candidate) => (candidate.job_id ? runOf.get(candidate.job_id) : null))
-    .filter((id): id is string => Boolean(id))
-  const compareUrl = `/projects/${batch.project_id}/compare?${runIds
-    .slice(0, MAX_COMPARE)
-    .map((id) => `run=${encodeURIComponent(id)}`)
-    .join('&')}`
-  const waitingEnvironment = batch.waiting_for?.includes(ENVIRONMENT_MARK)
-  const waitingJobs = (batch.waiting_for ?? []).filter((id) => id !== ENVIRONMENT_MARK)
+  // 候補のジョブが残した実験と, 比較の画面の URL (比べられる数まで)
+  const { runIds, url: compareUrl } = compareCandidates(batch, jobs)
+  // 終わったまとまりは, もう何も待たない
+  const waiting = batch.finished ? [] : (batch.waiting_for ?? [])
+  const waitingEnvironment = waiting.includes(ENVIRONMENT_MARK)
+  const waitingJobs = waiting.filter((id) => id !== ENVIRONMENT_MARK)
+  const stopReasonId = useId()
+  const names = batch.candidates.map((candidate) => candidate.name)
   return (
     <section className="rounded-xl border border-line bg-surface p-4 shadow-sm shadow-black/[0.03]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="font-semibold">
-            候補のまとまり: {batch.project_name ?? batch.project_id} / {batch.script}
+            候補のまとまり: {batch.project_name ?? batch.project_id} / {batch.script} (
+            {batch.candidates.length} 個の定義)
           </h3>
+          <p className="truncate font-mono text-xs text-ink-2" title={names.join(', ')}>
+            {names.join(', ')}
+          </p>
           <p className="tabular text-xs text-ink-3">
-            作成 {formatDateTime(batch.created_at)} · {batch.candidates.length} 個の候補 ·{' '}
-            {batch.finished ? '終わった' : '進めている途中'}
+            作成 {formatDateTime(batch.created_at)} · {batchState(batch)}
           </p>
           {!batch.owned && !batch.finished && (
             <p className="text-xs text-warning-text">
@@ -69,10 +72,16 @@ export function BatchCard({ batch, jobs }: { batch: BatchInfo; jobs: JobInfo[] }
               {runIds.length > MAX_COMPARE && ` (先頭の ${MAX_COMPARE} つ)`}
             </Link>
           )}
+          {!batch.finished && !batch.owned && (
+            <p id={stopReasonId} className="max-w-64 text-xs text-ink-3">
+              取りやめは, 進めているプロセス ({batch.owner.hostname}) のダッシュボードで行います
+            </p>
+          )}
           {!batch.finished && (
             <Button
               icon={X}
-              disabled={stop.isPending}
+              disabled={stop.isPending || !batch.owned}
+              aria-describedby={batch.owned ? undefined : stopReasonId}
               onClick={() => {
                 if (
                   window.confirm(
@@ -127,6 +136,7 @@ export function BatchCard({ batch, jobs }: { batch: BatchInfo; jobs: JobInfo[] }
                 )}
               {candidate.job_id && (
                 <Link
+                  aria-label={`${candidate.name} のジョブ`}
                   to={`/jobs/${candidate.job_id}`}
                   className="text-xs text-accent-text hover:underline"
                 >
@@ -135,6 +145,7 @@ export function BatchCard({ batch, jobs }: { batch: BatchInfo; jobs: JobInfo[] }
               )}
               {runId && (
                 <Link
+                  aria-label={`${candidate.name} の実験`}
                   to={`/projects/${batch.project_id}/runs/${encodeRunId(runId)}`}
                   className="text-xs text-accent-text hover:underline"
                 >

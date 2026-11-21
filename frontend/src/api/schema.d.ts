@@ -3347,6 +3347,13 @@ export interface operations {
                     "application/json": components["schemas"]["ModelSpecList"];
                 };
             };
+            /** @description 受け付けられないリクエスト */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description プロジェクトか実験が見つからない */
             404: {
                 headers: {

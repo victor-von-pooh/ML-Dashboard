@@ -1,5 +1,6 @@
 import clsx from 'clsx'
 import { ExternalLink, OctagonX, RotateCcw, SkipBack, Square } from 'lucide-react'
+import { useId } from 'react'
 import { Link, useNavigate } from 'react-router'
 
 import { encodeRunId, isCopyRefused, type JobInfo, type Progress } from '../../api/client'
@@ -89,6 +90,9 @@ export function JobCard({
   const run = job.run
   const rerun = useRerunJob()
   const navigate = useNavigate()
+  const batchNoteId = useId()
+  // 候補のジョブの中断のボタンには, 次の候補へ進むことの添え書きを結ぶ
+  const describedBy = batchLabel && running ? batchNoteId : undefined
 
   return (
     <section className="rounded-xl border border-line bg-surface p-4 shadow-sm shadow-black/[0.03]">
@@ -106,15 +110,17 @@ export function JobCard({
             )}
           </div>
           {batchLabel && (
-            <p className="mt-1 text-xs text-accent-text">
+            <p id={batchNoteId} className="mt-1 text-xs text-accent-text">
               候補のまとまり: {batchLabel}
               {running && ' (中断しても, まとまりは次の候補へ進みます)'}
             </p>
           )}
           <p className="mt-1 truncate font-mono text-xs text-ink-3" title={job.config}>
-            {job.config_text != null
-              ? '画面で書き換えた config'
-              : job.config.split('/').slice(-3).join('/')}
+            {batchLabel
+              ? '候補のまとまりの config'
+              : job.config_text != null
+                ? '画面で書き換えた config'
+                : job.config.split('/').slice(-3).join('/')}
           </p>
           {/* 同じスクリプトのジョブを見分けるための, 進んだエポックと config の違い */}
           {run && (
@@ -160,12 +166,14 @@ export function JobCard({
                 icon={Square}
                 disabled={stop.isPending || job.stop_requested}
                 onClick={() => stop.mutate({ jobId: job.id, force: false })}
+                aria-describedby={describedBy}
               >
                 {job.stop_requested ? '止めています' : 'エポックの区切りで止める'}
               </Button>
               <Button
                 icon={SkipBack}
                 disabled={stop.isPending}
+                aria-describedby={describedBy}
                 onClick={() => {
                   if (
                     window.confirm(
@@ -182,6 +190,7 @@ export function JobCard({
                 variant="danger"
                 icon={OctagonX}
                 disabled={stop.isPending}
+                aria-describedby={describedBy}
                 onClick={() => {
                   if (
                     window.confirm(
