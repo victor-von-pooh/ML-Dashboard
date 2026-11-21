@@ -1003,6 +1003,17 @@ def test_relaunch_model_spec(
     for text, message in (
         (b"nodes:\n  a:\n    weights: {path: w.pt}\n", "weights.path"),
         (b"x" * (16 * 1024 * 1024 + 1), "16 MiB"),
+        # 自分を指す別名, 重ねた別名, 深い入れ子でも止まらない
+        (b"nodes: &n {a: *n}\n", "別名"),
+        (
+            b"a: &a [x, x, x, x, x, x, x, x, x]\n" + b"".join(
+                f"{chr(98 + index)}: &{chr(98 + index)} "
+                f"[*{chr(97 + index)}, *{chr(97 + index)}, "
+                f"*{chr(97 + index)}]\n".encode()
+                for index in range(20)
+            ), "別名"
+        ),
+        (b"[" * 5000 + b"]" * 5000 + b"\n", "読めません"),
     ):
         copy.write_bytes(text)
         result = plan(digest=hashlib.sha256(text).hexdigest())
@@ -1037,6 +1048,23 @@ def test_relaunch_model_spec(
     assert result["model_spec"] == f"{relative}/model_spec.yaml"
     assert result["model_spec_original"] is None
     assert "models/base.yaml" in result["model_spec_note"]
+
+    # 消えた実験の写しを指す config も, 出力先の下の model_spec.yaml なので
+    # default の値に戻す
+    experiment.write_text(
+        "model:\n  spec: outputs/demo/2026-11-08/09-00-00/model_spec.yaml\n"
+    )
+    result = plan(digest="0" * 64)
+    assert "spec" not in result["config_text"]
+
+    # 今の定義が記録と同じ中身か違う中身かを言い切る
+    (project_dir / "models").mkdir()
+    (project_dir / "models" / "base.yaml").write_bytes(content)
+    result = plan(status="missing")
+    assert any("同じモデルになります" in note for note in result["notes"])
+    (project_dir / "models" / "base.yaml").write_bytes(b"layers: []\n")
+    result = plan(status="missing")
+    assert any("違うモデルになります" in note for note in result["notes"])
 
     # model_spec の無い実験は何も足さない
     experiment.write_text("{}\n")
@@ -1154,6 +1182,25 @@ def test_launch_rechecks_model_spec(
     assert response.status_code == 400
     assert "起動しません" in response.json()["detail"]
     assert "中身が" in response.json()["detail"]
+
+    assert "今の定義で起動する" in response.json()["detail"]
+
+    # 消えた実験の写しを指す config も起動しない
+    gone = {
+        "script": "train.py",
+        "config_text": (
+            "model:\n  spec: outputs/demo/2026-11-08/09-00-00/"
+            "model_spec.yaml\n"
+        )
+    }
+    response = client.post(f"/api/projects/{project_id}/jobs", json=gone)
+    assert response.status_code == 400
+    assert "起動しません" in response.json()["detail"]
+
+    # 別名を使う写しは, 500 にならず起動しない
+    (run_dir / "model_spec.yaml").write_bytes(b"nodes: &n {a: *n}\n")
+    response = client.post(f"/api/projects/{project_id}/jobs", json=body)
+    assert response.status_code == 400
 
     # 記録と合えば起動する
     (run_dir / "model_spec.yaml").write_bytes(content)

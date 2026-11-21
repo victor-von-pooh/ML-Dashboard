@@ -134,7 +134,7 @@ export function JobCard({ job, detail = false }: { job: JobInfo; detail?: boolea
               onClick={() =>
                 rerun.mutate(job.id, { onSuccess: (next) => navigate(`/jobs/${next.id}`) })
               }
-              title="同じスクリプトと config で, もう一度学習を起動する (モデルの定義は config の model.spec のまま. 実験に写した定義を使うのは, 実験の詳細の「この設定でもう一度起動」)"
+              title="同じスクリプトと config で, もう一度学習を起動する (モデルは config の model.spec が指す定義で組み立てる. models/ なら今の中身)"
             >
               同じ設定でもう一度
             </Button>

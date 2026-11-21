@@ -26,6 +26,9 @@ import {
 import { Button, Card, ErrorBox, PageHeader, Spinner } from '../../components/ui'
 import { formatValue } from '../../lib/format'
 import { deleteYamlValue, getYamlValue, setYamlValue } from '../../lib/yamlEdit'
+
+// 実験に写した定義を使えずに起動しなかったときの文の頭 (バックエンドの COPY_REFUSED)
+const COPY_REFUSED = 'model.spec が指す, 実験に写した定義を使えないので起動しません'
 import { configForScript } from '../../lib/scripts'
 import { RequirementCard } from '../requirements/RequirementCard'
 import { ConfigForm } from './ConfigForm'
@@ -260,6 +263,7 @@ function LaunchForm({
           error={planError}
           defaultConfig={defaultConfig}
           copyNote={usingCopy ? (fromRun?.model_spec_note ?? null) : null}
+          copyRefused={usingCopy && (create.error?.message.includes(COPY_REFUSED) ?? false)}
           onRestoreSpec={() => {
             // model.spec だけを今の定義 (戻す値が無ければ default の値) に戻す
             const original = fromRun?.model_spec_original ?? null
@@ -576,6 +580,7 @@ function RunSourceNotice({
   error,
   defaultConfig,
   copyNote,
+  copyRefused,
   onRestoreSpec,
 }: {
   projectId: string
@@ -584,6 +589,7 @@ function RunSourceNotice({
   error: Error | null
   defaultConfig: string | undefined
   copyNote: string | null
+  copyRefused: boolean
   onRestoreSpec: () => void
 }) {
   const runLink = (
@@ -630,7 +636,11 @@ function RunSourceNotice({
       {copyNote && (
         <p className="flex flex-wrap items-start gap-1.5 text-xs text-ink-3">
           <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-          <span className="min-w-0 flex-1">{copyNote}</span>
+          <span className="min-w-0 flex-1">
+            {copyRefused
+              ? '写した定義が使えなくなったので起動していません. 「今の定義で起動する」を押すか, 実験の詳細から開き直してください'
+              : copyNote}
+          </span>
           <Button variant="ghost" icon={RotateCcw} onClick={onRestoreSpec}>
             今の定義で起動する
           </Button>

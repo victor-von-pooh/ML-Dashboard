@@ -18,6 +18,7 @@ from ml_dashboard.core.jobs import Job, JobManager
 from ml_dashboard.core.loader import import_ml_found
 from ml_dashboard.core.model_spec import (
     check_copy_for_launch,
+    compare_current,
     default_model_spec,
     find_model_spec_copy,
     load_mapping,
@@ -1098,14 +1099,12 @@ def create_job(
 
     # model.spec が実験に写した定義を指す場合は, 写しが今も記録の中身かを
     # 確かめ直し (起動の画面を開いた後に書き換わった写しで学習しないため)
-    try:
-        launched = (
-            body.config_text if body.config_text is not None
-            else config_path.read_text(encoding="utf-8")
-            if config_path is not None else ""
-        )
-    except OSError:
-        launched = ""
+    launched = body.config_text or ""
+    if body.config_text is None and config_path is not None:
+        try:
+            launched = config_path.read_text(encoding="utf-8")
+        except OSError:
+            launched = ""
     spec_reason = check_copy_for_launch(Path(project.path), launched)
     if spec_reason is not None:
         raise HTTPException(400, spec_reason)
@@ -1504,12 +1503,12 @@ def plan_model_spec(
             changed = set_model_spec(text, None)
         except Exception:
             changed = text
+    same = compare_current(project_dir, current, spec.sha256)
     plan = ModelSpecPlan(
         text=changed,
         fallback=(
             f"モデルの定義は, 今のプロジェクトの {current_text} から組み立て"
-            f"ます (この実験の後に書き換えていれば違うモデルになります): "
-            f"{reason}"
+            f"ます ({same}): {reason}"
         )
     )
 

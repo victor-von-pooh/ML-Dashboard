@@ -8,6 +8,7 @@ import yaml
 from omegaconf import DictConfig, OmegaConf
 
 from ml_dashboard.core.models import RunModelSpec
+from ml_dashboard.core.projects import ProjectError, get_output_dirs
 from ml_dashboard.core.results import read_plain_file
 from ml_dashboard.core.runs import read_source
 
@@ -15,6 +16,9 @@ from ml_dashboard.core.runs import read_source
 # docs/FORMAT.md の model_spec.yaml)
 MODEL_SPEC_FILE = "model_spec.yaml"
 MAX_MODEL_SPEC_BYTES = 16 * 1024 * 1024
+
+# 写した定義を使えずに起動しないときの文の頭 (画面が見分ける)
+COPY_REFUSED = "model.spec が指す, 実験に写した定義を使えないので起動しません"
 
 # 実験のディレクトリだと見分けるファイル (写しの場所を指す model.spec の判定)
 RUN_MARKERS = ("config.yaml", "source.yaml")
@@ -34,7 +38,7 @@ MODEL_SPEC_REASONS = {
 }
 
 
-def find_weight_paths(node: Any) -> list[str]:
+def find_weight_paths(definition: Any) -> list[str]:
     """
     モデルの定義の中の外部の重みのファイル (weights.path) を集める関数
 
@@ -44,26 +48,61 @@ def find_weight_paths(node: Any) -> list[str]:
 
     Parameters
     ----------
-    node: Any
-        定義 (YAML を読んだもの) か, その一部
+    definition: Any
+        定義 (別名の無い YAML を読んだもの)
 
     Returns
     ----------
     paths: list[str]
         weights.path の値 (部分モデルの中も含む)
     """
+    # 深い入れ子でも止まらないように, 再帰でなく積み上げで辿る
     paths: list[str] = []
-    if isinstance(node, dict):
-        weights = node.get("weights")
-        if isinstance(weights, dict) and weights.get("path") is not None:
-            paths.append(str(weights["path"]))
-        for value in node.values():
-            paths += find_weight_paths(value)
-    elif isinstance(node, list):
-        for value in node:
-            paths += find_weight_paths(value)
+    stack = [definition]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            weights = node.get("weights")
+            if isinstance(weights, dict) and weights.get("path") is not None:
+                paths.append(str(weights["path"]))
+            stack.extend(node.values())
+        elif isinstance(node, list):
+            stack.extend(node)
 
     return paths
+
+
+def load_definition(content: bytes) -> tuple[Any, Optional[str]]:
+    """
+    写した定義の中身を YAML として読む関数
+
+    Parameters
+    ----------
+    content: bytes
+        写した定義の中身
+
+    Returns
+    ----------
+    definition: Any
+        読んだ定義, 読めない場合は None
+    reason: Optional[str]
+        読めない理由, 読めた場合は None
+    """
+    # 別名 (&a と *a) を持つ定義は読まない (自分を指す別名と, 別名を重ねて
+    # 大きく膨らむ定義で止まらないため). 深い入れ子も読めないものとする
+    name = f"写した定義 ({MODEL_SPEC_FILE})"
+    try:
+        for event in yaml.parse(content, Loader=yaml.SafeLoader):
+            if isinstance(event, yaml.AliasEvent):
+                return None, (
+                    f"{name} が YAML の別名 (*) を使うので, 確かめずに"
+                    "使いません"
+                )
+        definition = yaml.safe_load(content)
+    except (yaml.YAMLError, RecursionError):
+        return None, f"{name} を YAML として読めません"
+
+    return definition, None
 
 
 def read_copy(copy: Path) -> tuple[Optional[bytes], Optional[str]]:
@@ -172,19 +211,64 @@ def find_model_spec_copy(
         )
 
     # 外部の重みのファイルを読む定義は, 写しの場所からは組み立てられない
-    try:
-        definition = yaml.safe_load(content)
-    except yaml.YAMLError:
-        return None, f"写した定義 ({MODEL_SPEC_FILE}) を YAML として読めません"
+    definition, reason = load_definition(content)
+    if reason is not None:
+        return None, reason
     weights = find_weight_paths(definition)
     if weights:
         return None, (
-            f"写した定義が外部の重みのファイル (weights.path: {weights[0]}) "
-            "を読むので, 定義のファイルのディレクトリから辿る写しの場所では"
-            "組み立てられません"
+            f"写しの場所 ({path}) からは外部の重みのファイル "
+            f"(weights.path: {weights[0]}) を辿れないため, 写した定義を"
+            "使えません (ML-ModelControl は weights.path を定義のファイルの"
+            "ディレクトリから辿る)"
         )
 
     return path, None
+
+
+def compare_current(
+    project_dir: Path, current: Any, sha256: Optional[str]
+) -> str:
+    """
+    今の定義が, 実験の記録した定義と同じ中身かを言う文を作る関数
+
+    Parameters
+    ----------
+    project_dir: Path
+        プロジェクトのディレクトリ
+    current: Any
+        今の定義の場所 (config の model.spec の値)
+    sha256: Optional[str]
+        実験の記録した定義の SHA-256
+
+    Returns
+    ----------
+    message: str
+        同じモデルになるか, 違うモデルになるか, 比べられないか
+    """
+    # 参照 (${) を含む場所と, 記録の無い実験は比べない
+    unknown = (
+        "記録と比べられないので, この実験の後に書き換えていれば違うモデル"
+        "になります"
+    )
+    if sha256 is None or not isinstance(current, str) or "${" in current:
+        return unknown
+    path = Path(os.path.expanduser(current))
+    if not path.is_absolute():
+        path = project_dir / path
+
+    # リンクを辿らずに読み, 記録の sha256 と比べる
+    content, _ = read_copy(path)
+    if content is None:
+        return unknown
+    if hashlib.sha256(content).hexdigest() == sha256:
+        message = "今の定義は記録と同じ中身なので, 同じモデルになります"
+    else:
+        message = (
+            "今の定義は記録 (sha256) と違う中身なので, 違うモデルになります"
+        )
+
+    return message
 
 
 def run_of_copy(project_dir: Path, value: Any) -> Optional[Path]:
@@ -208,12 +292,46 @@ def run_of_copy(project_dir: Path, value: Any) -> Optional[Path]:
     path = Path(os.path.expanduser(value))
     if not path.is_absolute():
         path = project_dir / path
-    run_dir = path.parent
-    copy = path.name == MODEL_SPEC_FILE and all(
-        (run_dir / marker).is_file() for marker in RUN_MARKERS
+    if path.name != MODEL_SPEC_FILE:
+        return None
+
+    # 実験のディレクトリの中か, 実験が消えた後も出力先の下にあれば写しの場所
+    run_dir: Optional[Path] = path.parent
+    in_run = all((path.parent / marker).is_file() for marker in RUN_MARKERS)
+    if not in_run and not under_output_dir(project_dir, path):
+        run_dir = None
+
+    return run_dir
+
+
+def under_output_dir(project_dir: Path, path: Path) -> bool:
+    """
+    パスがプロジェクトの実験の出力先の下にあるかを判定する関数
+
+    Parameters
+    ----------
+    project_dir: Path
+        プロジェクトのディレクトリ
+    path: Path
+        判定するパス
+
+    Returns
+    ----------
+    under: bool
+        どれかの出力先の下にあるかどうか, 出力先を読めない場合は False
+    """
+    try:
+        output_dirs = get_output_dirs(project_dir)
+    except ProjectError:
+        return False
+    under = any(
+        os.path.abspath(path).startswith(
+            os.path.abspath(output_dir) + os.sep
+        )
+        for output_dir in output_dirs
     )
 
-    return run_dir if copy else None
+    return under
 
 
 def load_mapping(text: str) -> DictConfig:
@@ -366,8 +484,9 @@ def check_copy_for_launch(project_dir: Path, text: str) -> Optional[str]:
         )
     if reason is not None:
         reason = (
-            f"model.spec が指す実験に写した定義 ({value}) を使えないので"
-            f"起動しません: {reason}"
+            f"{COPY_REFUSED} ({value}): {reason}. 起動の画面の「今の定義で"
+            "起動する」で model.spec を今の定義に戻すか, 実験の詳細から"
+            "開き直してください"
         )
 
     return reason
