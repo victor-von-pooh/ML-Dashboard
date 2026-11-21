@@ -51,6 +51,14 @@ MAX_EVALUATION_ROWS = 2000
 # 読む評価のファイルの大きさの上限
 MAX_EVALUATION_BYTES = 20 * 1024 * 1024
 
+# evaluations/ がリンクの実験の注意 (評価の無い実験と見分けるため)
+EVALUATIONS_LINK_NOTICE = (
+    "evaluations/ がシンボリックリンクなので, 評価を読んでいません"
+)
+
+# 出さなかった評価のファイルを注意に並べる数の上限
+MAX_SKIPPED_SHOWN = 10
+
 # 評価の名前の決まり (ML-Found の docs/FORMAT.md. 一覧の列の名前を
 # <評価の名前>:<列> にするので, : を含む名前も除く)
 EVALUATION_NAME = re.compile(r"[A-Za-z0-9_@-][A-Za-z0-9_.@-]*")
@@ -494,27 +502,65 @@ def check_evaluation(stem: str, data: dict[str, Any]) -> Optional[str]:
     return name
 
 
-def skipped_notice(count: int) -> str:
+def skipped_notice(skipped: list[str]) -> Optional[str]:
     """
     出さなかった評価のファイルの注意の文を作る関数
 
     Parameters
     ----------
-    count: int
-        出さなかったファイルの数
+    skipped: list[str]
+        出さなかったファイルの名前と理由 (<ファイルの名前> (<理由>))
 
     Returns
     ----------
-    notice: str
-        注意の文
+    notice: Optional[str]
+        注意の文. 名前の順に先頭の MAX_SKIPPED_SHOWN 個を並べる. 無ければ
+        None
     """
+    if not skipped:
+        return None
+    shown = sorted(skipped)[:MAX_SKIPPED_SHOWN]
+    rest = len(skipped) - len(shown)
     notice = (
-        f"evaluations/ の {count} 個のファイルは, 形が違うか, 名前が決まり "
-        "(ファイルの名前と同じで, 英数字と _ . @ - だけ) に合わないか, "
-        "読めない (シンボリックリンク, 大きすぎるなど) ので出していません"
+        f"evaluations/ の {len(skipped)} 個のファイルを出していません: "
+        + ", ".join(shown) + (f" ほか {rest} 個" if rest > 0 else "")
+        + ". 名前の決まりは, 中の name がファイルの名前と同じで, 英数字と "
+        "_ . @ - だけ"
     )
 
     return notice
+
+
+def skip_reason(path: Path) -> str:
+    """
+    読めなかった評価のファイルの理由を返す関数
+
+    読んだ後に lstat で調べ直すので, 注意の文に出すためだけに使う
+
+    Parameters
+    ----------
+    path: Path
+        評価のファイル
+
+    Returns
+    ----------
+    reason: str
+        リンク, 普通のファイルでない, 大きすぎる, 読めない のどれか
+    """
+    try:
+        link_stat = path.lstat()
+    except OSError:
+        return "読めない"
+    if stat.S_ISLNK(link_stat.st_mode):
+        reason = "シンボリックリンク"
+    elif not stat.S_ISREG(link_stat.st_mode):
+        reason = "普通のファイルでない (FIFO など)"
+    elif link_stat.st_size > MAX_EVALUATION_BYTES:
+        reason = "大きすぎる"
+    else:
+        reason = "読めない"
+
+    return reason
 
 
 def to_evaluation(data: dict[str, Any]) -> Optional[Evaluation]:
@@ -706,7 +752,7 @@ def open_plain_dir(folder: Path) -> Optional[int]:
 
 def load_plain_evaluations(
     run_dir: Path, files: list[Path]
-) -> list[tuple[str, dict[str, Any]]]:
+) -> tuple[list[tuple[str, dict[str, Any]]], list[str]]:
     """
     評価のファイルのうち, シンボリックリンクでない普通のファイルだけを読む関数
 
@@ -727,32 +773,74 @@ def load_plain_evaluations(
     ----------
     loaded: list[tuple[str, dict[str, Any]]]
         ファイルの名前の順の, ファイルの名前 (.json を除く) と中身
+    skipped: list[str]
+        読まなかったファイルの名前と理由
     """
     # evaluations/ もリンクを辿らずに開き, 中のファイルはその dir_fd から.
     # dir_fd を使えない環境では, リンクでないディレクトリだけ
     loaded: list[tuple[str, dict[str, Any]]] = []
+    skipped: list[str] = []
     folder = run_dir / EVALUATIONS_DIR
     dir_fd = open_plain_dir(folder)
     if dir_fd is None and (
         os.open in os.supports_dir_fd or not is_plain_dir(folder)
     ):
-        return loaded
+        skipped = [f"{path.name} (読めない)" for path in files]
+        return loaded, skipped
     try:
         for path in files:
             content = read_plain_file(path, dir_fd, MAX_EVALUATION_BYTES)
             if content is None:
+                skipped.append(f"{path.name} ({skip_reason(path)})")
                 continue
             try:
                 data = json.loads(content.decode("utf-8"))
             except (ValueError, RecursionError):
-                continue
+                data = None
             if isinstance(data, dict):
                 loaded.append((path.stem, data))
+            else:
+                skipped.append(f"{path.name} (JSON の辞書でない)")
     finally:
         if dir_fd is not None:
             os.close(dir_fd)
 
-    return loaded
+    return loaded, skipped
+
+
+def load_checked_evaluations(
+    run_dir: Path, files: list[Path]
+) -> tuple[list[tuple[str, dict[str, Any]]], list[str]]:
+    """
+    評価のファイルを読み, 形と名前の合うものだけを返す関数
+
+    評価のタブと一覧で同じ評価を出すため, どちらもこの関数で読む
+
+    Parameters
+    ----------
+    run_dir: Path
+        実験のディレクトリ
+    files: list[Path]
+        evaluation_files が集めたファイル
+
+    Returns
+    ----------
+    checked: list[tuple[str, dict[str, Any]]]
+        ファイルの名前の順の, 評価の名前と中身
+    skipped: list[str]
+        出さないファイルの名前と理由
+    """
+    loaded, skipped = load_plain_evaluations(run_dir, files)
+    checked: list[tuple[str, dict[str, Any]]] = []
+    for stem, data in loaded:
+        if not has_evaluation_shape(data):
+            skipped.append(f"{stem}.json (形が違う)")
+        elif check_evaluation(stem, data) is None:
+            skipped.append(f"{stem}.json (名前が決まりに合わない)")
+        else:
+            checked.append((stem, data))
+
+    return checked, skipped
 
 
 def read_evaluations(run_dir: Path, notices: list[str]) -> list[Evaluation]:
@@ -772,16 +860,18 @@ def read_evaluations(run_dir: Path, notices: list[str]) -> list[Evaluation]:
         守る指標を先にした評価
     """
     evaluations: list[Evaluation] = []
-    files = evaluation_files(run_dir)
-    for stem, data in load_plain_evaluations(run_dir, files):
-        evaluation = (
-            to_evaluation(data) if check_evaluation(stem, data) else None
-        )
+    if (run_dir / EVALUATIONS_DIR).is_symlink():
+        notices.append(EVALUATIONS_LINK_NOTICE)
+    checked, skipped = load_checked_evaluations(
+        run_dir, evaluation_files(run_dir)
+    )
+    for _, data in checked:
+        evaluation = to_evaluation(data)
         if evaluation is not None:
             evaluations.append(evaluation)
-    skipped = len(files) - len(evaluations)
-    if skipped > 0:
-        notices.append(skipped_notice(skipped))
+    notice = skipped_notice(skipped)
+    if notice is not None:
+        notices.append(notice)
     evaluations.sort(key=evaluation_order)
 
     return evaluations

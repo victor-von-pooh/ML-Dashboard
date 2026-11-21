@@ -16,6 +16,7 @@ from ml_dashboard.core.evaluation_summary import (
 )
 from ml_dashboard.core.models import Evaluation
 from ml_dashboard.core.results import (
+    EVALUATIONS_LINK_NOTICE,
     check_evaluation,
     evaluation_files,
     load_plain_evaluations,
@@ -474,13 +475,12 @@ def test_load_plain_evaluations_dir(
     run_dir = tmp_path / "run"
     write_evaluation(run_dir, "metrics", [{"score": 0.5}])
     files = evaluation_files(run_dir)
-    assert [stem for stem, _ in load_plain_evaluations(run_dir, files)] == [
-        "metrics"
-    ]
+    loaded, skipped = load_plain_evaluations(run_dir, files)
+    assert [stem for stem, _ in loaded] == ["metrics"] and skipped == []
 
     # dir_fd を使えない環境 (Windows など) でも, 普通のファイルは読む
     monkeypatch.setattr(os, "supports_dir_fd", set())
-    assert len(load_plain_evaluations(run_dir, files)) == 1
+    assert len(load_plain_evaluations(run_dir, files)[0]) == 1
     monkeypatch.undo()
 
     # 集めた後に evaluations/ を外を指すリンクに置き換えると読まない
@@ -488,9 +488,20 @@ def test_load_plain_evaluations_dir(
     write_evaluation(outside, "metrics", [{"score": 0.9}])
     shutil.rmtree(run_dir / "evaluations")
     (run_dir / "evaluations").symlink_to(outside / "evaluations")
-    assert load_plain_evaluations(run_dir, files) == []
+    assert load_plain_evaluations(run_dir, files) == (
+        [], ["metrics.json (読めない)"]
+    )
     monkeypatch.setattr(os, "supports_dir_fd", set())
-    assert load_plain_evaluations(run_dir, files) == []
+    assert load_plain_evaluations(run_dir, files)[0] == []
+    monkeypatch.undo()
+
+    # evaluations/ がリンクの実験は, 評価の無い実験と見分けられる注意
+    summary = summarize_evaluations(run_dir, None, None)
+    assert summary is not None and summary.values == []
+    assert summary.notice == EVALUATIONS_LINK_NOTICE
+    notices: list[str] = []
+    assert read_evaluations(run_dir, notices) == []
+    assert notices == [EVALUATIONS_LINK_NOTICE]
 
 
 def test_check_evaluation(tmp_path: Path) -> None:
@@ -574,8 +585,12 @@ def test_skip_fifo_and_renamed(
     assert summary is not None
     assert [item.evaluation for item in summary.values] == ["metrics"]
     assert built == ["metrics"]
+    # 出さないファイルごとの理由
     assert summary.notice is not None
     assert "3 個" in summary.notice
+    assert "deep.json (JSON の辞書でない)" in summary.notice
+    assert "pipe.json (普通のファイルでない (FIFO など))" in summary.notice
+    assert "renamed.json (名前が決まりに合わない)" in summary.notice
     assert "ファイルの名前と同じ" in summary.notice
 
 

@@ -14,11 +14,11 @@ from ml_dashboard.core.models import (
 )
 from ml_dashboard.core.results import (
     EVALUATIONS_DIR,
-    check_evaluation,
+    EVALUATIONS_LINK_NOTICE,
     evaluation_files,
     evaluation_order,
     is_plain_dir,
-    load_plain_evaluations,
+    load_checked_evaluations,
     skipped_notice,
     to_cell,
     to_evaluation,
@@ -333,22 +333,18 @@ def build_summary(
     summary: RunEvaluations
         値 (守る指標の表を先に), 守る指標の判定, 出せなかったファイルの理由
     """
-    # 形と名前の合う評価の数と, 行を作ったテスト用の評価 (守る指標の表を
-    # 先に名前の順)
+    # 形と名前の合う評価のうち, テスト用だけの行 (守る指標の表を先に名前の
+    # 順)
     tests: list[tuple[Evaluation, dict[str, Any]]] = []
-    valid = 0
-    for stem, data in load_plain_evaluations(run_dir, files):
-        if check_evaluation(stem, data) is None:
-            continue
-        valid += 1
+    checked, skipped = load_checked_evaluations(run_dir, files)
+    for _, data in checked:
         if data.get("split") != LIST_SPLIT:
             continue
         evaluation = to_evaluation(data)
         if evaluation is not None:
             tests.append((evaluation, data))
     tests.sort(key=lambda item: evaluation_order(item[0]))
-    skipped = len(files) - valid
-    notice = skipped_notice(skipped) if skipped > 0 else None
+    notice = skipped_notice(skipped)
 
     # 列にする値と, 守る指標の表の判定
     values: list[EvaluationValue] = []
@@ -394,8 +390,12 @@ def summarize_evaluations(
     Returns
     ----------
     summary: Optional[RunEvaluations]
-        値と守る指標の判定. evaluations/ の無い実験は None
+        値と守る指標の判定. evaluations/ の無い実験は None, リンクの
+        実験は注意だけ
     """
+    if (run_dir / EVALUATIONS_DIR).is_symlink():
+        EVALUATION_SUMMARY_CACHE.pop(str(run_dir), None)
+        return RunEvaluations(notice=EVALUATIONS_LINK_NOTICE)
     if not is_plain_dir(run_dir / EVALUATIONS_DIR):
         EVALUATION_SUMMARY_CACHE.pop(str(run_dir), None)
         return None
