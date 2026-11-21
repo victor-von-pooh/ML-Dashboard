@@ -45,6 +45,9 @@ POLICY_SPEC = "policy.json"
 # 1 つの評価で返す行の上限 (多い場合は先頭だけ)
 MAX_EVALUATION_ROWS = 2000
 
+# 読む評価のファイルの大きさの上限
+MAX_EVALUATION_BYTES = 20 * 1024 * 1024
+
 # 評価の種類 (曲線は横軸の列がある場合だけ)
 EVALUATION_KINDS = ("table", "curve")
 
@@ -488,9 +491,73 @@ def evaluation_order(evaluation: Evaluation) -> tuple[bool, str]:
     return order
 
 
+def evaluation_files(run_dir: Path) -> list[Path]:
+    """
+    evaluations/ の評価のファイルを集める関数
+
+    Parameters
+    ----------
+    run_dir: Path
+        実験のディレクトリ
+
+    Returns
+    ----------
+    files: list[Path]
+        一時ファイル (. で始まる) を除いた *.json. シンボリックリンクの
+        ファイルも含む (数えるため). evaluations/ が無いか, リンクなら空
+    """
+    folder = run_dir / EVALUATIONS_DIR
+    files: list[Path] = []
+    if not is_plain_dir(folder):
+        return files
+    files = sorted(
+        path for path in folder.glob("*.json")
+        if not path.name.startswith(".")
+        and (path.is_symlink() or path.is_file())
+    )
+
+    return files
+
+
+def load_plain_evaluations(files: list[Path]) -> list[dict[str, Any]]:
+    """
+    評価のファイルのうち, シンボリックリンクでない普通のファイルだけを読む関数
+
+    ML-Found の load_evaluations はリンクと普通でないファイル (FIFO など) も
+    辿って読むので, 実験のディレクトリの外を読まないようにここで読む.
+    読み方 (JSON の辞書だけ, 読めないファイルは飛ばす) は load_evaluations と
+    同じ
+
+    Parameters
+    ----------
+    files: list[Path]
+        evaluation_files が集めたファイル
+
+    Returns
+    ----------
+    loaded: list[dict[str, Any]]
+        ファイルの名前の順の評価のファイルの中身
+    """
+    loaded: list[dict[str, Any]] = []
+    for path in files:
+        # リンク, 普通でないファイル, 大きすぎるファイルは除外
+        try:
+            if not is_plain_file(path) or (
+                path.stat().st_size > MAX_EVALUATION_BYTES
+            ):
+                continue
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict):
+            loaded.append(data)
+
+    return loaded
+
+
 def read_evaluations(run_dir: Path, notices: list[str]) -> list[Evaluation]:
     """
-    evaluations/ を ML-Found の load_evaluations で読む関数
+    evaluations/ の評価を読む関数
 
     Parameters
     ----------
@@ -504,35 +571,17 @@ def read_evaluations(run_dir: Path, notices: list[str]) -> list[Evaluation]:
     evaluations: list[Evaluation]
         守る指標を先にした評価
     """
-    from ml_found.experiment.results import load_evaluations
-
     evaluations: list[Evaluation] = []
-    folder = run_dir / EVALUATIONS_DIR
-    if not is_plain_dir(folder):
-        return evaluations
-
-    # 一時ファイル (. で始まる) を除いたファイル. シンボリックリンクの
-    # ファイル (実験のディレクトリの外を指しうる) の名前は出さない
-    files = [
-        path for path in folder.glob("*.json")
-        if not path.name.startswith(".")
-        and (path.is_symlink() or path.is_file())
-    ]
-    linked = {path.stem for path in files if path.is_symlink()}
-    try:
-        loaded = load_evaluations(run_dir)
-    except Exception as error:
-        notices.append(f"evaluations/ を読めませんでした: {error}")
-        return evaluations
-    for data in loaded:
+    files = evaluation_files(run_dir)
+    for data in load_plain_evaluations(files):
         evaluation = to_evaluation(data)
-        if evaluation is not None and evaluation.name not in linked:
+        if evaluation is not None:
             evaluations.append(evaluation)
     skipped = len(files) - len(evaluations)
     if skipped > 0:
         notices.append(
-            f"evaluations/ の {skipped} 個のファイルは形が違うので"
-            "出していません"
+            f"evaluations/ の {skipped} 個のファイルは形が違うか, 読めない "
+            "(シンボリックリンク, 大きすぎるなど) ので出していません"
         )
     evaluations.sort(key=evaluation_order)
 

@@ -2020,6 +2020,106 @@
         ],
         "title": "Evaluation"
       },
+      "EvaluationValue": {
+        "properties": {
+          "evaluation": {
+            "type": "string",
+            "title": "Evaluation"
+          },
+          "column": {
+            "type": "string",
+            "title": "Column"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "guard": {
+            "type": "boolean",
+            "title": "Guard",
+            "default": false
+          },
+          "diff": {
+            "type": "boolean",
+            "title": "Diff",
+            "default": false
+          },
+          "better": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "lower",
+                  "higher"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Better"
+          },
+          "baseline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evaluation",
+          "column",
+          "value"
+        ],
+        "title": "EvaluationValue"
+      },
+      "GuardCheck": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "dropped",
+              "kept",
+              "unknown"
+            ],
+            "title": "State"
+          },
+          "dropped": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Dropped",
+            "default": []
+          },
+          "unknown": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unknown",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "GuardCheck"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -3803,6 +3903,16 @@
               }
             ]
           },
+          "evaluations": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunEvaluations"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "config": {
             "additionalProperties": true,
             "type": "object",
@@ -4002,6 +4112,41 @@
           "has_git_diff"
         ],
         "title": "RunDetail"
+      },
+      "RunEvaluations": {
+        "properties": {
+          "values": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationValue"
+            },
+            "type": "array",
+            "title": "Values",
+            "default": []
+          },
+          "guard": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GuardCheck"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "notice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice"
+          }
+        },
+        "type": "object",
+        "title": "RunEvaluations"
       },
       "RunFile": {
         "properties": {
@@ -4534,6 +4679,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/RunSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evaluations": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunEvaluations"
               },
               {
                 "type": "null"

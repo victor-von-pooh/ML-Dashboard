@@ -5,23 +5,23 @@
 
 ## 優先度 高
 
-### データ全体の評価を一覧と比較に出す
-- 何を: データ全体の評価 (`evaluations/`) のテスト用の値を, 実験の一覧と比較の列に出す. 守る指標 (`guard`) が比べる相手より落ちた実験に印を付ける. 比べる相手との差の列 (`<指標>_diff`) を差として色分けする
-- なぜ: 今は実験の詳細の評価のタブを 1 つずつ開かないと, テストの値と守る指標が落ちたかが分からない
-- 終わりの条件: 一覧と比較で評価の値を並べ替えと絞り込みに使え, 守る指標の落ちが印 (色, アイコン, 文字) で分かる
-- つながり: 無し
-
 ### 候補のモデルを並べて起動し比べる
 - 何を: 1 つのプロジェクトで, モデルの定義の候補 (`models/` の複数の定義) を選んで同じ設定でまとめて起動し, 比較の画面で定義ごとに並べて選ぶ
 - なぜ: 今は候補ごとに定義を置き換えて手で起動し, どの実験がどの定義かを利用者が覚えるため
 - 終わりの条件: 候補を選んでまとめて起動でき, 比較の画面で実験を定義の名前で分けて並べられる
-- つながり: ML-Found の「モデルの定義を実験に写す」(実験が使った定義を残すこと), ML-Dashboard の「データ全体の評価を一覧と比較に出す」
+- つながり: ML-Found の「モデルの定義を実験に写す」(実験が使った定義を残すこと)
 
 ## 優先度 中
 
 無し
 
 ## 優先度 低
+
+### 一覧と比較の評価の残り
+- 何を: 一覧と比較の評価 (DESIGN.md の 9 章「一覧と比較の評価」) の次の残りを直す. 1. 評価のファイルを開くときに入れ替わりを防ぐ (`O_NOFOLLOW` と `O_NONBLOCK` で開き, `fstat` で普通のファイルかを確かめ, 上限 + 1 バイトまでだけ読む. `evaluations/` は `dir_fd` で) 2. 覚えのない初めての一覧で, テスト用でない評価の行を作らない (`split` を先に見る) 3. 覚えた結果から消えた実験を除く 4. 中の `name` がファイルの名前と違う評価を除き, 注意の文に名前の決まりの話を足す 5. 守る指標の印の説明をキーボードとタッチでも見られるようにし, `title` と読み上げの二重をやめる (GUIDE.md の「印に指を置くと」も) 6. 比較の並べ替えを URL に残す 7. README と GUIDE.md の画面の図に評価の列を写す
+- なぜ: 実験のディレクトリに書ける人がリンクや FIFO に置き換えると, 確かめた後に読むファイルが替わるため. 実験が多く大きな曲線を持つと初めての一覧が重いため. 印の説明がマウスを置かないと見えないため
+- 終わりの条件: 7 つが直り, テストがある
+- つながり: ML-Found の「評価の読み込みでリンクと普通でないファイルを読まない」
 
 ### ML-Found の内部のモジュールを使わない
 - 何を: `backend/src/ml_dashboard/api/jobs.py` と `backend/src/ml_dashboard/core/results.py` が読み込む ML-Found の内部のモジュールをやめ, ML-Found の公開の関数 (`ml_found` と下のパッケージの `__all__` にある名前) だけを使う. 今使っている公開でない名前は, `ml_found.training.optim` の `named_views`, `uses_named_optimizers`, `resolve_optimizer_class`, `resolve_scheduler_class`, `check_optim_config`, `missing_data_size_params`, `try_build_optim`, `ml_found.training.registry` の `check_optim_params`, `check_param_values`, `ml_found.experiment.setup` の `check_name`, `check_resume_path`, `check_trainer_config`, `ml_found.config.loader` の `params_sections`, `parse_overrides`, `ml_found.experiment.results` の `read_samples_index`, `ml_found.rl.bundle` の `file_sha256`. 公開の名前を内部のモジュールから読んでいる所 (`load_config`, `get_device`, `describe_optimizers`, `load_task`, `load_samples`, `read_policy_spec` など) も公開の場所から読む

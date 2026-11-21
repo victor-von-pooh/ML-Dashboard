@@ -34,6 +34,22 @@ test('プロジェクトから実験の一覧と詳細を開く', async ({ page 
   const rows = page.getByRole('checkbox', { name: /を比較に選ぶ/ })
   await expect(rows).toHaveCount(2)
 
+  // テスト用の評価の列と守る指標の印. 3 エポックの実験は, どちらも比べる相手
+  // (先頭 20 点の最近傍の規則) よりクラスの正解率が落ちる
+  await expect(page.getByRole('columnheader', { name: '守る指標' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: /accuracy_diff/ })).toBeVisible()
+  await expect(page.getByRole('row').filter({ hasText: '落ちた' })).toHaveCount(2)
+  // 守る指標の印と評価の値で絞り込む
+  await page.getByRole('button', { name: /^落ちた/ }).click()
+  await expect(page).toHaveURL(/guard=dropped/)
+  await expect(rows).toHaveCount(2)
+  await page.getByRole('button', { name: /^落ちた/ }).click()
+  const search = page.getByPlaceholder(/絞り込/).first()
+  await search.fill('accuracy_diff>1')
+  await expect(page.getByText('条件に合う実験はありません.')).toBeVisible()
+  await search.fill('')
+  await expect(rows).toHaveCount(2)
+
   // 絞り込みの文字は URL に残り, 詳細を開いて戻っても同じ
   await page
     .getByRole('searchbox')
@@ -98,8 +114,8 @@ test('何の実験か, データ全体の評価, 見本を見る', async ({ page
 
   // 評価: 守る指標の表を先頭に, しきい値の曲線
   await page.getByRole('tab', { name: /評価/ }).click()
-  await expect(page.getByText('守る指標')).toBeVisible()
-  await expect(page.getByRole('columnheader', { name: 'acc' })).toBeVisible()
+  await expect(page.getByText('守る指標').first()).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'acc', exact: true }).first()).toBeVisible()
   await expect(page.getByRole('img', { name: /threshold の曲線/ })).toBeVisible()
 
   // 見本: 点群を上から見た図と, 学習の後の要約の文
@@ -124,6 +140,11 @@ test('2 つの実験を比べ, config の違いと同じエポックの画像を
 
   await expect(page.getByRole('heading', { name: '実験の比較' })).toBeVisible()
   await expect(page.getByText('optimizer.name')).toBeVisible()
+  // テスト用の評価の値と守る指標の印も並ぶ
+  const evaluations = page.locator('section', {
+    has: page.getByRole('heading', { name: 'テスト用の評価' }),
+  })
+  await expect(evaluations.getByRole('row').filter({ hasText: '落ちた' })).toHaveCount(2)
   await expect(page.getByRole('heading', { name: '画像の比較' })).toBeVisible()
   await expect(page.getByRole('img', { name: /boundary \(epoch 3\)/ })).toHaveCount(2)
 })

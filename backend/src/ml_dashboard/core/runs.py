@@ -32,6 +32,7 @@ from ml_dashboard.core.models import (
     ParamValue,
     Progress,
     RunDetail,
+    RunEvaluations,
     RunFile,
     RunParams,
     RunSource,
@@ -1165,10 +1166,37 @@ class RunData:
                 read_progress(self.run_dir) if status == "running" else None
             ),
             error=self.status.get("error") if status == "failed" else None,
-            source=read_source(self.run_dir)
+            source=read_source(self.run_dir),
+            evaluations=self.evaluations()
         )
 
         return summary
+
+    def evaluations(self) -> Optional[RunEvaluations]:
+        """
+        一覧と比較に出すテスト用の評価を求める関数
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        ----------
+        evaluations: Optional[RunEvaluations]
+            値と守る指標の判定. evaluations/ の無い実験は None
+        """
+        # results が runs を読み込むので, 関数の中で読み込み
+        from ml_dashboard.core.evaluation_summary import summarize_evaluations
+
+        # 向きを決めるための監視する指標と向き (run.json を優先)
+        _, mode = get_monitor(self.config, self.history.columns)
+        if self.status.get("mode") in ("min", "max"):
+            mode = cast(Mode, self.status["mode"])
+        evaluations = summarize_evaluations(
+            self.run_dir, self.monitor(), mode
+        )
+
+        return evaluations
 
     def detail(self) -> RunDetail:
         """

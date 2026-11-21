@@ -11,6 +11,12 @@ Mode = Literal["min", "max"]
 # ファイルの種類
 FileKind = Literal["image", "checkpoint", "text", "other"]
 
+# 評価の指標の向き (小さいほど良いか, 大きいほど良いか)
+Better = Literal["lower", "higher"]
+
+# 守る指標の判定 (落ちた, 保った, 判断できない)
+GuardState = Literal["dropped", "kept", "unknown"]
+
 
 class ProjectInfo(BaseModel):
     id: str
@@ -85,6 +91,37 @@ class RunSource(BaseModel):
     overrides: Optional[list[str]] = None
 
 
+class EvaluationValue(BaseModel):
+    # 一覧と比較に出すテスト用の評価の 1 つの値 (1 行の表の数の列)
+    evaluation: str
+    column: str
+    value: Optional[float]
+    # 守る指標の表の値か
+    guard: bool = False
+    # 比べる相手との差の列 (<指標>_diff) か
+    diff: bool = False
+    # 指標の向き (分からなければ None)
+    better: Optional[Better] = None
+    # 比べる相手の名前 (評価の baseline)
+    baseline: Optional[str] = None
+
+
+class GuardCheck(BaseModel):
+    # テスト用の守る指標の表の判定. dropped は落ちた指標と一番悪い差,
+    # unknown は判断できなかった理由
+    state: GuardState
+    dropped: list[str] = []
+    unknown: list[str] = []
+
+
+class RunEvaluations(BaseModel):
+    # 一覧と比較に出すテスト用の評価の値と守る指標の判定 (守る指標の表が
+    # 無ければ guard は None). 読めない場合の理由
+    values: list[EvaluationValue] = []
+    guard: Optional[GuardCheck] = None
+    notice: Optional[str] = None
+
+
 class RunSummary(BaseModel):
     id: str
     name: str
@@ -101,6 +138,8 @@ class RunSummary(BaseModel):
     error: Optional[str]
     # 起動のしかた (source.yaml), 書いていない実験は None
     source: Optional[RunSource] = None
+    # テスト用の評価の値と守る指標の判定, evaluations/ の無い実験は None
+    evaluations: Optional[RunEvaluations] = None
 
 
 class LogEntry(BaseModel):
