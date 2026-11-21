@@ -85,7 +85,8 @@ export function GuardBadge({ guard }: { guard: GuardCheck | null | undefined }) 
     const main = button.current?.closest('main')
     if (!main || typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(place)
-    observer.observe(main)
+    // main は高さが決まっているので, 中の内容の大きさを見る
+    observer.observe(main.firstElementChild ?? main)
     return () => observer.disconnect()
   }, [open, place])
   // 開いている間は, 外を押す, Esc, 他の印を開くと閉じ, 流すか窓の大きさを
@@ -125,11 +126,13 @@ export function GuardBadge({ guard }: { guard: GuardCheck | null | undefined }) 
     place()
     document.dispatchEvent(new CustomEvent(GUARD_OPEN_EVENT, { detail: detailId }))
   }
-  // Tab などで印から離れたら閉じる (行き先の無いもの, 例えば説明の文を
-  // 選ぶために押した場合は閉じない)
+  // Tab などで印から離れたら閉じる (説明の文を選ぶために押して, 行き先が無いか
+  // 印を包む要素になる場合は閉じない)
   const onBlur = (event: FocusEvent<HTMLSpanElement>) => {
     const next = event.relatedTarget as Node | null
-    if (next && !wrapper.current?.contains(next)) setPosition(null)
+    const inside = wrapper.current?.contains(next) ?? false
+    const ancestor = next !== null && wrapper.current !== null && next.contains(wrapper.current)
+    if (next && !inside && !ancestor) setPosition(null)
   }
   return (
     <span ref={wrapper} className="inline-block" onBlur={onBlur}>

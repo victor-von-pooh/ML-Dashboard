@@ -594,17 +594,23 @@ def shown_name(name: str) -> str:
     ----------
     shown: str
         制御文字などの種類 (unicodedata の category が C) の文字を \\uXXXX
-        にし, MAX_SHOWN_NAME 文字までに切った名前
+        (BMP の外は \\UXXXXXXXX) にし, MAX_SHOWN_NAME 文字までに切った
+        名前 (書き換えた文字の途中では切らない)
     """
-    escaped = "".join(
-        f"\\u{ord(char):04x}" if unicodedata.category(char).startswith("C")
-        else char
-        for char in name
-    )
-    shown = (
-        escaped[:MAX_SHOWN_NAME] + "…"
-        if len(escaped) > MAX_SHOWN_NAME else escaped
-    )
+    pieces: list[str] = []
+    length = 0
+    for char in name:
+        code = ord(char)
+        piece = (
+            char if not unicodedata.category(char).startswith("C")
+            else f"\\u{code:04x}" if code <= 0xFFFF else f"\\U{code:08x}"
+        )
+        if length + len(piece) > MAX_SHOWN_NAME:
+            pieces.append("…")
+            break
+        pieces.append(piece)
+        length += len(piece)
+    shown = "".join(pieces)
 
     return shown
 
@@ -949,7 +955,6 @@ def load_plain_evaluations(
         読まなかったファイルの名前と理由
     """
     # evaluations/ もリンクを辿らずに開き, 中のファイルはその dir_fd から.
-    # dir_fd を使えない環境では, リンクでないディレクトリだけ
     # dir_fd を使えない環境では, evaluations/ の入れ替わりをデバイスと
     # i-node で確かめる
     loaded: list[tuple[str, dict[str, Any]]] = []
@@ -1011,8 +1016,15 @@ def load_checked_evaluations(
     loaded, skipped = load_plain_evaluations(run_dir, files)
     folder = run_dir / EVALUATIONS_DIR
     checked: list[tuple[str, dict[str, Any]]] = []
+    # 大文字と小文字だけが違う name は, 一覧に <name>.json が別にあれば
+    # (区別する置き場のハードリンクなど) 同じとみなさない (2 回出さないため)
+    names = {path.name for path in files}
     for stem, data in loaded:
         problem = evaluation_problem(folder, stem, data)
+        if problem is None and data["name"] != stem and (
+            f"{data['name']}.json" in names
+        ):
+            problem = "中の name がファイルの名前と違う"
         if problem is None:
             checked.append((stem, data))
         else:

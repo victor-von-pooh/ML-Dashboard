@@ -44,6 +44,9 @@ test('プロジェクトから実験の一覧と詳細を開く', async ({ page 
   await badge.click()
   await expect(badge).toHaveAttribute('aria-expanded', 'true')
   await expect(page.getByText(/^落ちた: by_class_test/)).toBeVisible()
+  // 説明の文を押しても (文を選ぶため) 閉じない
+  await page.getByText(/^落ちた: by_class_test/).click()
+  await expect(badge).toHaveAttribute('aria-expanded', 'true')
   await page.keyboard.press('Escape')
   await expect(badge).toHaveAttribute('aria-expanded', 'false')
   // 守る指標の印と評価の値で絞り込む

@@ -20,9 +20,11 @@ from ml_dashboard.core.results import (
     check_evaluation,
     evaluation_files,
     evaluation_problem,
+    load_checked_evaluations,
     load_plain_evaluations,
     read_evaluations,
     read_plain_file,
+    shown_name,
     skip_entry,
     skipped_notice,
 )
@@ -688,6 +690,19 @@ def test_evaluation_problem_reasons(tmp_path: Path) -> None:
         os.link(folder / "metrics.json", folder / "Metrics.json")
     assert evaluation_problem(folder, "metrics", upper) is None
     assert check_evaluation("metrics", upper, folder) == "Metrics"
+    # 区別する置き場で, 大文字と小文字の違うハードリンクが 2 つ並ぶ場合は
+    # 同じ名前を 2 回出さない
+    if (folder / "Metrics.json").exists() and len(
+        list(folder.glob("*.json"))
+    ) == 2:
+        (folder / "metrics.json").write_text(
+            json.dumps(upper), encoding="utf-8"
+        )
+        checked, _ = load_checked_evaluations(
+            run_dir, evaluation_files(run_dir)
+        )
+        assert [stem for stem, _ in checked] == ["Metrics"]
+
     # 別のファイルなら, 大文字と小文字だけの違いでも出さない (2 つの
     # ファイルを置ける, 大文字と小文字を区別する置き場だけ)
     other = tmp_path / "other"
@@ -723,6 +738,9 @@ def test_shown_names() -> None:
     notice.encode("utf-8")
     assert "\\udcff.json" in notice and "a\\u202eb.json" in notice
     assert "x" * 81 not in notice and "…" in notice
+    # 書き換えた文字の途中で切らず, BMP の外は \\U の 8 桁
+    assert shown_name("x" * 78 + "\u202e") == "x" * 78 + "…"
+    assert shown_name("\U000e0001") == "\\U000e0001"
 
 
 def test_surrogate_file_in_list(
