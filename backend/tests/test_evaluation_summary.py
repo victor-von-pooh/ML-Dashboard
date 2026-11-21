@@ -407,8 +407,8 @@ def test_skip_fifo_and_renamed(
     project_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """
-    FIFO と, 中の名前がファイルの名前と違う評価を出さず, テスト用でない
-    評価の行を作らないことを確かめる関数
+    FIFO, 深く入れ子の JSON, 中の名前がファイルの名前と違う評価を出さず,
+    テスト用でない評価の行を作らないことを確かめる関数
 
     Parameters
     ----------
@@ -425,6 +425,10 @@ def test_skip_fifo_and_renamed(
     write_evaluation(run_dir, "metrics", [{"score": 0.5}])
     write_evaluation(run_dir, "by_class", [{"acc": 0.5}], split="valid")
     os.mkfifo(run_dir / "evaluations" / "pipe.json")
+    # 深く入れ子の JSON (読めないファイルとして飛ばす)
+    (run_dir / "evaluations" / "deep.json").write_text(
+        "[" * 100000, encoding="utf-8"
+    )
     write_evaluation(run_dir, "other", [{"acc": 0.9}])
     (run_dir / "evaluations" / "other.json").rename(
         run_dir / "evaluations" / "renamed.json"
@@ -443,7 +447,7 @@ def test_skip_fifo_and_renamed(
     assert [item.evaluation for item in summary.values] == ["metrics"]
     assert built == ["metrics"]
     assert summary.notice is not None
-    assert "2 個" in summary.notice
+    assert "3 個" in summary.notice
     assert "ファイルの名前と同じ" in summary.notice
 
 

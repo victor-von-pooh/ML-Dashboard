@@ -29,13 +29,20 @@ ML_DASHBOARD_HOME="$WORK/home" ML_DASHBOARD_TOKEN=shots-token \
   uv run ml-dashboard --port "$PORT" > "$WORK/server.log" 2>&1 &
 SERVER=$!
 trap 'kill "$SERVER" 2> /dev/null || true' EXIT
+ready=0
 for _ in $(seq 60); do
   if curl -sf -H 'x-dashboard-token: shots-token' \
     "http://127.0.0.1:$PORT/api/projects" > /dev/null; then
+    ready=1
     break
   fi
   sleep 1
 done
+# 起動しなければ, ログを出して止める
+if [ "$ready" != 1 ]; then
+  cat "$WORK/server.log"
+  exit 1
+fi
 
 cd ../frontend
 SHOTS_URL="http://127.0.0.1:$PORT" SHOTS_TOKEN=shots-token SHOTS_DEMO="$WORK/demo" \

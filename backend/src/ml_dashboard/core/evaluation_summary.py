@@ -336,8 +336,8 @@ def build_summary(
     summary: RunEvaluations
         値 (守る指標の表を先に), 守る指標の判定, 出せなかったファイルの理由
     """
-    # 形と名前の合う評価を数え, テスト用だけを (行を作るのはテスト用だけ)
-    # 守る指標の表を先に名前の順で
+    # 形と名前の合う評価の数と, 行を作ったテスト用の評価 (守る指標の表を
+    # 先に名前の順)
     tests: list[tuple[Evaluation, dict[str, Any]]] = []
     valid = 0
     for stem, data in load_plain_evaluations(run_dir, files):
@@ -456,7 +456,7 @@ def forget_missing_summaries() -> None:
     ----------
     None
     """
-    # 他の要求が書き足しても止まらないように, 名前の写しを回す
+    # 他の要求が書き足しても止まらないように, 名前の写しで処理
     for key in list(EVALUATION_SUMMARY_CACHE):
         if not is_plain_dir(Path(key) / EVALUATIONS_DIR):
             EVALUATION_SUMMARY_CACHE.pop(key, None)

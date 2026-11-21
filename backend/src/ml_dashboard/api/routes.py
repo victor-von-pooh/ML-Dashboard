@@ -417,7 +417,8 @@ def list_runs(request: Request, project_id: str) -> list[RunSummary]:
         summarize_run(output_dir, run_dir)
         for output_dir, run_dir in find_run_dirs(output_dirs)
     ]
-    # 消した実験の評価の覚えを捨てる
+
+    # 消した実験の評価の覚えの破棄
     forget_missing_summaries()
 
     return runs

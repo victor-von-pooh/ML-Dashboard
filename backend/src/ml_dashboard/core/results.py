@@ -578,7 +578,7 @@ def read_plain_file(name: str, dir_fd: int, limit: int) -> Optional[bytes]:
     except OSError:
         return None
 
-    # 上限 + 1 バイトまでだけ読み, 超えたら読まない
+    # 上限 + 1 バイトまでの読み込み (超えれば None)
     chunks: list[bytes] = []
     total = 0
     try:
@@ -622,7 +622,7 @@ def load_plain_evaluations(
     loaded: list[tuple[str, dict[str, Any]]]
         ファイルの名前の順の, ファイルの名前 (.json を除く) と中身
     """
-    # evaluations/ もリンクを辿らずに開き, 中のファイルはそこから開く
+    # evaluations/ もリンクを辿らずに開き, 中のファイルはその dir_fd から
     loaded: list[tuple[str, dict[str, Any]]] = []
     try:
         dir_fd = os.open(
@@ -640,7 +640,7 @@ def load_plain_evaluations(
                 continue
             try:
                 data = json.loads(content.decode("utf-8"))
-            except ValueError:
+            except (ValueError, RecursionError):
                 continue
             if isinstance(data, dict):
                 loaded.append((path.stem, data))
