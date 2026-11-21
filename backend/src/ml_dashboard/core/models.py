@@ -81,14 +81,25 @@ class Progress(BaseModel):
     start_epoch: int = 1
 
 
+class RunModelSpec(BaseModel):
+    # モデルの定義の写しの記録 (ML-Found の source.yaml の model_spec).
+    # path は config の model.spec の場所, status は copied (model_spec.yaml
+    # に写した) か写さなかった理由 (知らない値もそのまま), sha256 は写した
+    # 中身の SHA-256. 分からないものは None
+    path: Optional[str] = None
+    status: Optional[str] = None
+    sha256: Optional[str] = None
+
+
 class RunSource(BaseModel):
     # 実験の起動のしかた (ML-Found の source.yaml). 実行したスクリプト,
-    # default と experiment の config のパス, 「項目=値」の上書き. 分からない
-    # ものは None
+    # default と experiment の config のパス, 「項目=値」の上書き, モデルの
+    # 定義の写し. 分からないものは None
     script: Optional[str] = None
     default: Optional[str] = None
     experiment: Optional[str] = None
     overrides: Optional[list[str]] = None
+    model_spec: Optional[RunModelSpec] = None
 
 
 class EvaluationValue(BaseModel):

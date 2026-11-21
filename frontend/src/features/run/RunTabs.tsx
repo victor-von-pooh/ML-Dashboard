@@ -6,6 +6,7 @@ import { runFileUrl, type LogEntry, type ModelParam, type RunDetail } from '../.
 import { Button, Card } from '../../components/ui'
 import { formatBytes, formatLogTime, formatValue } from '../../lib/format'
 import { flattenConfig } from '../../lib/metrics'
+import { describeModelSpec } from '../../lib/modelSpec'
 import { countParams, filterParams } from '../../lib/modelSummary'
 
 /** 検索できる「項目名 = 値」の表 */
@@ -553,6 +554,7 @@ function SourceLine({ source }: { source: NonNullable<RunDetail['source']> }) {
   if (source.overrides && source.overrides.length > 0) {
     items.push(['上書き', source.overrides.join(', ')])
   }
+  if (source.model_spec) items.push(['モデルの定義', describeModelSpec(source.model_spec)])
   if (items.length === 0) return null
   return (
     <dl className="flex flex-wrap gap-x-4 gap-y-1 border-b border-line px-4 py-2 text-xs">

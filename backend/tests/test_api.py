@@ -601,13 +601,37 @@ def test_run_source(client: TestClient, project_dir: Path) -> None:
     source = client.get(base).json()["source"]
     assert source == {
         "script": "train_hf.py", "default": "configs/default/hf.yaml",
-        "experiment": None, "overrides": ["trainer.epochs=2"]
+        "experiment": None, "overrides": ["trainer.epochs=2"],
+        "model_spec": None
     }
     runs = client.get(f"/api/projects/{project_id}/runs").json()
     assert any(
         run["source"] and run["source"]["script"] == "train_hf.py"
         for run in runs
     )
+
+    # モデルの定義の写しの記録. 知らない status は値のまま, 形の違う値は
+    # 分からないもの
+    sha = "0123456789abcdef" * 4
+    (run_dir / "source.yaml").write_text(
+        "script: train.py\nmodel_spec:\n  path: models/model.yaml\n"
+        f"  status: copied\n  sha256: '{sha}'\n"
+    )
+    spec = client.get(base).json()["source"]["model_spec"]
+    assert spec == {
+        "path": "models/model.yaml", "status": "copied", "sha256": sha
+    }
+    (run_dir / "source.yaml").write_text(
+        "script: train.py\nmodel_spec:\n  path: [1]\n"
+        f"  status: renamed\n  sha256: '{sha.upper()}'\n"
+    )
+    spec = client.get(base).json()["source"]["model_spec"]
+    assert spec == {"path": None, "status": "renamed", "sha256": None}
+    for value in ["null", "copied", "{path: 1}"]:
+        (run_dir / "source.yaml").write_text(
+            f"script: train.py\nmodel_spec: {value}\n"
+        )
+        assert client.get(base).json()["source"]["model_spec"] is None
 
     # 読めないファイルと, 中身の無いファイルは無いものとし, 実験は読める
     for text in ["script: [unclosed\n", "hello\n"]:

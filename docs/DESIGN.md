@@ -33,7 +33,7 @@ ML-Found の今の出力から, 次のように読み取る.
 | 情報 | 読むもの |
 | --- | --- |
 | 指標の推移 | `history.csv` (列 `epoch`, `train/*`, `valid/*`, `lr`. ML-Found の `trainer.eval_train: true` では, 学習用データを推論モードで評価し直した `train_eval/*` も). 学習中や失敗した実験は `train.log` のエポックごとの指標から作る. `lr_steps.csv` があれば, 更新ごとの学習率も読む. ML-Found の `optimizers` (名前付きの複数の Optimizer) の実験は, 学習率の列が `lr_<名前>` になるので, 列ごとに読んで同じ名前の学習率のグラフに重ねる |
-| config | `config.yaml` (全体), `diff.yaml` (default との差分), `source.yaml` (起動のしかた: 実行したスクリプト, 元にした default と experiment の config, 上書き. 差分の見出しに元にした default を出し, 一覧の中で違う default が 2 種類以上ある場合は, 一番多いものと違う default を元にした実験の差分の欄に印を付ける (検索にも使える). 書いていない実験と, 読めない `source.yaml` は無いものとして扱う) |
+| config | `config.yaml` (全体), `diff.yaml` (default との差分), `source.yaml` (起動のしかた: 実行したスクリプト, 元にした default と experiment の config, 上書き, モデルの定義の写し `model_spec`. 差分の見出しに元にした default を出し, 一覧の中で違う default が 2 種類以上ある場合は, 一番多いものと違う default を元にした実験の差分の欄に印を付ける (検索にも使える). 書いていない実験と, 読めない `source.yaml` は無いものとして扱う. `model_spec` (ML-Found の docs/FORMAT.md の「source.yaml」) は, 定義の場所 (`path`) と写したか (`status`) を config のタブの起動のしかたの行に出す. `status` は写した (`copied`. `model_spec.yaml` と中身の sha256 の先頭 12 文字を添える) と写さなかった理由 (`missing`, `outside`, `link`, `not_file`, `unreadable`, `too_large`, `invalid`, `write_failed`) を言葉にし (「この設定でもう一度起動」のお知らせと同じ言葉), 知らない値は写していないものとして値のまま添える (ML-Found の約束). 辞書でない `model_spec` と, 文字でない `path` と `status`, 64 文字の 16 進の小文字でない `sha256` は無いものとして読む. `model_spec` が null (config の `model.spec` が無い, 空, 文字でない, 参照を解決できない) の実験と, この欄の無い `source.yaml` (前の ML-Found の実験. 写したか分からない) には出さない (どちらもモデルの定義の写しを持たないので, 出す言葉を増やさないため) |
 | ログ | `train.log` (警告とエラーを行ごとに区別) |
 | 画像 | 実験のディレクトリの中の画像 (学習曲線, 生成画像など) |
 | 未コミットの変更 | `git_diff.patch` |

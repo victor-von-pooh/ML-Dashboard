@@ -1820,6 +1820,15 @@ export interface components {
             /** Run Id */
             run_id: string;
         };
+        /** RunModelSpec */
+        RunModelSpec: {
+            /** Path */
+            path?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Sha256 */
+            sha256?: string | null;
+        };
         /** RunNote */
         RunNote: {
             /**
@@ -1921,6 +1930,7 @@ export interface components {
             experiment?: string | null;
             /** Overrides */
             overrides?: string[] | null;
+            model_spec?: components["schemas"]["RunModelSpec"] | null;
         };
         /** RunSummary */
         RunSummary: {
