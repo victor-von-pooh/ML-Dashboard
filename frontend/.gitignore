@@ -25,5 +25,6 @@ dist-ssr
 
 # 画面の通しのテストの作業用のディレクトリと結果
 e2e/.work/
+e2e/.work-shots/
 test-results/
 playwright-report/

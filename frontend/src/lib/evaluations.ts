@@ -108,6 +108,31 @@ export function initialDesc(column: EvaluationColumn | undefined): boolean {
   return column?.better !== 'lower'
 }
 
+/** 評価の列での並べ替え (key は <評価の名前>:<列>) */
+export interface EvaluationSort {
+  key: string
+  desc: boolean
+}
+
+/** URL の並べ替え (sort=ev:<列>. desc=0 なら小さい順) を読む. 評価の列でなければ null */
+export function readEvaluationSort(params: URLSearchParams): EvaluationSort | null {
+  const value = params.get('sort') ?? ''
+  if (!value.startsWith(EVALUATION_SORT_PREFIX) || value === EVALUATION_SORT_PREFIX) return null
+  return { key: value.slice(EVALUATION_SORT_PREFIX.length), desc: params.get('desc') !== '0' }
+}
+
+/** 並べ替えを URL に書いた写しを返す (他の値は残す) */
+export function writeEvaluationSort(
+  params: URLSearchParams,
+  sort: EvaluationSort,
+): URLSearchParams {
+  const next = new URLSearchParams(params)
+  next.set('sort', `${EVALUATION_SORT_PREFIX}${sort.key}`)
+  if (sort.desc) next.delete('desc')
+  else next.set('desc', '0')
+  return next
+}
+
 /** 評価の値による絞り込みの 1 つ (<列><比べ方><数>) */
 export interface ValueFilter {
   key: string

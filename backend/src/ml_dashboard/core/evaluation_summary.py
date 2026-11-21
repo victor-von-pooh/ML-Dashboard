@@ -14,10 +14,12 @@ from ml_dashboard.core.models import (
 )
 from ml_dashboard.core.results import (
     EVALUATIONS_DIR,
+    EVALUATIONS_LINK_NOTICE,
     evaluation_files,
     evaluation_order,
     is_plain_dir,
-    load_plain_evaluations,
+    load_checked_evaluations,
+    skipped_notice,
     to_cell,
     to_evaluation,
 )
@@ -57,10 +59,6 @@ MODIFIER_WORDS = frozenset({
 })
 # 差を 0 とみなす幅 (計算の誤差で落ちたとしないため)
 DIFF_TOLERANCE = 1e-12
-
-# 評価の名前の決まり (ML-Found の docs/FORMAT.md. 列の名前を
-# <評価の名前>:<列> にするので, : を含む名前を除くため)
-EVALUATION_NAME = re.compile(r"^[A-Za-z0-9_@-][A-Za-z0-9_.@-]*$")
 
 # 実験のディレクトリごとに覚えた結果 (ファイルの名前, i-node, 大きさ,
 # 更新の時刻と, 監視する指標と向きが同じ間は使い直す)
@@ -313,13 +311,16 @@ def guard_state(dropped: list[str], unknown: list[str]) -> GuardState:
 
 
 def build_summary(
-    files: list[Path], monitor: Optional[str], mode: Optional[Mode]
+    run_dir: Path, files: list[Path], monitor: Optional[str],
+    mode: Optional[Mode]
 ) -> RunEvaluations:
     """
     テスト用の評価の値と守る指標の判定を求める関数
 
     Parameters
     ----------
+    run_dir: Path
+        実験のディレクトリ
     files: list[Path]
         evaluations/ の評価のファイル
     monitor: Optional[str]
@@ -332,21 +333,18 @@ def build_summary(
     summary: RunEvaluations
         値 (守る指標の表を先に), 守る指標の判定, 出せなかったファイルの理由
     """
-    # 形の合う評価を読み, テスト用だけを守る指標の表を先に名前の順で
-    loaded = load_plain_evaluations(files)
-    parsed = [
-        (evaluation, data) for data in loaded
-        if (evaluation := to_evaluation(data)) is not None
-        and EVALUATION_NAME.match(evaluation.name) is not None
-    ]
-    tests = [item for item in parsed if item[0].split == LIST_SPLIT]
+    # 形と名前の合う評価のうち, テスト用だけの行 (守る指標の表を先に名前の
+    # 順)
+    tests: list[tuple[Evaluation, dict[str, Any]]] = []
+    checked, skipped = load_checked_evaluations(run_dir, files)
+    for _, data in checked:
+        if data.get("split") != LIST_SPLIT:
+            continue
+        evaluation = to_evaluation(data)
+        if evaluation is not None:
+            tests.append((evaluation, data))
     tests.sort(key=lambda item: evaluation_order(item[0]))
-    skipped = len(files) - len(parsed)
-    notice = (
-        f"evaluations/ の {skipped} 個のファイルは形が違うか, 読めない "
-        "(シンボリックリンク, 大きすぎるなど) ので出していません"
-        if skipped > 0 else None
-    )
+    notice = skipped_notice(skipped)
 
     # 列にする値と, 守る指標の表の判定
     values: list[EvaluationValue] = []
@@ -392,22 +390,31 @@ def summarize_evaluations(
     Returns
     ----------
     summary: Optional[RunEvaluations]
-        値と守る指標の判定. evaluations/ の無い実験は None
+        値と守る指標の判定. evaluations/ の無い実験は None, リンクの
+        実験は注意だけ
     """
+    # evaluations/ がリンクの実験は注意だけ, 無い実験は None
+    if (run_dir / EVALUATIONS_DIR).is_symlink():
+        EVALUATION_SUMMARY_CACHE.pop(str(run_dir), None)
+        return RunEvaluations(notice=EVALUATIONS_LINK_NOTICE)
     if not is_plain_dir(run_dir / EVALUATIONS_DIR):
+        EVALUATION_SUMMARY_CACHE.pop(str(run_dir), None)
         return None
 
-    # ファイル (リンクはリンクそのもの) の名前, i-node, 大きさ, 更新の時刻が
-    # 同じなら, 前に求めた結果
+    # ファイル (リンクはリンクそのもの) の名前, i-node, 大きさ, 更新の時刻,
+    # 種類と権限, 状態の変更の時刻 (chmod など) が同じなら, 前に求めた結果
     files = evaluation_files(run_dir)
-    stats: list[tuple[str, int, int, int]] = []
+    stats: list[tuple[str, int, int, int, int, int]] = []
     for path in files:
         try:
             stat = path.lstat()
         except OSError:
             continue
         stats.append(
-            (path.name, stat.st_ino, stat.st_size, stat.st_mtime_ns)
+            (
+                path.name, stat.st_ino, stat.st_size, stat.st_mtime_ns,
+                stat.st_mode, stat.st_ctime_ns
+            )
         )
     key = (tuple(stats), monitor, mode)
     cached = EVALUATION_SUMMARY_CACHE.get(str(run_dir))
@@ -416,7 +423,7 @@ def summarize_evaluations(
 
     # 壊れた評価 1 つで実験の行が読めなくならないように, 理由を残して返却
     try:
-        summary = build_summary(files, monitor, mode)
+        summary = build_summary(run_dir, files, monitor, mode)
     except Exception as error:
         summary = RunEvaluations(
             notice=(
@@ -427,3 +434,24 @@ def summarize_evaluations(
     EVALUATION_SUMMARY_CACHE[str(run_dir)] = (key, summary)
 
     return summary
+
+
+def forget_missing_summaries() -> None:
+    """
+    覚えた結果から, 実験のディレクトリか evaluations/ が無くなった実験の分を
+    捨てる関数
+
+    消した実験の分が残り続けないように, 一覧を読むたびに呼ぶ
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    None
+    """
+    # 他の要求が書き足しても止まらないように, 名前の写しで処理
+    for key in list(EVALUATION_SUMMARY_CACHE):
+        if not is_plain_dir(Path(key) / EVALUATIONS_DIR):
+            EVALUATION_SUMMARY_CACHE.pop(key, None)

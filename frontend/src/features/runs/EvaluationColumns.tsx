@@ -9,9 +9,18 @@ import {
   TriangleAlert,
   type LucideIcon,
 } from 'lucide-react'
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FocusEvent,
+  type KeyboardEvent,
+} from 'react'
 
 import type { EvaluationValue, GuardCheck } from '../../api/client'
+import { useStableId } from '../../lib/a11y'
 import { formatMetric } from '../../lib/format'
 import { GUARD_LABELS, diffTone, guardDetail, type EvaluationColumn } from '../../lib/evaluations'
 
@@ -21,22 +30,139 @@ const GUARD_STYLE: Record<GuardCheck['state'], { icon: LucideIcon; className: st
   unknown: { icon: ShieldQuestionMark, className: 'text-ink-2 bg-surface-2' },
 }
 
-/** 守る指標の印. 色だけに頼らずアイコンと文字も付け, 説明に落ちた指標を出す */
+// 印の説明を開いたことを他の印に知らせる (開いている説明を 1 つにするため)
+const GUARD_OPEN_EVENT = 'guard-badge-open'
+
+// 説明の幅 (px. 画面の端からはみ出さない位置にするため)
+const DETAIL_WIDTH = 288
+
+/**
+ * 守る指標の印. 色だけに頼らずアイコンと文字も付ける. 押すと (キーボードとタッチでも)
+ * 落ちた指標と判断できなかった理由の説明が印の下に浮いて開く (表の形を変えないため)
+ */
 export function GuardBadge({ guard }: { guard: GuardCheck | null | undefined }) {
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
+  const open = position !== null
+  const wrapper = useRef<HTMLSpanElement>(null)
+  const button = useRef<HTMLButtonElement>(null)
+  const detail = useRef<HTMLSpanElement>(null)
+  const detailId = useStableId('guard-detail')
+  // 印の下 (窓の下端で足りなければ上) に, 画面の端からはみ出さないように置く.
+  // 印が横に流れる表や画面の見える範囲から外れたら閉じる (別の列の上に浮かないため)
+  const place = useCallback(() => {
+    const element = button.current
+    if (!element) return
+    const rect = element.getBoundingClientRect()
+    const visible = [element.closest('.overflow-x-auto'), element.closest('main')].every((area) => {
+      if (!area) return true
+      const bounds = area.getBoundingClientRect()
+      return (
+        rect.right >= bounds.left &&
+        rect.left <= bounds.right &&
+        rect.bottom >= bounds.top &&
+        rect.top <= bounds.bottom
+      )
+    })
+    if (!visible) {
+      setPosition(null)
+      return
+    }
+    const width = document.documentElement.clientWidth
+    const height = document.documentElement.clientHeight
+    const detailHeight = detail.current?.offsetHeight ?? 0
+    const left = Math.max(8, Math.min(rect.left, width - DETAIL_WIDTH - 8))
+    const below = rect.bottom + 4
+    const top =
+      below + detailHeight > height - 8 && rect.top - 4 - detailHeight >= 8
+        ? rect.top - 4 - detailHeight
+        : below
+    setPosition({ top, left })
+  }, [])
+  // 開いた直後に説明の高さを測って置き直し, 上の部分の高さが変わっても置き直す
+  useLayoutEffect(() => {
+    if (!open) return
+    place()
+    const main = button.current?.closest('main')
+    if (!main || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(place)
+    // main は高さが決まっているので, 中の内容の大きさを見る
+    observer.observe(main.firstElementChild ?? main)
+    return () => observer.disconnect()
+  }, [open, place])
+  // 開いている間は, 外を押す, Esc, 他の印を開くと閉じ, 流すか窓の大きさを
+  // 変えると置き直す
+  useEffect(() => {
+    if (!open) return
+    const close = () => setPosition(null)
+    const onPointerDown = (event: PointerEvent) => {
+      if (!wrapper.current?.contains(event.target as Node)) close()
+    }
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') close()
+    }
+    const onOther = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== detailId) close()
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    document.addEventListener(GUARD_OPEN_EVENT, onOther)
+    window.addEventListener('scroll', place, true)
+    window.addEventListener('resize', place)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener(GUARD_OPEN_EVENT, onOther)
+      window.removeEventListener('scroll', place, true)
+      window.removeEventListener('resize', place)
+    }
+  }, [open, detailId, place])
   if (!guard) return <span className="text-xs text-ink-3">—</span>
   const { icon: Icon, className } = GUARD_STYLE[guard.state]
-  const detail = guardDetail(guard)
+  const toggle = () => {
+    if (open) {
+      setPosition(null)
+      return
+    }
+    place()
+    document.dispatchEvent(new CustomEvent(GUARD_OPEN_EVENT, { detail: detailId }))
+  }
+  // Tab などで印から離れたら閉じる (説明の文を選ぶために押して, 行き先が無いか
+  // 印を包む要素になる場合は閉じない)
+  const onBlur = (event: FocusEvent<HTMLSpanElement>) => {
+    const next = event.relatedTarget as Node | null
+    const inside = wrapper.current?.contains(next) ?? false
+    const ancestor = next !== null && wrapper.current !== null && next.contains(wrapper.current)
+    if (next && !inside && !ancestor) setPosition(null)
+  }
   return (
-    <span
-      title={detail}
-      className={clsx(
-        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap',
-        className,
-      )}
-    >
-      <Icon className="size-3.5" aria-hidden />
-      {GUARD_LABELS[guard.state]}
-      <span className="sr-only">. {detail}</span>
+    <span ref={wrapper} className="inline-block" onBlur={onBlur}>
+      <button
+        ref={button}
+        type="button"
+        aria-label={`守る指標: ${GUARD_LABELS[guard.state]}`}
+        aria-expanded={open}
+        aria-controls={detailId}
+        onClick={toggle}
+        className={clsx(
+          'inline-flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap',
+          className,
+        )}
+      >
+        <Icon className="size-3.5" aria-hidden />
+        {GUARD_LABELS[guard.state]}
+      </button>
+      {/* 開いたときだけ中身を入れ, 読み上げは開いた説明の 1 回だけにする */}
+      <span id={detailId} role="status">
+        {position && (
+          <span
+            ref={detail}
+            className="fixed z-30 block rounded-md border border-line bg-surface px-2 py-1 text-left text-[11px] whitespace-pre-line text-ink-2 shadow-lg"
+            style={{ top: position.top, left: position.left, width: DETAIL_WIDTH }}
+          >
+            {guardDetail(guard)}
+          </span>
+        )}
+      </span>
     </span>
   )
 }

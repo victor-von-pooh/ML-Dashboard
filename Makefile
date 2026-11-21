@@ -7,7 +7,7 @@ PORT ?= 8765
 # (:= で 1 回だけ作る. ?= では参照のたびに作り直され, 表示と起動で値が変わる)
 DEV_TOKEN := $(or $(DEV_TOKEN),$(shell python3 -c 'import secrets; print(secrets.token_urlsafe(16))'))
 
-.PHONY: setup dev-backend dev-frontend build serve api check demo e2e
+.PHONY: setup dev-backend dev-frontend build serve api check demo e2e screenshots
 
 # 依存のインストール
 setup:
@@ -49,3 +49,7 @@ demo:
 # 画面の通しのテスト (手元では入っている Chrome を使う)
 e2e: build
 	cd frontend && pnpm e2e
+
+# README と操作ガイドの画面の図 (実験の一覧と比較) を撮り直す
+screenshots: build
+	cd frontend && bash e2e/screenshots.sh

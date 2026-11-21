@@ -39,6 +39,16 @@ test('プロジェクトから実験の一覧と詳細を開く', async ({ page 
   await expect(page.getByRole('columnheader', { name: '守る指標' })).toBeVisible()
   await expect(page.getByRole('columnheader', { name: /accuracy_diff/ })).toBeVisible()
   await expect(page.getByRole('row').filter({ hasText: '落ちた' })).toHaveCount(2)
+  // 印を押すと, 落ちた指標の説明が開く
+  const badge = page.getByRole('button', { name: '守る指標: 落ちた' }).first()
+  await badge.click()
+  await expect(badge).toHaveAttribute('aria-expanded', 'true')
+  await expect(page.getByText(/^落ちた: by_class_test/)).toBeVisible()
+  // 説明の文を押しても (文を選ぶため) 閉じない
+  await page.getByText(/^落ちた: by_class_test/).click()
+  await expect(badge).toHaveAttribute('aria-expanded', 'true')
+  await page.keyboard.press('Escape')
+  await expect(badge).toHaveAttribute('aria-expanded', 'false')
   // 守る指標の印と評価の値で絞り込む
   await page.getByRole('button', { name: /^落ちた/ }).click()
   await expect(page).toHaveURL(/guard=dropped/)
@@ -145,6 +155,13 @@ test('2 つの実験を比べ, config の違いと同じエポックの画像を
     has: page.getByRole('heading', { name: 'テスト用の評価' }),
   })
   await expect(evaluations.getByRole('row').filter({ hasText: '落ちた' })).toHaveCount(2)
+  // 評価の列の並べ替えは URL に残り, 読み直しても同じ
+  const header = evaluations.getByRole('columnheader', { name: /accuracy_diff/ })
+  await header.getByRole('button').click()
+  await expect(page).toHaveURL(/sort=ev%3A/)
+  await expect(header).not.toHaveAttribute('aria-sort', 'none')
+  await page.reload()
+  await expect(header).not.toHaveAttribute('aria-sort', 'none')
   await expect(page.getByRole('heading', { name: '画像の比較' })).toBeVisible()
   await expect(page.getByRole('img', { name: /boundary \(epoch 3\)/ })).toHaveCount(2)
 })

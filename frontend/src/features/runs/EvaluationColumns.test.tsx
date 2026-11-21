@@ -16,14 +16,69 @@ const diff: EvaluationValue = {
 }
 
 describe('GuardBadge', () => {
-  it('落ちた守る指標を文字と説明で出す', () => {
+  it('押すと落ちた指標の説明を開き, もう一度押すか Esc か外を押すと閉じる', () => {
     render(
-      <GuardBadge
-        guard={{ state: 'dropped', dropped: ['by_class: acc (差 -0.1)'], unknown: [] }}
-      />,
+      <>
+        <GuardBadge
+          guard={{ state: 'dropped', dropped: ['by_class: acc (差 -0.1)'], unknown: [] }}
+        />
+        <p>外</p>
+      </>,
     )
-    expect(screen.getByText('落ちた')).toBeInTheDocument()
-    expect(screen.getByText(/by_class: acc \(差 -0.1\)/)).toBeInTheDocument()
+    const badge = screen.getByRole('button', { name: '守る指標: 落ちた' })
+    // 開くまでは説明を出さず, title も付けない (読み上げを二重にしない)
+    expect(badge).toHaveAttribute('aria-expanded', 'false')
+    expect(badge).not.toHaveAttribute('title')
+    expect(screen.queryByText(/by_class: acc/)).not.toBeInTheDocument()
+    fireEvent.click(badge)
+    expect(badge).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('status')).toHaveTextContent('落ちた: by_class: acc (差 -0.1)')
+    fireEvent.click(badge)
+    expect(screen.queryByText(/by_class: acc/)).not.toBeInTheDocument()
+    fireEvent.click(badge)
+    fireEvent.keyDown(badge, { key: 'Escape' })
+    expect(screen.queryByText(/by_class: acc/)).not.toBeInTheDocument()
+    fireEvent.click(badge)
+    fireEvent.pointerDown(screen.getByText('外'))
+    expect(badge).toHaveAttribute('aria-expanded', 'false')
+  })
+  it('2 つ目を開くと 1 つ目が閉じ, Tab で離れると閉じる', () => {
+    render(
+      <>
+        <GuardBadge guard={{ state: 'dropped', dropped: ['a: acc (差 -0.1)'], unknown: [] }} />
+        <GuardBadge guard={{ state: 'unknown', dropped: [], unknown: ['b: 向きが分からない'] }} />
+        <button type="button">次</button>
+      </>,
+    )
+    const first = screen.getByRole('button', { name: '守る指標: 落ちた' })
+    const second = screen.getByRole('button', { name: '守る指標: 判断できない' })
+    fireEvent.click(first)
+    expect(first).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.click(second)
+    expect(first).toHaveAttribute('aria-expanded', 'false')
+    expect(second).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.queryByText(/a: acc/)).not.toBeInTheDocument()
+    // 印の外へフォーカスが移ると閉じる
+    fireEvent.blur(second, { relatedTarget: screen.getByRole('button', { name: '次' }) })
+    expect(second).toHaveAttribute('aria-expanded', 'false')
+    // Esc は印にフォーカスが無くても (Safari など) 効く
+    fireEvent.click(second)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(second).toHaveAttribute('aria-expanded', 'false')
+  })
+  it('説明の文を押しても (行き先が無いか印を包む要素へのフォーカスの移り) 閉じない', () => {
+    render(
+      <main tabIndex={-1}>
+        <GuardBadge guard={{ state: 'kept', dropped: [], unknown: [] }} />
+      </main>,
+    )
+    const badge = screen.getByRole('button', { name: '守る指標: 保った' })
+    fireEvent.click(badge)
+    fireEvent.blur(badge, { relatedTarget: null })
+    expect(badge).toHaveAttribute('aria-expanded', 'true')
+    // 押すとフォーカスが印を包む main に移る場合も閉じない
+    fireEvent.blur(badge, { relatedTarget: screen.getByRole('main') })
+    expect(badge).toHaveAttribute('aria-expanded', 'true')
   })
   it('守る指標の表が無い実験には印を出さない', () => {
     render(<GuardBadge guard={null} />)

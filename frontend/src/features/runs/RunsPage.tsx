@@ -525,10 +525,18 @@ function RunsPage({ projectId }: { projectId: string }) {
         </p>
       )}
       {noticed.length > 0 && (
-        <p className="mb-2 text-xs text-ink-3">
-          評価の一部を出せない実験が {noticed.length} 件あります ({noticed[0]!.id}:{' '}
-          {noticed[0]!.evaluations?.notice})
-        </p>
+        <details className="mb-2 text-xs text-ink-3">
+          <summary className="cursor-pointer">
+            評価の一部を出せない実験が {noticed.length} 件あります (開くと実験ごとの理由)
+          </summary>
+          <ul className="mt-1 space-y-0.5 pl-4">
+            {noticed.map((run) => (
+              <li key={run.id} className="break-all">
+                <span className="font-mono">{run.id}</span>: {run.evaluations?.notice}
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
       {(tagChips.length > 0 || starredCount > 0 || starredOnly) && (
         <div

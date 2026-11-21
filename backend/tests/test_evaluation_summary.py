@@ -1,14 +1,32 @@
 import json
+import os
+import shutil
 from pathlib import Path
 from typing import Any, Optional
 
+import pytest
 from fastapi.testclient import TestClient
 
 from ml_dashboard.core import evaluation_summary as summary_module
 from ml_dashboard.core.evaluation_summary import (
+    EVALUATION_SUMMARY_CACHE,
     is_worse,
     metric_better,
     summarize_evaluations,
+)
+from ml_dashboard.core.models import Evaluation
+from ml_dashboard.core.results import (
+    EVALUATIONS_LINK_NOTICE,
+    check_evaluation,
+    evaluation_files,
+    evaluation_problem,
+    load_checked_evaluations,
+    load_plain_evaluations,
+    read_evaluations,
+    read_plain_file,
+    shown_name,
+    skip_entry,
+    skipped_notice,
 )
 
 from test_api import register
@@ -365,3 +383,428 @@ def test_detail_has_evaluations(
         f"/api/projects/{project_id}/runs/{EVALUATED_RUN}"
     ).json()
     assert detail["evaluations"]["guard"]["state"] == "dropped"
+
+
+NO_FIFO = pytest.mark.skipif(
+    not hasattr(os, "mkfifo"), reason="FIFO を作れない環境"
+)
+
+
+@NO_FIFO
+@pytest.mark.parametrize("use_dir_fd", [True, False])
+def test_read_plain_file(tmp_path: Path, use_dir_fd: bool) -> None:
+    """
+    評価のファイルを開くときに, リンク, FIFO, 上限を超えるファイルを
+    読まないことを, dir_fd を使う場合と使わない場合で確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    use_dir_fd: bool
+        dir_fd を使うか
+
+    Returns
+    ----------
+    None
+    """
+    (tmp_path / "plain.json").write_bytes(b"12345")
+    (tmp_path / "link.json").symlink_to(tmp_path / "plain.json")
+    os.mkfifo(tmp_path / "fifo.json")
+    dir_fd = (
+        os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+        if use_dir_fd else None
+    )
+    try:
+        plain = tmp_path / "plain.json"
+        assert read_plain_file(plain, dir_fd, 5) == b"12345"
+        # 上限 + 1 バイトまでで止め, 超えれば読まない
+        assert read_plain_file(plain, dir_fd, 4) is None
+        assert read_plain_file(tmp_path / "link.json", dir_fd, 5) is None
+        # FIFO は書く側を待たずに, 普通のファイルでないとして読まない
+        assert read_plain_file(tmp_path / "fifo.json", dir_fd, 5) is None
+        assert read_plain_file(tmp_path / "missing.json", dir_fd, 5) is None
+    finally:
+        if dir_fd is not None:
+            os.close(dir_fd)
+
+
+def test_read_plain_file_swapped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    dir_fd を使わない場合に, 確かめた後に別のファイルに替わると読まない
+    ことを確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        pytest が用意する差し替えの道具
+
+    Returns
+    ----------
+    None
+    """
+    (tmp_path / "plain.json").write_bytes(b"12345")
+    (tmp_path / "other.json").write_bytes(b"secret")
+    # 開くときだけ別のファイル (確かめた後に置き換えられた場合)
+    real_open = os.open
+
+    def swapped(path: Any, flags: int, *args: Any, **kwargs: Any) -> int:
+        """
+        求めたパスの代わりに other.json を開く関数
+
+        Parameters
+        ----------
+        path: Any
+            求めたパス (使わない)
+        flags: int
+            開く旗
+        *args: Any
+            os.open の残りの引数
+        **kwargs: Any
+            os.open の名前付きの引数
+
+        Returns
+        ----------
+        fd: int
+            開いたファイル
+        """
+        return real_open(tmp_path / "other.json", flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", swapped)
+    assert read_plain_file(tmp_path / "plain.json", None, 100) is None
+
+
+def test_load_plain_evaluations_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    集めた後に evaluations/ がリンクに替わると読まず, dir_fd を使えない
+    環境でも普通のファイルを読むことを確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        pytest が用意する差し替えの道具
+
+    Returns
+    ----------
+    None
+    """
+    run_dir = tmp_path / "run"
+    write_evaluation(run_dir, "metrics", [{"score": 0.5}])
+    files = evaluation_files(run_dir)
+    loaded, skipped = load_plain_evaluations(run_dir, files)
+    assert [stem for stem, _ in loaded] == ["metrics"] and skipped == []
+
+    # dir_fd を使えない環境 (Windows など) でも, 普通のファイルは読む
+    monkeypatch.setattr(os, "supports_dir_fd", set())
+    assert len(load_plain_evaluations(run_dir, files)[0]) == 1
+    monkeypatch.undo()
+
+    # 集めた後に evaluations/ を外を指すリンクに置き換えると読まない
+    outside = tmp_path / "outside"
+    write_evaluation(outside, "metrics", [{"score": 0.9}])
+    shutil.rmtree(run_dir / "evaluations")
+    (run_dir / "evaluations").symlink_to(outside / "evaluations")
+    assert load_plain_evaluations(run_dir, files) == (
+        [], ["metrics.json (読めない)"]
+    )
+    monkeypatch.setattr(os, "supports_dir_fd", set())
+    assert load_plain_evaluations(run_dir, files)[0] == []
+    monkeypatch.undo()
+
+    # evaluations/ がリンクの実験は, 評価の無い実験と見分けられる注意
+    summary = summarize_evaluations(run_dir, None, None)
+    assert summary is not None and summary.values == []
+    assert summary.notice == EVALUATIONS_LINK_NOTICE
+    notices: list[str] = []
+    assert read_evaluations(run_dir, notices) == []
+    assert notices == [EVALUATIONS_LINK_NOTICE]
+
+
+def test_check_evaluation(tmp_path: Path) -> None:
+    """
+    名前がファイルの名前と同じで決まりに合う評価だけを, 評価のタブでも
+    出すことを確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    data = {"name": "metrics", "columns": [], "rows": []}
+    assert check_evaluation("metrics", data) == "metrics"
+    assert check_evaluation("other", data) is None
+    # 末尾の改行も決まりに合わない
+    newline = {**data, "name": "metrics\n"}
+    assert check_evaluation("metrics\n", newline) is None
+    assert check_evaluation("metrics", {**data, "rows": [1]}) is None
+
+    # 評価のタブも, ファイルの名前と違う評価を出さない
+    run_dir = tmp_path / "run"
+    write_evaluation(run_dir, "metrics", [{"score": 0.5}])
+    write_evaluation(run_dir, "other", [{"score": 0.9}])
+    (run_dir / "evaluations" / "metrics.json").replace(
+        run_dir / "evaluations" / "copy.json"
+    )
+    (run_dir / "evaluations" / "other.json").replace(
+        run_dir / "evaluations" / "metrics.json"
+    )
+    notices: list[str] = []
+    assert [item.name for item in read_evaluations(run_dir, notices)] == []
+    assert len(notices) == 1 and "2 個" in notices[0]
+
+
+@NO_FIFO
+def test_skip_fifo_and_renamed(
+    project_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    FIFO, 深く入れ子の JSON, 中の名前がファイルの名前と違う評価を出さず,
+    テスト用でない評価の行を作らないことを確かめる関数
+
+    Parameters
+    ----------
+    project_dir: Path
+        プロジェクトのディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        pytest が用意する差し替えの道具
+
+    Returns
+    ----------
+    None
+    """
+    run_dir = project_dir / "outputs" / EVALUATED_RUN
+    write_evaluation(run_dir, "metrics", [{"score": 0.5}])
+    write_evaluation(run_dir, "by_class", [{"acc": 0.5}], split="valid")
+    os.mkfifo(run_dir / "evaluations" / "pipe.json")
+    # 深く入れ子の JSON (読めないファイルとして飛ばす)
+    (run_dir / "evaluations" / "deep.json").write_text(
+        "[" * 100000, encoding="utf-8"
+    )
+    write_evaluation(run_dir, "other", [{"acc": 0.9}])
+    (run_dir / "evaluations" / "other.json").rename(
+        run_dir / "evaluations" / "renamed.json"
+    )
+    # 行を作る評価を記録 (テスト用でない評価は形だけを確かめる)
+    built: list[str] = []
+    original = summary_module.to_evaluation
+
+    def record(data: dict[str, Any]) -> Optional[Evaluation]:
+        built.append(str(data.get("name")))
+        return original(data)
+
+    monkeypatch.setattr(summary_module, "to_evaluation", record)
+    summary = summarize_evaluations(run_dir, None, None)
+    assert summary is not None
+    assert [item.evaluation for item in summary.values] == ["metrics"]
+    assert built == ["metrics"]
+    # 出さないファイルごとの理由
+    assert summary.notice is not None
+    assert "3 個" in summary.notice
+    assert "deep.json (JSON の辞書でない)" in summary.notice
+    assert "pipe.json (普通のファイルでない (FIFO など))" in summary.notice
+    assert "renamed.json (中の name がファイルの名前と違う)" in summary.notice
+    assert "ファイルの名前と同じ" in summary.notice
+
+
+def test_forget_removed_runs(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    一覧を読むと, 消した実験の評価の覚えを捨てることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    run_dir = project_dir / "outputs" / EVALUATED_RUN
+    write_evaluation(run_dir, "metrics", [{"score": 0.5}])
+    project_id = register(client, project_dir)
+    assert client.get(f"/api/projects/{project_id}/runs").status_code == 200
+    assert str(run_dir) in EVALUATION_SUMMARY_CACHE
+
+    # 実験を消してから一覧を読み直すと, 覚えからも消える
+    shutil.rmtree(run_dir)
+    assert client.get(f"/api/projects/{project_id}/runs").status_code == 200
+    assert str(run_dir) not in EVALUATION_SUMMARY_CACHE
+
+    # 実験を残して evaluations/ だけを消しても, 覚えから消える
+    other = project_dir / "outputs" / PLAIN_RUN
+    write_evaluation(other, "metrics", [{"score": 0.5}])
+    assert client.get(f"/api/projects/{project_id}/runs").status_code == 200
+    assert str(other) in EVALUATION_SUMMARY_CACHE
+    shutil.rmtree(other / "evaluations")
+    assert client.get(f"/api/projects/{project_id}/runs").status_code == 200
+    assert str(other) not in EVALUATION_SUMMARY_CACHE
+
+
+def test_evaluation_problem_reasons(tmp_path: Path) -> None:
+    """
+    名前の問題の理由を分け, 大文字と小文字だけが違う同じファイルは出す
+    ことを確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    run_dir = tmp_path / "run"
+    write_evaluation(run_dir, "metrics", [{"score": 0.5}])
+    folder = run_dir / "evaluations"
+    data = json.loads((folder / "metrics.json").read_text(encoding="utf-8"))
+    assert evaluation_problem(folder, "metrics", data) is None
+    assert evaluation_problem(folder, "metrics", {"name": "x"}) == "形が違う"
+    assert evaluation_problem(folder, "bad:name", {
+        **data, "name": "bad:name"
+    }) == "名前が決まりに合わない"
+    assert evaluation_problem(folder, "other", data) == (
+        "中の name がファイルの名前と違う"
+    )
+
+    # 大文字と小文字を区別しない置き場で name="Metrics" で書き直した場合
+    # (区別する置き場では, 同じファイルを指すハードリンクで作る)
+    upper = {**data, "name": "Metrics"}
+    if not (folder / "Metrics.json").exists():
+        os.link(folder / "metrics.json", folder / "Metrics.json")
+    assert evaluation_problem(folder, "metrics", upper) is None
+    assert check_evaluation("metrics", upper, folder) == "Metrics"
+    # 区別する置き場で, 大文字と小文字の違うハードリンクが 2 つ並ぶ場合は
+    # 同じ名前を 2 回出さない
+    if (folder / "Metrics.json").exists() and len(
+        list(folder.glob("*.json"))
+    ) == 2:
+        (folder / "metrics.json").write_text(
+            json.dumps(upper), encoding="utf-8"
+        )
+        checked, _ = load_checked_evaluations(
+            run_dir, evaluation_files(run_dir)
+        )
+        assert [stem for stem, _ in checked] == ["Metrics"]
+
+    # 別のファイルなら, 大文字と小文字だけの違いでも出さない (2 つの
+    # ファイルを置ける, 大文字と小文字を区別する置き場だけ)
+    other = tmp_path / "other"
+    write_evaluation(other, "metrics", [{"score": 0.1}])
+    other_folder = other / "evaluations"
+    if not (other_folder / "Metrics.json").exists():
+        (other_folder / "Metrics.json").write_text("{}", encoding="utf-8")
+        assert evaluation_problem(other_folder, "metrics", upper) == (
+            "中の name がファイルの名前と違う"
+        )
+
+
+def test_shown_names() -> None:
+    """
+    UTF-8 にできない名前, 制御文字, 向きの変わる文字, 長い名前を整えて
+    注意に出すことを確かめる関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    None
+    """
+    surrogate = os.fsdecode(b"\xff.json")
+    notice = skipped_notice([
+        skip_entry(surrogate, "形が違う"),
+        skip_entry("a\u202eb.json", "形が違う"),
+        skip_entry("x" * 200 + ".json", "形が違う"),
+    ])
+    assert notice is not None
+    notice.encode("utf-8")
+    assert "\\udcff.json" in notice and "a\\u202eb.json" in notice
+    assert "x" * 81 not in notice and "…" in notice
+    # 書き換えた文字の途中で切らず, BMP の外は \\U の 8 桁
+    assert shown_name("x" * 78 + "\u202e") == "x" * 78 + "…"
+    assert shown_name("\U000e0001") == "\\U000e0001"
+
+
+def test_surrogate_file_in_list(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    UTF-8 にできない名前の評価のファイルがあっても, 一覧と結果が読める
+    ことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    run_dir = project_dir / "outputs" / EVALUATED_RUN
+    write_evaluation(run_dir, "metrics", [{"score": 0.5}])
+    try:
+        (run_dir / "evaluations" / os.fsdecode(b"\xff.json")).write_text(
+            "{}", encoding="utf-8"
+        )
+    except (OSError, UnicodeEncodeError):
+        pytest.skip("UTF-8 でない名前のファイルを作れない置き場")
+    project_id = register(client, project_dir)
+    response = client.get(f"/api/projects/{project_id}/runs")
+    assert response.status_code == 200
+    notices = [
+        run["evaluations"]["notice"] for run in response.json()
+        if run["evaluations"]
+    ]
+    assert any("\\udcff.json" in str(item) for item in notices)
+    results = client.get(
+        f"/api/projects/{project_id}/runs/{EVALUATED_RUN}/results"
+    )
+    assert results.status_code == 200
+
+
+def test_link_only_results(client: TestClient, project_dir: Path) -> None:
+    """
+    evaluations/ がリンクなだけの実験の結果に, 注意を出すことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    run_dir = project_dir / "outputs" / PLAIN_RUN
+    outside = project_dir / "outside"
+    write_evaluation(outside, "metrics", [{"score": 0.5}])
+    (run_dir / "evaluations").symlink_to(outside / "evaluations")
+    project_id = register(client, project_dir)
+    response = client.get(
+        f"/api/projects/{project_id}/runs/{PLAIN_RUN}/results"
+    )
+    assert response.status_code == 200
+    assert response.json()["notices"] == [EVALUATIONS_LINK_NOTICE]
