@@ -302,6 +302,84 @@ def test_ready_project(client: TestClient, project_dir: Path) -> None:
     assert response.status_code == 400
 
 
+def test_placeholder_model(client: TestClient, project_dir: Path) -> None:
+    """
+    config に仮のモデルの目印があれば, モデルの定義のファイルが無くても
+    準備ができたとし, 目印が無いか真偽でなければ止めることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    config = project_dir / "configs" / "default" / "train.yaml"
+    (project_dir / "outputs" / "dataset").mkdir(parents=True)
+
+    # ダッシュボードの Python (ML-Found が入っている) を他の環境として登録
+    link = project_dir.parent / "env" / "bin" / "python"
+    link.parent.mkdir(parents=True)
+    link.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+    link.chmod(0o755)
+    project_id = register(client, project_dir, str(link))
+
+    # 目印の値ごとの, 目印として読むかと準備ができたか
+    base = READY_CONFIG.replace("[eda, ros2, project_only]", "[]")
+    cases = [
+        ("  placeholder: true\n", True),
+        ("  placeholder: 'true'\n", False),
+        ("", False),
+    ]
+    for line, expected in cases:
+        config.write_text(
+            base.replace("  spec: models/model.yaml\n",
+                         "  spec: models/model.yaml\n" + line),
+            encoding="utf-8"
+        )
+        readiness = client.get(
+            f"/api/projects/{project_id}/readiness"
+        ).json()
+        assert readiness["model_spec"]["exists"] is False
+        assert readiness["model_placeholder"] is expected
+        assert readiness["ready"] is expected
+
+    # 読めない場所は, 目印があっても止める
+    config.write_text(
+        base.replace("  spec: models/model.yaml\n",
+                     "  spec: ${missing}\n  placeholder: true\n"),
+        encoding="utf-8"
+    )
+    readiness = client.get(f"/api/projects/{project_id}/readiness").json()
+    assert readiness["model_spec"]["error"]
+    assert readiness["model_placeholder"] is True
+    assert readiness["ready"] is False
+
+    # 目印があれば, 空の場所も無いのと同じく止めない
+    config.write_text(
+        base.replace("  spec: models/model.yaml\n",
+                     "  spec: ''\n  placeholder: true\n"),
+        encoding="utf-8"
+    )
+    readiness = client.get(f"/api/projects/{project_id}/readiness").json()
+    assert readiness["model_spec"]["exists"] is False
+    assert readiness["model_spec"]["error"] is None
+    assert readiness["ready"] is True
+
+    # model.spec が無ければ目印も読まない
+    config.write_text(
+        base.replace("  spec: models/model.yaml\n", "  placeholder: true\n"),
+        encoding="utf-8"
+    )
+    readiness = client.get(f"/api/projects/{project_id}/readiness").json()
+    assert readiness["model_spec"] is None
+    assert readiness["model_placeholder"] is False
+
+
 def test_other_environment_without_ml_found(
     client: TestClient, project_dir: Path, tmp_path: Path
 ) -> None:

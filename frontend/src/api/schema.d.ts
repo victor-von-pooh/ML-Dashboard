@@ -1449,6 +1449,11 @@ export interface components {
         ProjectReadiness: {
             dataset: components["schemas"]["ConfigPath"];
             model_spec?: components["schemas"]["ConfigPath"] | null;
+            /**
+             * Model Placeholder
+             * @default false
+             */
+            model_placeholder: boolean;
             /** Python */
             python: string;
             /** Target Python */

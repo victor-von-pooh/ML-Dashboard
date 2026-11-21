@@ -34,6 +34,10 @@ VENV_DIR = ".venv"
 DATASET_KEY = "data.dataset"
 MODEL_SPEC_KEY = "model.spec"
 
+# 定義のファイルが無くても仮のモデルで学習できることの目印 (ML-Quest の
+# ファイルの組の骨組みが書く)
+MODEL_PLACEHOLDER_KEY = "model.placeholder"
+
 # プロジェクトに ML-Found を submodule で置く場合のディレクトリ
 FOUND_SUBMODULE = "ML-Found"
 
@@ -297,6 +301,32 @@ def find_uv() -> Optional[str]:
     return uv
 
 
+def read_placeholder(cfg: Any) -> bool:
+    """
+    config の model.placeholder が true かを読む関数
+
+    Parameters
+    ----------
+    cfg: Any
+        default の config (DictConfig)
+
+    Returns
+    ----------
+    placeholder: bool
+        true と書いてある場合だけ True (読めない値と真偽でない値は False)
+    """
+    # 目印は準備の判定を緩めるので, 真偽の true だけを目印とする
+    try:
+        value = OmegaConf.select(
+            cfg, MODEL_PLACEHOLDER_KEY, throw_on_resolution_failure=True
+        )
+    except Exception:
+        value = None
+    placeholder = value is True
+
+    return placeholder
+
+
 def check_readiness(
     project: Project, refresh: bool = False
 ) -> ProjectReadiness:
@@ -322,6 +352,7 @@ def check_readiness(
     requires: list[str] = []
     requires_error = None
     model_spec = None
+    placeholder = False
     try:
         cfg = OmegaConf.load(project_dir / DEFAULT_CONFIG)
     except Exception as error:
@@ -332,6 +363,13 @@ def check_readiness(
         dataset = read_config_path(cfg, DATASET_KEY, project_dir)
         spec = read_config_path(cfg, MODEL_SPEC_KEY, project_dir)
         model_spec = spec if spec.value is not None or spec.error else None
+        placeholder = model_spec is not None and read_placeholder(cfg)
+
+        # 目印があれば, 空の場所も仮のモデルで学習する (無いのと同じ扱い)
+        if placeholder and spec.value is not None and not spec.value.strip():
+            model_spec = ConfigPath(
+                key=MODEL_SPEC_KEY, value=spec.value, exists=False
+            )
         requires, requires_error = read_requires(cfg)
 
     # 入れる先の Python があれば, その Python で登録簿を確かめる
@@ -396,16 +434,21 @@ def check_readiness(
             python, reinstall_arguments(project_dir, uv), uv
         ))
 
-    # config にデータセットを書いていないプロジェクトは, 場所を確かめない
+    # config にデータセットを書いていないプロジェクトは, 場所を確かめない.
+    # 仮のモデルの目印があれば, 定義のファイルが無くても止めない
+    spec_ready = model_spec is None or model_spec.exists is True or (
+        placeholder and model_spec.exists is False and model_spec.error is None
+    )
     ready = (
         dataset.exists is not False and dataset.error is None
-        and (model_spec is None or model_spec.exists is True)
+        and spec_ready
         and exists and ml_found is True and not missing and not outdated
         and requires_error is None
         and project.python == python
     )
     readiness = ProjectReadiness(
-        dataset=dataset, model_spec=model_spec, python=project.python,
+        dataset=dataset, model_spec=model_spec,
+        model_placeholder=placeholder, python=project.python,
         target_python=python, managed=managed, environment_exists=exists,
         ml_found=ml_found, requires=requires, missing=missing,
         manual=manual, unknown=unknown, outdated=outdated,

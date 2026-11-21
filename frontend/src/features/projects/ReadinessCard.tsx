@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   CircleHelp,
   ExternalLink,
+  Info,
   Loader2,
   PackagePlus,
   RefreshCw,
@@ -31,6 +32,7 @@ const STATE: Record<ReadinessState, { icon: LucideIcon; label: string; className
   ok: { icon: CheckCircle2, label: 'そろっている', className: 'text-good-text' },
   missing: { icon: XCircle, label: '足りない', className: 'text-critical-text' },
   unknown: { icon: CircleHelp, label: '分からない', className: 'text-ink-2' },
+  notice: { icon: Info, label: '準備は止めない', className: 'text-ink-2' },
 }
 
 /** プロジェクトの学習の準備 (データセット, モデルの定義, 環境) と, 環境を作るボタン */
