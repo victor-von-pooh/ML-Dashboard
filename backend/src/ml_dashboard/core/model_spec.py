@@ -10,7 +10,7 @@ from omegaconf import DictConfig, OmegaConf
 from ml_dashboard.core.models import RunModelSpec
 from ml_dashboard.core.projects import ProjectError, get_output_dirs
 from ml_dashboard.core.results import read_plain_file
-from ml_dashboard.core.runs import read_source
+from ml_dashboard.core.runs import DATE_PATTERN, TIME_PATTERN, read_source
 
 # 実験に写したモデルの定義のファイルと, 読む大きさの上限 (ML-Found の
 # docs/FORMAT.md の model_spec.yaml)
@@ -19,6 +19,15 @@ MAX_MODEL_SPEC_BYTES = 16 * 1024 * 1024
 
 # 写した定義を使えずに起動しないときの文の頭 (画面が見分ける)
 COPY_REFUSED = "model.spec が指す, 実験に写した定義を使えないので起動しません"
+
+# 写した定義の入れ子の深さの上限 (深い入れ子で長く止まらないため) と,
+# 深さを数える YAML の字句
+MAX_DEFINITION_DEPTH = 100
+OPEN_EVENTS = (yaml.MappingStartEvent, yaml.SequenceStartEvent)
+CLOSE_EVENTS = (yaml.MappingEndEvent, yaml.SequenceEndEvent)
+
+# 写した定義を使えずに起動しないときの応答の code (画面が見分ける)
+COPY_REFUSED_CODE = "model_spec_copy_refused"
 
 # 実験のディレクトリだと見分けるファイル (写しの場所を指す model.spec の判定)
 RUN_MARKERS = ("config.yaml", "source.yaml")
@@ -36,6 +45,12 @@ MODEL_SPEC_REASONS = {
     "invalid": "定義の場所を読めない",
     "write_failed": "写しを書けなかった",
 }
+
+
+class CopyRefusedError(Exception):
+    # 実験に写した定義を使えずに起動しないことを表す例外. 応答は 400 と
+    # code (COPY_REFUSED_CODE)
+    pass
 
 
 def find_weight_paths(definition: Any) -> list[str]:
@@ -56,7 +71,7 @@ def find_weight_paths(definition: Any) -> list[str]:
     paths: list[str]
         weights.path の値 (部分モデルの中も含む)
     """
-    # 深い入れ子でも止まらないように, 再帰でなく積み上げで辿る
+    # 深い入れ子でも止まらないように, 再帰でなく積み上げで辿る処理
     paths: list[str] = []
     stack = [definition]
     while stack:
@@ -65,9 +80,13 @@ def find_weight_paths(definition: Any) -> list[str]:
             weights = node.get("weights")
             if isinstance(weights, dict) and weights.get("path") is not None:
                 paths.append(str(weights["path"]))
-            stack.extend(node.values())
+            children = list(node.values())
         elif isinstance(node, list):
-            stack.extend(node)
+            children = list(node)
+        else:
+            continue
+        # 文書の順に辿るため, 後の子から積み上げ
+        stack.extend(reversed(children))
 
     return paths
 
@@ -91,6 +110,7 @@ def load_definition(content: bytes) -> tuple[Any, Optional[str]]:
     # 別名 (&a と *a) を持つ定義は読まない (自分を指す別名と, 別名を重ねて
     # 大きく膨らむ定義で止まらないため). 深い入れ子も読めないものとする
     name = f"写した定義 ({MODEL_SPEC_FILE})"
+    depth = 0
     try:
         for event in yaml.parse(content, Loader=yaml.SafeLoader):
             if isinstance(event, yaml.AliasEvent):
@@ -98,6 +118,16 @@ def load_definition(content: bytes) -> tuple[Any, Optional[str]]:
                     f"{name} が YAML の別名 (*) を使うので, 確かめずに"
                     "使いません"
                 )
+            # 深すぎる入れ子は, 最後まで読まずに打ち切り
+            if isinstance(event, OPEN_EVENTS):
+                depth += 1
+                if depth > MAX_DEFINITION_DEPTH:
+                    return None, (
+                        f"{name} の入れ子が {MAX_DEFINITION_DEPTH} 段を"
+                        "超えるので, YAML として読めません"
+                    )
+            elif isinstance(event, CLOSE_EVENTS):
+                depth -= 1
         definition = yaml.safe_load(content)
     except (yaml.YAMLError, RecursionError):
         return None, f"{name} を YAML として読めません"
@@ -121,7 +151,7 @@ def read_copy(copy: Path) -> tuple[Optional[bytes], Optional[str]]:
     reason: Optional[str]
         読めない理由, 読めた場合は None
     """
-    # リンク, 普通でないファイル, 大きすぎるファイルは読まない
+    # リンク, 普通でないファイル, 大きすぎるファイルの除外
     name = f"写した定義 ({MODEL_SPEC_FILE})"
     try:
         found = copy.lstat()
@@ -136,7 +166,7 @@ def read_copy(copy: Path) -> tuple[Optional[bytes], Optional[str]]:
     if found.st_size > MAX_MODEL_SPEC_BYTES:
         return None, f"{name} が 16 MiB を超えています"
 
-    # 確かめた後に置き換えられてもリンクを辿らずに読む
+    # 確かめた後に置き換えられてもリンクを辿らない読み込み
     content = read_plain_file(copy, None, MAX_MODEL_SPEC_BYTES)
     if content is None:
         return None, f"{name} を読めません"
@@ -166,7 +196,7 @@ def find_model_spec_copy(
     reason: Optional[str]
         使えない理由, 使える場合は None
     """
-    # 写した記録のある実験だけ (知らない status は写していないもの)
+    # 写した記録のある実験だけの選別 (知らない status は写していないもの)
     if spec.status != "copied":
         reason = MODEL_SPEC_REASONS.get(spec.status or "", spec.status)
         return None, f"この実験はモデルの定義を写していません ({reason})"
@@ -192,7 +222,7 @@ def find_model_spec_copy(
             "写した定義を新しい実験に写し直せません"
         )
 
-    # config の参照 (${) とホームの展開 (~) に読まれる場所は書かない
+    # config の参照 (${) とホームの展開 (~) に読まれる場所の除外
     path = (relative / MODEL_SPEC_FILE).as_posix()
     if "${" in path or path.startswith("~"):
         return None, (
@@ -200,7 +230,7 @@ def find_model_spec_copy(
             "書けません"
         )
 
-    # 写しの中身が, 学習を始めたときの中身 (sha256) と同じものだけ
+    # 写しの中身が, 学習を始めたときの中身 (sha256) と同じかの確かめ
     content, reason = read_copy(copy)
     if content is None:
         return None, reason
@@ -210,7 +240,7 @@ def find_model_spec_copy(
             "中身 (source.yaml の sha256) と違います"
         )
 
-    # 外部の重みのファイルを読む定義は, 写しの場所からは組み立てられない
+    # 外部の重みのファイルを読む定義 (写しの場所からは組み立てられない) の除外
     definition, reason = load_definition(content)
     if reason is not None:
         return None, reason
@@ -246,7 +276,7 @@ def compare_current(
     message: str
         同じモデルになるか, 違うモデルになるか, 比べられないか
     """
-    # 参照 (${) を含む場所と, 記録の無い実験は比べない
+    # 参照 (${) を含む場所と, 記録の無い実験は比べずに終了
     unknown = (
         "記録と比べられないので, この実験の後に書き換えていれば違うモデル"
         "になります"
@@ -262,10 +292,14 @@ def compare_current(
     if content is None:
         return unknown
     if hashlib.sha256(content).hexdigest() == sha256:
-        message = "今の定義は記録と同じ中身なので, 同じモデルになります"
+        message = (
+            "定義のファイルは記録と同じ中身です. 外部の重みのファイルは"
+            "比べていません"
+        )
     else:
         message = (
-            "今の定義は記録 (sha256) と違う中身なので, 違うモデルになります"
+            "定義のファイルが記録 (sha256) と違う中身なので, 違うモデルに"
+            "なります"
         )
 
     return message
@@ -295,18 +329,20 @@ def run_of_copy(project_dir: Path, value: Any) -> Optional[Path]:
     if path.name != MODEL_SPEC_FILE:
         return None
 
-    # 実験のディレクトリの中か, 実験が消えた後も出力先の下にあれば写しの場所
+    # 実験のディレクトリの中か, 実験が消えた後も出力先の下の実験の形に
+    # あれば写しの場所
     run_dir: Optional[Path] = path.parent
     in_run = all((path.parent / marker).is_file() for marker in RUN_MARKERS)
-    if not in_run and not under_output_dir(project_dir, path):
+    if not in_run and not in_run_shape(project_dir, path):
         run_dir = None
 
     return run_dir
 
 
-def under_output_dir(project_dir: Path, path: Path) -> bool:
+def in_run_shape(project_dir: Path, path: Path) -> bool:
     """
-    パスがプロジェクトの実験の出力先の下にあるかを判定する関数
+    パスが, 出力先の下の実験のディレクトリの形 (<名前>/<日付>/<時刻>/
+    model_spec.yaml) にあるかを判定する関数
 
     Parameters
     ----------
@@ -317,21 +353,30 @@ def under_output_dir(project_dir: Path, path: Path) -> bool:
 
     Returns
     ----------
-    under: bool
-        どれかの出力先の下にあるかどうか, 出力先を読めない場合は False
+    shaped: bool
+        どれかの出力先の下の実験の形にあるかどうか, 出力先を読めない場合は
+        False
     """
     try:
         output_dirs = get_output_dirs(project_dir)
-    except ProjectError:
+        target = path.resolve()
+    except (ProjectError, OSError, RuntimeError):
         return False
-    under = any(
-        os.path.abspath(path).startswith(
-            os.path.abspath(output_dir) + os.sep
-        )
-        for output_dir in output_dirs
-    )
 
-    return under
+    # 両側をリンクを辿った場所で比べ, 実験の形の深さと名前だけを認める
+    shaped = False
+    for output_dir in output_dirs:
+        try:
+            parts = target.relative_to(output_dir.resolve()).parts
+        except (ValueError, OSError, RuntimeError):
+            continue
+        if (
+            len(parts) == 4 and DATE_PATTERN.match(parts[1]) is not None
+            and TIME_PATTERN.match(parts[2]) is not None
+        ):
+            shaped = True
+
+    return shaped
 
 
 def load_mapping(text: str) -> DictConfig:
@@ -431,7 +476,7 @@ def set_model_spec(text: str, path: Optional[str]) -> str:
     if path is not None:
         OmegaConf.update(loaded, "model.spec", path, merge=True)
     else:
-        # 消して空になった model も消す
+        # 消して空になった model も削除
         model = loaded.get("model")
         if isinstance(model, DictConfig) and "spec" in model:
             del model["spec"]
@@ -462,7 +507,7 @@ def check_copy_for_launch(project_dir: Path, text: str) -> Optional[str]:
     reason: Optional[str]
         起動しない理由. 写しを指さないか, 確かめられた場合は None
     """
-    # 読めない config は起動の前の確認に任せる
+    # 読めない config は起動の前の確認に一任
     try:
         value = raw_model_spec(load_mapping(text))
     except Exception:
@@ -471,22 +516,20 @@ def check_copy_for_launch(project_dir: Path, text: str) -> Optional[str]:
     if run_dir is None:
         return None
 
-    # 写した実験の記録と, 写しの中身を確かめ直す
+    # 写した実験の記録と, 写しの中身の確かめ直し
     source = read_source(run_dir)
-    if source is None or source.model_spec is None:
-        reason: Optional[str] = (
-            f"model.spec ({value}) の実験に, 写した定義の記録 (source.yaml "
-            "の model_spec) がありません"
+    if not run_dir.is_dir():
+        reason: Optional[str] = "その実験がありません (消した実験の写し)"
+    elif source is None or source.model_spec is None:
+        reason = (
+            "その実験に, 写した定義の記録 (source.yaml の model_spec) が"
+            "ありません"
         )
     else:
         _, reason = find_model_spec_copy(
             project_dir, run_dir, source.model_spec
         )
     if reason is not None:
-        reason = (
-            f"{COPY_REFUSED} ({value}): {reason}. 起動の画面の「今の定義で"
-            "起動する」で model.spec を今の定義に戻すか, 実験の詳細から"
-            "開き直してください"
-        )
+        reason = f"{COPY_REFUSED} ({value}): {reason}"
 
     return reason

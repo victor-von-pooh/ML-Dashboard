@@ -2,7 +2,7 @@ import clsx from 'clsx'
 import { ExternalLink, OctagonX, RotateCcw, SkipBack, Square } from 'lucide-react'
 import { Link, useNavigate } from 'react-router'
 
-import { encodeRunId, type JobInfo, type Progress } from '../../api/client'
+import { encodeRunId, isCopyRefused, type JobInfo, type Progress } from '../../api/client'
 import { useRerunJob, useStopJob } from '../../api/hooks'
 import { Button, ErrorBox, StatusBadge } from '../../components/ui'
 import { formatDateTime, formatDuration } from '../../lib/format'
@@ -186,7 +186,14 @@ export function JobCard({ job, detail = false }: { job: JobInfo; detail?: boolea
 
       {rerun.error && (
         <div className="mt-3">
-          <ErrorBox error={rerun.error} />
+          <ErrorBox error={rerun.error}>
+            {isCopyRefused(rerun.error) && (
+              <p className="mt-1">
+                今の定義で起動し直す場合は, {run && job.run_id ? '「実験を開く」から' : ''}
+                実験の詳細を開き, 「この設定でもう一度起動」で開き直してください.
+              </p>
+            )}
+          </ErrorBox>
         </div>
       )}
       {stop.error && (

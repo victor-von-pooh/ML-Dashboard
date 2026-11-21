@@ -51,36 +51,63 @@ export type ParamSpec = Schemas['ParamSpec']
 export type ClassSpec = Schemas['ClassSpec']
 export type Registry = Schemas['Registry']
 
+// 実験に写したモデルの定義を使えずに起動しなかったときの code (バックエンドの COPY_REFUSED_CODE)
+export const COPY_REFUSED_CODE = 'model_spec_copy_refused'
+
 /** API がエラーを返したときの例外 */
 export class ApiError extends Error {
   readonly status: number
+  // 画面が見分けるエラーの種類 (応答の code. 無ければ null)
+  readonly code: string | null
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code: string | null = null) {
     super(message)
     this.status = status
+    this.code = code
   }
 }
 
-/** エラーのレスポンスから表示する文を取り出す */
-async function readError(response: Response): Promise<string> {
+/** 実験に写したモデルの定義を使えずに起動しなかったエラーか */
+export function isCopyRefused(error: unknown): boolean {
+  return error instanceof ApiError && error.code === COPY_REFUSED_CODE
+}
+
+/** エラーのレスポンスの code を取り出す. 無ければ null */
+function readCode(body: unknown): string | null {
+  if (body && typeof body === 'object' && 'code' in body) {
+    const code = (body as { code: unknown }).code
+    if (typeof code === 'string') return code
+  }
+  return null
+}
+
+/** エラーのレスポンスから表示する文と code を取り出す */
+async function readError(response: Response): Promise<[string, string | null]> {
+  let body: unknown
   try {
-    const body: unknown = await response.json()
-    if (body && typeof body === 'object' && 'detail' in body) {
-      const detail = (body as { detail: unknown }).detail
-      if (typeof detail === 'string') return detail
-      // 入力の検証のエラー (422) は, 項目と理由だけを読める形にする
-      if (Array.isArray(detail)) {
-        return detail
-          .map((item: { loc?: unknown[]; msg?: string }) => {
-            const field = (item.loc ?? []).filter((part) => part !== 'body').join('.')
-            return field ? `${field}: ${item.msg ?? ''}` : (item.msg ?? '')
-          })
-          .join(' / ')
-      }
-      return JSON.stringify(detail)
-    }
+    body = await response.json()
   } catch {
     // JSON でない場合は状態の文を使う
+    return [`${response.status} ${response.statusText}`, null]
+  }
+  return [errorText(response, body), readCode(body)]
+}
+
+/** エラーの本文から表示する文を取り出す */
+function errorText(response: Response, body: unknown): string {
+  if (body && typeof body === 'object' && 'detail' in body) {
+    const detail = (body as { detail: unknown }).detail
+    if (typeof detail === 'string') return detail
+    // 入力の検証のエラー (422) は, 項目と理由だけを読める形にする
+    if (Array.isArray(detail)) {
+      return detail
+        .map((item: { loc?: unknown[]; msg?: string }) => {
+          const field = (item.loc ?? []).filter((part) => part !== 'body').join('.')
+          return field ? `${field}: ${item.msg ?? ''}` : (item.msg ?? '')
+        })
+        .join(' / ')
+    }
+    return JSON.stringify(detail)
   }
   return `${response.status} ${response.statusText}`
 }
@@ -92,7 +119,8 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { 'Content-Type': 'application/json', ...init?.headers },
   })
   if (!response.ok) {
-    throw new ApiError(response.status, await readError(response))
+    const [message, code] = await readError(response)
+    throw new ApiError(response.status, message, code)
   }
   if (response.status === 204) {
     return undefined as T

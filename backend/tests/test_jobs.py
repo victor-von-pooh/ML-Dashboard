@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from omegaconf import OmegaConf
 
 from ml_dashboard.api.jobs import describe_missing_path
-from ml_dashboard.core.model_spec import find_model_spec_copy
+from ml_dashboard.core.model_spec import find_model_spec_copy, run_of_copy
 from ml_dashboard.core.models import RunModelSpec
 
 from test_api import register
@@ -1013,7 +1013,13 @@ def test_relaunch_model_spec(
                 for index in range(20)
             ), "別名"
         ),
-        (b"[" * 5000 + b"]" * 5000 + b"\n", "読めません"),
+        (b"[" * 5000 + b"]" * 5000 + b"\n", "100 段"),
+        # 辞書の 1 段と並びの 100 段で, 上限の 100 段を超える
+        (b"a: " + b"[" * 100 + b"]" * 100 + b"\n", "100 段"),
+        (
+            b"nodes:\n  a: {weights: {path: first.pt}}\n"
+            b"  b: {weights: {path: second.pt}}\n", "first.pt"
+        ),
     ):
         copy.write_bytes(text)
         result = plan(digest=hashlib.sha256(text).hexdigest())
@@ -1061,7 +1067,10 @@ def test_relaunch_model_spec(
     (project_dir / "models").mkdir()
     (project_dir / "models" / "base.yaml").write_bytes(content)
     result = plan(status="missing")
-    assert any("同じモデルになります" in note for note in result["notes"])
+    assert any(
+        "記録と同じ中身です. 外部の重みのファイルは比べていません" in note
+        for note in result["notes"]
+    )
     (project_dir / "models" / "base.yaml").write_bytes(b"layers: []\n")
     result = plan(status="missing")
     assert any("違うモデルになります" in note for note in result["notes"])
@@ -1139,6 +1148,52 @@ def test_model_spec_copy_place(project_dir: Path, tmp_path: Path) -> None:
         assert reason is not None and "書けません" in reason, name
 
 
+def test_own_model_spec_name(client: TestClient, tmp_path: Path) -> None:
+    """
+    出力先が . のプロジェクトで, 自分の定義の models/model_spec.yaml を
+    消えた実験の写しとみなさないことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    project_dir = tmp_path / "dot_project"
+    (project_dir / "configs" / "default").mkdir(parents=True)
+    (project_dir / "configs" / "experiment").mkdir(parents=True)
+    (project_dir / "configs" / "default" / "train.yaml").write_text(
+        "experiment:\n  name: demo\n  output_dir: .\n"
+        "model:\n  spec: models/model_spec.yaml\n"
+    )
+    (project_dir / "configs" / "experiment" / "train.yaml").write_text(
+        "{}\n"
+    )
+    (project_dir / "models").mkdir()
+    (project_dir / "models" / "model_spec.yaml").write_text("layers: []\n")
+    (project_dir / "train.py").write_text("print('train')\n")
+    assert run_of_copy(project_dir, "models/model_spec.yaml") is None
+    # 実験の形 (<名前>/<日付>/<時刻>/) の深さなら, 消えた実験の写し
+    assert run_of_copy(
+        project_dir, "demo/2026-11-08/10-00-00/model_spec.yaml"
+    ) == project_dir / "demo/2026-11-08/10-00-00"
+
+    project_id = register(client, project_dir)
+    response = client.post(
+        f"/api/projects/{project_id}/jobs",
+        json={
+            "script": "train.py",
+            "config_text": "model:\n  spec: models/model_spec.yaml\n"
+        }
+    )
+    assert response.status_code == 201, response.json()
+
+
 def test_launch_rechecks_model_spec(
     client: TestClient, project_dir: Path
 ) -> None:
@@ -1183,7 +1238,7 @@ def test_launch_rechecks_model_spec(
     assert "起動しません" in response.json()["detail"]
     assert "中身が" in response.json()["detail"]
 
-    assert "今の定義で起動する" in response.json()["detail"]
+    assert response.json()["code"] == "model_spec_copy_refused"
 
     # 消えた実験の写しを指す config も起動しない
     gone = {
@@ -1195,7 +1250,9 @@ def test_launch_rechecks_model_spec(
     }
     response = client.post(f"/api/projects/{project_id}/jobs", json=gone)
     assert response.status_code == 400
-    assert "起動しません" in response.json()["detail"]
+    detail = response.json()["detail"]
+    assert "その実験がありません" in detail
+    assert detail.count("09-00-00") == 1
 
     # 別名を使う写しは, 500 にならず起動しない
     (run_dir / "model_spec.yaml").write_bytes(b"nodes: &n {a: *n}\n")

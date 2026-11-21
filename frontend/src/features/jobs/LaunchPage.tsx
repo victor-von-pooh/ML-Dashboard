@@ -13,7 +13,7 @@ import {
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 
-import { encodeRunId, type RelaunchPlan, type Requirement } from '../../api/client'
+import { encodeRunId, isCopyRefused, type RelaunchPlan, type Requirement } from '../../api/client'
 import {
   useConfig,
   useCreateJob,
@@ -26,9 +26,6 @@ import {
 import { Button, Card, ErrorBox, PageHeader, Spinner } from '../../components/ui'
 import { formatValue } from '../../lib/format'
 import { deleteYamlValue, getYamlValue, setYamlValue } from '../../lib/yamlEdit'
-
-// 実験に写した定義を使えずに起動しなかったときの文の頭 (バックエンドの COPY_REFUSED)
-const COPY_REFUSED = 'model.spec が指す, 実験に写した定義を使えないので起動しません'
 import { configForScript } from '../../lib/scripts'
 import { RequirementCard } from '../requirements/RequirementCard'
 import { ConfigForm } from './ConfigForm'
@@ -263,10 +260,12 @@ function LaunchForm({
           error={planError}
           defaultConfig={defaultConfig}
           copyNote={usingCopy ? (fromRun?.model_spec_note ?? null) : null}
-          copyRefused={usingCopy && (create.error?.message.includes(COPY_REFUSED) ?? false)}
+          copyRefused={usingCopy && isCopyRefused(create.error)}
           onRestoreSpec={() => {
             // model.spec だけを今の定義 (戻す値が無ければ default の値) に戻す
             const original = fromRun?.model_spec_original ?? null
+            // 写しを使えなかった起動のエラーも消す (今の定義で起動し直すため)
+            create.reset()
             editText(
               original === null
                 ? deleteYamlValue(text, 'model.spec')

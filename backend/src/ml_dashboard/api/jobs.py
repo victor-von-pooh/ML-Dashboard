@@ -17,6 +17,7 @@ from ml_dashboard.api.routes import (
 from ml_dashboard.core.jobs import Job, JobManager
 from ml_dashboard.core.loader import import_ml_found
 from ml_dashboard.core.model_spec import (
+    CopyRefusedError,
     check_copy_for_launch,
     compare_current,
     default_model_spec,
@@ -1107,7 +1108,7 @@ def create_job(
             launched = ""
     spec_reason = check_copy_for_launch(Path(project.path), launched)
     if spec_reason is not None:
-        raise HTTPException(400, spec_reason)
+        raise CopyRefusedError(spec_reason)
 
     # 中身を渡された場合はジョブのディレクトリに保存して起動
     jobs = get_jobs(request)
