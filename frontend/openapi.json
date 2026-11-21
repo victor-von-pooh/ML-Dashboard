@@ -1396,6 +1396,9 @@
           "404": {
             "description": "プロジェクトか実験が見つからない"
           },
+          "409": {
+            "description": "進めている途中のまとまりか, 環境のジョブがある"
+          },
           "422": {
             "description": "Validation Error",
             "content": {

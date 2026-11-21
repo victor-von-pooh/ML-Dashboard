@@ -3456,6 +3456,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description 進めている途中のまとまりか, 環境のジョブがある */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
