@@ -1,3 +1,4 @@
+import hashlib
 import sys
 import tempfile
 from dataclasses import asdict
@@ -16,7 +17,7 @@ from ml_dashboard.api.routes import (
 )
 from ml_dashboard.core.jobs import Job, JobManager
 from ml_dashboard.core.loader import import_ml_found
-from ml_dashboard.core.models import Progress, RunSummary
+from ml_dashboard.core.models import Progress, RunModelSpec, RunSummary
 from ml_dashboard.core.projects import (
     Project,
     ProjectError,
@@ -33,6 +34,7 @@ from ml_dashboard.core.requirements import (
     read_requires,
     requires_status,
 )
+from ml_dashboard.core.results import read_plain_file
 from ml_dashboard.core.runs import (
     RunNotFoundError,
     read_progress,
@@ -62,6 +64,24 @@ PATH_KEY_WORDS = frozenset({"path", "dir", "file"})
 
 # Hugging Face の model_name_or_path などの, パスでなくてもよい項目の名前の末尾
 NAME_OR_PATH_SUFFIX = "name_or_path"
+
+# 実験に写したモデルの定義のファイルと, 読む大きさの上限 (ML-Found の
+# docs/FORMAT.md の model_spec.yaml)
+MODEL_SPEC_FILE = "model_spec.yaml"
+MAX_MODEL_SPEC_BYTES = 16 * 1024 * 1024
+
+# モデルの定義を写さなかった理由 (ML-Found の source.yaml の model_spec の
+# status. 知らない値は写していないものとして値のまま出す)
+MODEL_SPEC_REASONS = {
+    "missing": "定義のファイルが無かった",
+    "outside": "定義がプロジェクトの外にあった",
+    "link": "定義の場所がシンボリックリンクだった",
+    "not_file": "定義が普通のファイルでなかった",
+    "unreadable": "定義を読めなかった",
+    "too_large": "定義が 16 MiB を超えていた",
+    "invalid": "定義の場所を読めなかった",
+    "write_failed": "写しを書けなかった",
+}
 
 # パスの確認から外す項目 (ML-Found が作る出力先と, ML-Found が確かめる再開元)
 SKIPPED_PATH_KEYS = frozenset({"experiment.output_dir", "trainer.resume_from"})
@@ -202,6 +222,9 @@ class RelaunchPlan(BaseModel):
     config_path: Optional[str] = None
     # experiment の config の中身 (上書きを重ねたもの)
     config_text: Optional[str] = None
+    # 起動に使う, 実験に写したモデルの定義 (プロジェクトからの相対パス).
+    # 写しを使わない場合は None
+    model_spec: Optional[str] = None
     # 実験の時と違うかもしれない点などのお知らせ
     notes: list[str] = []
 
@@ -1393,6 +1416,157 @@ def newer_than(path: Path, reference: Path) -> bool:
     return newer
 
 
+def find_model_spec_copy(
+    project_dir: Path, run_dir: Path, spec: RunModelSpec
+) -> tuple[Optional[str], Optional[str]]:
+    """
+    実験に写したモデルの定義を, もう一度起動するときに使えるかを確かめる関数
+
+    Parameters
+    ----------
+    project_dir: Path
+        プロジェクトのディレクトリ
+    run_dir: Path
+        実験のディレクトリ
+    spec: RunModelSpec
+        source.yaml の model_spec
+
+    Returns
+    ----------
+    path: Optional[str]
+        使える写しの場所 (プロジェクトからの相対パス), 使えない場合は None
+    reason: Optional[str]
+        使えない理由, 使える場合は None
+    """
+    # 写した記録のある実験だけ (知らない status は写していないもの)
+    if spec.status != "copied":
+        reason = MODEL_SPEC_REASONS.get(
+            spec.status or "", f"写していない ({spec.status})"
+        )
+        return None, f"この実験はモデルの定義を写していません ({reason})"
+    if spec.sha256 is None:
+        return None, "写したモデルの定義の sha256 が記録されていません"
+
+    # ML-Found が新しい実験に写し直せるように, プロジェクトの中で途中に
+    # リンクの無い場所に限定 (${ は config の参照と読まれるので除外)
+    copy = run_dir / MODEL_SPEC_FILE
+    try:
+        relative = copy.relative_to(project_dir)
+        inside = (
+            copy.resolve() == project_dir.resolve() / relative
+            and ".." not in relative.parts
+        )
+    except (ValueError, OSError, RuntimeError):
+        inside = False
+    if not inside:
+        return None, (
+            "実験のディレクトリがプロジェクトの外かシンボリックリンクの先に"
+            "あるので, 写した定義を使えません"
+        )
+    if "${" in relative.as_posix():
+        return None, (
+            "写した定義の場所が ${ を含むので, config に書けません"
+        )
+
+    # 写しの中身が, 学習を始めたときの中身 (sha256) と同じものだけ
+    content = read_plain_file(copy, None, MAX_MODEL_SPEC_BYTES)
+    if content is None:
+        return None, (
+            f"写した定義 ({MODEL_SPEC_FILE}) が無いか, 普通のファイルで"
+            "ないか, 読めません"
+        )
+    if hashlib.sha256(content).hexdigest() != spec.sha256:
+        return None, (
+            f"写した定義 ({MODEL_SPEC_FILE}) の中身が, 学習を始めたときの"
+            "中身 (source.yaml の sha256) と違います"
+        )
+    path = relative.as_posix()
+
+    return path, None
+
+
+def set_model_spec(text: str, path: str) -> str:
+    """
+    experiment の config の中身の model.spec を書き換える関数
+
+    Parameters
+    ----------
+    text: str
+        experiment の config の中身
+    path: str
+        モデルの定義の場所
+
+    Returns
+    ----------
+    changed: str
+        書き換えた YAML (元のコメントは消える)
+    """
+    loaded = OmegaConf.create(text) if text.strip() else OmegaConf.create({})
+    if not isinstance(loaded, DictConfig):
+        raise ValueError(
+            "experiment の config が「項目: 値」の形ではありません"
+        )
+    model = loaded.get("model")
+    if model is not None and not isinstance(model, DictConfig):
+        raise ValueError("experiment の config の model が辞書ではありません")
+    OmegaConf.update(loaded, "model.spec", path, merge=True)
+    changed = OmegaConf.to_yaml(loaded)
+
+    return changed
+
+
+def plan_model_spec(
+    project_dir: Path, run_dir: Path, spec: Optional[RunModelSpec],
+    text: str
+) -> tuple[Optional[str], str, Optional[str]]:
+    """
+    もう一度起動するときのモデルの定義を決める関数
+
+    Parameters
+    ----------
+    project_dir: Path
+        プロジェクトのディレクトリ
+    run_dir: Path
+        実験のディレクトリ
+    spec: Optional[RunModelSpec]
+        source.yaml の model_spec
+    text: str
+        experiment の config の中身 (上書きを重ねたもの)
+
+    Returns
+    ----------
+    path: Optional[str]
+        使う写しの場所, 写しを使わない場合は None
+    text: str
+        写しを使う場合は model.spec を書き換えた中身, 使わない場合はそのまま
+    note: Optional[str]
+        お知らせ. model_spec の無い実験は None
+    """
+    # model_spec の無い実験 (model.spec が無いか, 前の ML-Found) はそのまま
+    if spec is None:
+        return None, text, None
+    current = spec.path or "config の model.spec"
+    path, reason = find_model_spec_copy(project_dir, run_dir, spec)
+    if path is not None:
+        try:
+            changed = set_model_spec(text, path)
+        except Exception as error:
+            reason = describe(error)
+        else:
+            note = (
+                f"モデルの定義は, この実験に写した定義 ({path}) を使います "
+                f"(config の model.spec を書き換えました. 今の {current} "
+                "と違うことがあります. 元の YAML のコメントは消えます)"
+            )
+            return path, changed, note
+    note = (
+        f"モデルの定義は, 今のプロジェクトの {current} から組み立てます "
+        f"(この実験の後に書き換えていれば違うモデルになります): {reason}"
+    )
+
+    return None, text, note
+
+
 def plan_relaunch(
     project: Project, jobs_dir: Path, run_dir: Path
 ) -> RelaunchPlan:
@@ -1451,8 +1625,14 @@ def plan_relaunch(
                 f"上書き ({' '.join(source.overrides)}) を experiment の "
                 "config に重ねました (元の YAML のコメントは消えます)"
             )
+        # 実験に写したモデルの定義が使えれば, model.spec をその場所に変更
+        model_spec, text, spec_note = plan_model_spec(
+            project_dir, run_dir, source.model_spec, text
+        )
+        if spec_note is not None:
+            notes.append(spec_note)
         # 中身を渡して起動する場合だけ, 起動と同じく出力先の変更を拒否
-        if config_path is None or source.overrides:
+        if config_path is None or source.overrides or model_spec:
             check_output_dir(
                 OmegaConf.create(text) if text.strip() else {}
             )
@@ -1481,7 +1661,8 @@ def plan_relaunch(
         )
     plan = RelaunchPlan(
         script=source.script, default_config=default_config,
-        config_path=config_path, config_text=text, notes=notes
+        config_path=config_path, config_text=text, model_spec=model_spec,
+        notes=notes
     )
 
     return plan

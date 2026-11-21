@@ -1603,6 +1603,8 @@ export interface components {
             config_path?: string | null;
             /** Config Text */
             config_text?: string | null;
+            /** Model Spec */
+            model_spec?: string | null;
             /**
              * Notes
              * @default []
