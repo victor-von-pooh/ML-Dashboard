@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { api, type JobInfo, type RunNote } from './client'
+import { api, type BatchInfo, type JobInfo, type RunNote } from './client'
 
 export const keys = {
   projects: ['projects'] as const,
@@ -24,6 +24,9 @@ export const keys = {
   requires: (projectId: string, text: string, script: string, defaultConfig: string) =>
     ['projects', projectId, 'requires', script, defaultConfig, text] as const,
   jobs: ['jobs'] as const,
+  batches: ['batches'] as const,
+  modelSpecs: (projectId: string, script: string, defaultConfig: string) =>
+    ['projects', projectId, 'model-specs', script, defaultConfig] as const,
   job: (jobId: string) => ['jobs', jobId] as const,
   jobOutput: (jobId: string) => ['jobs', jobId, 'output'] as const,
 }
@@ -191,12 +194,17 @@ export function useRerunJob() {
 }
 
 export function useJobs() {
+  const client = useQueryClient()
   return useQuery({
     queryKey: keys.jobs,
     queryFn: api.listJobs,
-    // 実行中が無い間は, サイドバーの数が大まかに合っていればよいので間隔を空ける
+    // 実行中が無い間は, サイドバーの数が大まかに合っていればよいので間隔を空ける.
+    // 進めている途中の候補のまとまりがあれば, 次の候補のジョブがすぐ出るように短くする
     refetchInterval: (query) =>
-      query.state.data?.some((job) => job.status === 'running') ? LIVE_INTERVAL : 30_000,
+      query.state.data?.some((job) => job.status === 'running') ||
+      client.getQueryData<BatchInfo[]>(keys.batches)?.some((batch) => !batch.finished)
+        ? LIVE_INTERVAL
+        : 30_000,
   })
 }
 
@@ -413,5 +421,56 @@ export function useRecheckReadiness(projectId: string) {
   return useMutation({
     mutationFn: () => api.getReadiness(projectId, true),
     onSuccess: (readiness) => client.setQueryData(keys.readiness(projectId), readiness),
+  })
+}
+
+/** プロジェクトの models/ のモデルの定義の候補 */
+export function useModelSpecs(projectId: string, script: string, defaultConfig?: string) {
+  return useQuery({
+    queryKey: keys.modelSpecs(projectId, script, defaultConfig ?? ''),
+    queryFn: () => api.getModelSpecs(projectId, script, defaultConfig),
+    enabled: script !== '',
+  })
+}
+
+/** 候補のまとまりの一覧. 進めている途中のまとまりがある間は一定の間隔で読み直す */
+export function useBatches() {
+  const client = useQueryClient()
+  return useQuery({
+    queryKey: keys.batches,
+    // 読み終えたときに進めている途中のまとまりがあれば, ジョブの一覧も読み直す
+    // (ジョブの一覧の間隔は, ジョブの一覧を読み直したときにしか決め直さないため)
+    queryFn: async () => {
+      const batches = await api.listBatches()
+      if (batches.some((batch) => !batch.finished)) {
+        void client.invalidateQueries({ queryKey: keys.jobs })
+      }
+      return batches
+    },
+    refetchInterval: (query) =>
+      query.state.data?.some((batch) => !batch.finished) ? LIVE_INTERVAL : 30_000,
+  })
+}
+
+export function useCreateBatch(projectId: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: Parameters<typeof api.createBatch>[1]) => api.createBatch(projectId, body),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.batches })
+      void client.invalidateQueries({ queryKey: keys.jobs })
+    },
+  })
+}
+
+export function useStopBatch() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ batchId, force }: { batchId: string; force: boolean }) =>
+      api.stopBatch(batchId, force),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.batches })
+      void client.invalidateQueries({ queryKey: keys.jobs })
+    },
   })
 }
