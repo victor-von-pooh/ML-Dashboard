@@ -34,6 +34,7 @@ from ml_dashboard.core.models import (
     RunDetail,
     RunEvaluations,
     RunFile,
+    RunModelSpec,
     RunParams,
     RunSource,
     RunStatus,
@@ -43,6 +44,9 @@ from ml_dashboard.core.models import (
 # 実験のディレクトリの日付と時刻の名前
 DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 TIME_PATTERN = re.compile(r"^(\d{2})-(\d{2})-(\d{2})(?:_(\d+))?$")
+
+# モデルの定義の写しの中身の SHA-256 (ML-Found の source.yaml. 16 進の小文字)
+SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 
 # ファイルの種類の判定に使う拡張子
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
@@ -627,6 +631,41 @@ def load_yaml(path: Path) -> dict[str, Any]:
     return config
 
 
+def read_model_spec(data: Any) -> Optional[RunModelSpec]:
+    """
+    source.yaml の model_spec (モデルの定義の写しの記録) を読む関数
+
+    Parameters
+    ----------
+    data: Any
+        source.yaml の model_spec の値
+
+    Returns
+    ----------
+    spec: Optional[RunModelSpec]
+        記録, 辞書でないか中身が無い場合は None. 文字でない path と
+        status, SHA-256 の形でない sha256 は None
+    """
+    if not isinstance(data, dict):
+        return None
+    path = data.get("path")
+    status = data.get("status")
+    sha256 = data.get("sha256")
+    spec = RunModelSpec(
+        path=path if isinstance(path, str) else None,
+        status=status if isinstance(status, str) else None,
+        sha256=(
+            sha256
+            if isinstance(sha256, str) and SHA256_PATTERN.fullmatch(sha256)
+            else None
+        )
+    )
+    if not any(spec.model_dump().values()):
+        return None
+
+    return spec
+
+
 def read_source(run_dir: Path) -> Optional[RunSource]:
     """
     実験の起動のしかた (ML-Found の source.yaml) を読み込む関数
@@ -660,7 +699,8 @@ def read_source(run_dir: Path) -> Optional[RunSource]:
     source = RunSource(
         **text,
         overrides=[str(item) for item in overrides]
-        if isinstance(overrides, list) else None
+        if isinstance(overrides, list) else None,
+        model_spec=read_model_spec(data.get("model_spec"))
     )
     if not any(source.model_dump().values()):
         return None
