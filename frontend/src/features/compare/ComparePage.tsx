@@ -16,7 +16,10 @@ import {
   collectColumns,
   findValue,
   initialDesc,
+  readEvaluationSort,
+  writeEvaluationSort,
   type EvaluationColumn,
+  type EvaluationSort,
 } from '../../lib/evaluations'
 import { formatDateTime, formatDuration, formatMetric, formatValue } from '../../lib/format'
 import { groupImageSeries, sharedImageSeries } from '../../lib/images'
@@ -154,11 +157,16 @@ export function ComparePage() {
   const flatConfigs = ready.map((slot) => flattenConfig(slot.run.config))
 
   const remove = (runId: string) => {
-    const next = new URLSearchParams()
+    // 評価の列と並べ替えは残す
+    const next = new URLSearchParams(params)
+    next.delete('run')
     for (const id of runIds.filter((item) => item !== runId)) next.append('run', id)
-    for (const key of requestedColumns) next.append('ev', key)
     setParams(next)
   }
+  // 評価の並べ替えは URL に残す (再読み込みと共有で同じ並びにするため)
+  const evaluationSort = readEvaluationSort(params)
+  const setEvaluationSort = (sort: EvaluationSort) =>
+    setParams(writeEvaluationSort(params, sort), { replace: true })
   const setShownColumns = (keys: string[]) => {
     const next = new URLSearchParams(params)
     next.delete('ev')
@@ -295,6 +303,8 @@ export function ComparePage() {
           label={shortLabel}
           requested={requestedColumns}
           onChange={setShownColumns}
+          sort={evaluationSort}
+          onSortChange={setEvaluationSort}
         />
 
         {loading && <Spinner />}
@@ -438,13 +448,16 @@ function EvaluationCompare({
   label,
   requested,
   onChange,
+  sort,
+  onSortChange,
 }: {
   slots: (Slot & { run: RunDetail })[]
   label: (runId: string) => string
   requested: string[]
   onChange: (keys: string[]) => void
+  sort: EvaluationSort | null
+  onSortChange: (sort: EvaluationSort) => void
 }) {
-  const [sort, setSort] = useState<{ key: string; desc: boolean } | null>(null)
   const columns = useMemo(() => collectColumns(slots.map((slot) => slot.run.evaluations)), [slots])
   const hasGuard = slots.some((slot) => slot.run.evaluations?.guard)
   const noticed = slots.filter((slot) => slot.run.evaluations?.notice)
@@ -464,10 +477,10 @@ function EvaluationCompare({
       })
     : slots
   const onSort = (column: EvaluationColumn) =>
-    setSort((previous) => ({
+    onSortChange({
       key: column.key,
-      desc: previous?.key === column.key ? !previous.desc : initialDesc(column),
-    }))
+      desc: active?.key === column.key ? !active.desc : initialDesc(column),
+    })
 
   return (
     <Card

@@ -16,14 +16,31 @@ const diff: EvaluationValue = {
 }
 
 describe('GuardBadge', () => {
-  it('落ちた守る指標を文字と説明で出す', () => {
+  it('押すと落ちた指標の説明を開き, もう一度押すか Esc か外を押すと閉じる', () => {
     render(
-      <GuardBadge
-        guard={{ state: 'dropped', dropped: ['by_class: acc (差 -0.1)'], unknown: [] }}
-      />,
+      <>
+        <GuardBadge
+          guard={{ state: 'dropped', dropped: ['by_class: acc (差 -0.1)'], unknown: [] }}
+        />
+        <p>外</p>
+      </>,
     )
-    expect(screen.getByText('落ちた')).toBeInTheDocument()
-    expect(screen.getByText(/by_class: acc \(差 -0.1\)/)).toBeInTheDocument()
+    const badge = screen.getByRole('button', { name: '守る指標: 落ちた' })
+    // 開くまでは説明を出さず, title も付けない (読み上げを二重にしない)
+    expect(badge).toHaveAttribute('aria-expanded', 'false')
+    expect(badge).not.toHaveAttribute('title')
+    expect(screen.queryByText(/by_class: acc/)).not.toBeInTheDocument()
+    fireEvent.click(badge)
+    expect(badge).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('status')).toHaveTextContent('落ちた: by_class: acc (差 -0.1)')
+    fireEvent.click(badge)
+    expect(screen.queryByText(/by_class: acc/)).not.toBeInTheDocument()
+    fireEvent.click(badge)
+    fireEvent.keyDown(badge, { key: 'Escape' })
+    expect(screen.queryByText(/by_class: acc/)).not.toBeInTheDocument()
+    fireEvent.click(badge)
+    fireEvent.pointerDown(screen.getByText('外'))
+    expect(badge).toHaveAttribute('aria-expanded', 'false')
   })
   it('守る指標の表が無い実験には印を出さない', () => {
     render(<GuardBadge guard={null} />)

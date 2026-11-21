@@ -9,6 +9,8 @@ import {
   initialDesc,
   matchesValueFilters,
   parseValueFilters,
+  readEvaluationSort,
+  writeEvaluationSort,
 } from './evaluations'
 
 function value(patch: Partial<EvaluationValue>): EvaluationValue {
@@ -129,5 +131,24 @@ describe('parseValueFilters', () => {
     expect(matchesValueFilters(second, filters)).toBe(false)
     expect(matchesValueFilters(undefined, filters)).toBe(false)
     expect(matchesValueFilters(undefined, [])).toBe(true)
+  })
+})
+
+describe('readEvaluationSort と writeEvaluationSort', () => {
+  it('評価の列の並べ替えを URL に書き, 他の値を残して読み戻す', () => {
+    const params = new URLSearchParams('run=a&run=b&ev=x:acc')
+    const desc = writeEvaluationSort(params, { key: 'x:acc', desc: true })
+    expect(desc.toString()).toBe('run=a&run=b&ev=x%3Aacc&sort=ev%3Ax%3Aacc')
+    expect(readEvaluationSort(desc)).toEqual({ key: 'x:acc', desc: true })
+    const asc = writeEvaluationSort(desc, { key: 'x:loss', desc: false })
+    expect(asc.get('desc')).toBe('0')
+    expect(readEvaluationSort(asc)).toEqual({ key: 'x:loss', desc: false })
+    // 元の URL は書き換えない
+    expect(params.has('sort')).toBe(false)
+  })
+  it('評価の列でない並べ替えは読まない', () => {
+    expect(readEvaluationSort(new URLSearchParams('sort=best'))).toBeNull()
+    expect(readEvaluationSort(new URLSearchParams('sort=ev:'))).toBeNull()
+    expect(readEvaluationSort(new URLSearchParams())).toBeNull()
   })
 })

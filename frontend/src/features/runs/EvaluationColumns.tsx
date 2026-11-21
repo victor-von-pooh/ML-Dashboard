@@ -12,6 +12,7 @@ import {
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 
 import type { EvaluationValue, GuardCheck } from '../../api/client'
+import { useStableId } from '../../lib/a11y'
 import { formatMetric } from '../../lib/format'
 import { GUARD_LABELS, diffTone, guardDetail, type EvaluationColumn } from '../../lib/evaluations'
 
@@ -21,22 +22,54 @@ const GUARD_STYLE: Record<GuardCheck['state'], { icon: LucideIcon; className: st
   unknown: { icon: ShieldQuestionMark, className: 'text-ink-2 bg-surface-2' },
 }
 
-/** 守る指標の印. 色だけに頼らずアイコンと文字も付け, 説明に落ちた指標を出す */
+/**
+ * 守る指標の印. 色だけに頼らずアイコンと文字も付ける. 押すと (キーボードとタッチでも)
+ * 落ちた指標と判断できなかった理由の説明が印の下に開く
+ */
 export function GuardBadge({ guard }: { guard: GuardCheck | null | undefined }) {
+  const [open, setOpen] = useState(false)
+  const wrapper = useRef<HTMLSpanElement>(null)
+  const detailId = useStableId('guard-detail')
+  // 外を押したときに閉じる
+  useEffect(() => {
+    if (!open) return
+    const close = (event: PointerEvent) => {
+      if (!wrapper.current?.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('pointerdown', close)
+    return () => document.removeEventListener('pointerdown', close)
+  }, [open])
   if (!guard) return <span className="text-xs text-ink-3">—</span>
   const { icon: Icon, className } = GUARD_STYLE[guard.state]
-  const detail = guardDetail(guard)
+  const onKeyDown = (event: KeyboardEvent<HTMLSpanElement>) => {
+    if (event.key !== 'Escape' || !open) return
+    event.stopPropagation()
+    setOpen(false)
+  }
   return (
-    <span
-      title={detail}
-      className={clsx(
-        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap',
-        className,
-      )}
-    >
-      <Icon className="size-3.5" aria-hidden />
-      {GUARD_LABELS[guard.state]}
-      <span className="sr-only">. {detail}</span>
+    <span ref={wrapper} className="inline-flex flex-col items-start" onKeyDown={onKeyDown}>
+      <button
+        type="button"
+        aria-label={`守る指標: ${GUARD_LABELS[guard.state]}`}
+        aria-expanded={open}
+        aria-controls={detailId}
+        onClick={() => setOpen((value) => !value)}
+        className={clsx(
+          'inline-flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap',
+          className,
+        )}
+      >
+        <Icon className="size-3.5" aria-hidden />
+        {GUARD_LABELS[guard.state]}
+      </button>
+      {/* 開いたときだけ中身を入れ, 読み上げは開いた説明の 1 回だけにする */}
+      <span id={detailId} role="status">
+        {open && (
+          <span className="mt-1 block max-w-72 rounded-md border border-line bg-surface px-2 py-1 text-[11px] whitespace-pre-line text-ink-2">
+            {guardDetail(guard)}
+          </span>
+        )}
+      </span>
     </span>
   )
 }
