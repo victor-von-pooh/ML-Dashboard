@@ -1369,7 +1369,7 @@
     "/api/batches/{batch_id}/stop": {
       "post": {
         "summary": "Stop Batch",
-        "description": "候補のまとまりの残りを取りやめ, 学習中の候補を止める関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nbatch_id: str\n    まとまりの ID\n\nReturns\n----------\ninfo: BatchInfo\n    更新したまとまり",
+        "description": "候補のまとまりの残りを取りやめ, 学習中の候補を止める関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nbatch_id: str\n    まとまりの ID\nforce: bool = False\n    別のプロセスが持ち主のまとまりも取りやめるか (持ち主が応答しない\n    と利用者が確かめた場合)\n\nReturns\n----------\ninfo: BatchInfo\n    更新したまとまり",
         "operationId": "stop_batch",
         "parameters": [
           {
@@ -1379,6 +1379,16 @@
             "schema": {
               "type": "string",
               "title": "Batch Id"
+            }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Force"
             }
           }
         ],

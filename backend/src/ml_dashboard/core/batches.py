@@ -1,6 +1,7 @@
 import os
 import re
 import socket
+import subprocess
 import tempfile
 import threading
 import time
@@ -30,6 +31,9 @@ POLL_SEC = 2.0
 # このプロセスが起動した時刻 (持ち主の見分けに使う. モジュールを読んだときに
 # 1 回だけ, マイクロ秒まで取る)
 PROCESS_STARTED_AT = datetime.now().astimezone().isoformat()
+
+# プロセスの起動の時刻を読む ps を待つ秒数
+PS_TIMEOUT_SEC = 2.0
 
 # 待つ候補と学習中の候補の状態
 ACTIVE_STATES = ("waiting", "running")
@@ -73,6 +77,65 @@ def is_active(batch: Batch) -> bool:
     )
 
     return active
+
+
+def process_started(pid: int) -> Optional[datetime]:
+    """
+    プロセスが始まった時刻を ps で読む関数
+
+    Parameters
+    ----------
+    pid: int
+        プロセスの番号
+
+    Returns
+    ----------
+    started: Optional[datetime]
+        始まった時刻 (秒まで, ローカルのタイムゾーン付き). 読めない環境
+        (ps が無い, Windows など) と居ないプロセスは None
+    """
+    try:
+        output = subprocess.run(
+            ["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True,
+            text=True, timeout=PS_TIMEOUT_SEC, check=False,
+            env={**os.environ, "LC_ALL": "C"}
+        ).stdout
+        started: Optional[datetime] = datetime.strptime(
+            " ".join(output.split()), "%a %b %d %H:%M:%S %Y"
+        ).astimezone()
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+    return started
+
+
+def pid_reused(owner: BatchOwner) -> bool:
+    """
+    持ち主の pid が, 持ち主の後に始まった別のプロセスに使われているかを
+    判定する関数
+
+    Parameters
+    ----------
+    owner: BatchOwner
+        まとまりの持ち主
+
+    Returns
+    ----------
+    reused: bool
+        pid のプロセスが持ち主の起動の時刻より後に始まったかどうか.
+        確かめられない場合は False
+    """
+    started = process_started(owner.pid)
+    try:
+        owner_started = datetime.fromisoformat(owner.started_at)
+    except ValueError:
+        return False
+    # ps の時刻は秒までなので, 1 秒の幅を許す
+    reused = started is not None and (
+        started - owner_started
+    ).total_seconds() > 1
+
+    return reused
 
 
 class BatchHooks(Protocol):
@@ -273,13 +336,17 @@ class BatchManager:
         ----------
         orphaned: bool
             同じ hostname で, pid が動いていないか, pid が今のプロセスと
-            同じで起動の時刻が違う (使い回された pid) かどうか. 別の
-            hostname は確かめられないので False
+            同じで起動の時刻が違うか, pid のプロセスが持ち主の起動の時刻より
+            後に始まった (使い回された pid) かどうか. 別の hostname は
+            確かめられないので False
         """
         owner = batch.owner
         if owner.hostname != self.owner.hostname or self.owned(batch):
             return False
-        orphaned = not pid_alive(owner.pid) or owner.pid == self.owner.pid
+        orphaned = (
+            not pid_alive(owner.pid) or owner.pid == self.owner.pid
+            or pid_reused(owner)
+        )
 
         return orphaned
 

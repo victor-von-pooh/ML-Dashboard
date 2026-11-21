@@ -2,6 +2,7 @@ import hashlib
 import os
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
@@ -726,7 +727,7 @@ def test_orphan_batches(tmp_path: Path) -> None:
     foreign = manager.create("r", "train.py", None, [(candidate, "{}\n")])
     foreign.owner = BatchOwner(
         hostname=manager.owner.hostname, pid=os.getppid(),
-        started_at="2026-11-01T00:00:00+09:00"
+        started_at=datetime.now().astimezone().isoformat()
     )
     foreign.candidates[0].state = "running"
     foreign.candidates[0].job_id = "0123456789ab"
@@ -849,7 +850,7 @@ def test_stop_foreign_batch(client: TestClient, tmp_path: Path) -> None:
     batch = manager.create("p", "train.py", None, [(candidate, "{}\n")])
     batch.owner = BatchOwner(
         hostname=manager.owner.hostname, pid=os.getppid(),
-        started_at="2026-11-01T00:00:00+09:00"
+        started_at=datetime.now().astimezone().isoformat()
     )
     manager.save(batch)
     response = client.post(f"/api/batches/{batch.id}/stop")
@@ -858,3 +859,54 @@ def test_stop_foreign_batch(client: TestClient, tmp_path: Path) -> None:
     reloaded = manager.load(batch.id)
     assert reloaded is not None
     assert reloaded.candidates[0].state == "waiting"
+
+    # 持ち主が応答しないと確かめた場合は強制して取りやめられる
+    forced = client.post(
+        f"/api/batches/{batch.id}/stop", params={"force": "true"}
+    )
+    assert forced.status_code == 200
+    assert forced.json()["candidates"][0]["state"] == "cancelled"
+    assert forced.json()["finished"]
+
+
+def test_pid_reused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    持ち主の pid のプロセスが持ち主の後に始まっていれば, 使い回しとして
+    持ち主が居ないとみなすことを確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        pytest の差し替え
+
+    Returns
+    ----------
+    None
+    """
+    manager = BatchManager(tmp_path)
+    owner = BatchOwner(
+        hostname=manager.owner.hostname, pid=os.getppid(),
+        started_at="2026-11-01T00:00:00+09:00"
+    )
+    # 動いている親のプロセスは 2026-11-01 より後に始まったので使い回し
+    started = batches_module.process_started(os.getppid())
+    if started is not None:
+        assert batches_module.pid_reused(owner)
+
+    # 起動の時刻が読めない環境と, 持ち主より前に始まったプロセスは違う
+    monkeypatch.setattr(batches_module, "process_started", lambda pid: None)
+    assert not batches_module.pid_reused(owner)
+    monkeypatch.setattr(
+        batches_module, "process_started",
+        lambda pid: datetime.fromisoformat("2026-10-01T00:00:00+09:00")
+    )
+    assert not batches_module.pid_reused(owner)
+    later = BatchOwner(
+        hostname=owner.hostname, pid=owner.pid,
+        started_at="2026-09-01T00:00:00.5+09:00"
+    )
+    assert batches_module.pid_reused(later)

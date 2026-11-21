@@ -919,6 +919,9 @@ export interface paths {
          *         リクエスト
          *     batch_id: str
          *         まとまりの ID
+         *     force: bool = False
+         *         別のプロセスが持ち主のまとまりも取りやめるか (持ち主が応答しない
+         *         と利用者が確かめた場合)
          *
          *     Returns
          *     ----------
@@ -3431,7 +3434,9 @@ export interface operations {
     };
     stop_batch: {
         parameters: {
-            query?: never;
+            query?: {
+                force?: boolean;
+            };
             header?: never;
             path: {
                 batch_id: string;

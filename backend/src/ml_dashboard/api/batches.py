@@ -616,7 +616,9 @@ def list_batches(request: Request) -> list[BatchInfo]:
 
 
 @router.post("/batches/{batch_id}/stop", responses=NOT_FOUND | CONFLICT)
-def stop_batch(request: Request, batch_id: str) -> BatchInfo:
+def stop_batch(
+    request: Request, batch_id: str, force: bool = False
+) -> BatchInfo:
     """
     候補のまとまりの残りを取りやめ, 学習中の候補を止める関数
 
@@ -626,6 +628,9 @@ def stop_batch(request: Request, batch_id: str) -> BatchInfo:
         リクエスト
     batch_id: str
         まとまりの ID
+    force: bool = False
+        別のプロセスが持ち主のまとまりも取りやめるか (持ち主が応答しない
+        と利用者が確かめた場合)
 
     Returns
     ----------
@@ -641,13 +646,15 @@ def stop_batch(request: Request, batch_id: str) -> BatchInfo:
     manager = get_batches(request)
     found = manager.load(batch_id)
     if (
-        found is not None and not manager.owned(found)
+        found is not None and not force and not manager.owned(found)
         and not manager.orphaned(found)
     ):
         raise HTTPException(
             409,
             "別のダッシュボードのプロセス (" + found.owner.hostname
-            + ") が進めているまとまりなので, そのプロセスで取りやめてください"
+            + ") が進めているまとまりなので, そのプロセスで取りやめて"
+            "ください. 持ち主が応答しない場合は, 確かめてから強制して"
+            "取りやめられます"
         )
     projects = project_map(request)
     jobs = get_jobs(request)
