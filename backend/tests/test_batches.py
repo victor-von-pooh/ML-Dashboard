@@ -338,8 +338,8 @@ def test_batch_conflict_and_stop(
     job_id = stopped["candidates"][0]["job_id"]
     assert client.get(f"/api/jobs/{job_id}").json()["stop_requested"]
 
-    # 学習中の候補のプロセスを止めて, まとまりの終わりを待つ
-    client.post(f"/api/jobs/{job_id}/stop", json={"force": True})
+    # 実験のディレクトリの無いジョブは中断でプロセスに割り込むので,
+    # まとまりの終わりを待つ
     finished = wait_batch(client, batch_id)
     assert finished["candidates"][1]["job_id"] is None
 
