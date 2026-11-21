@@ -13,7 +13,10 @@ from ml_dashboard.core.models import (
     Better,
     CellValue,
     Evaluation,
+    PolicyEnd,
+    PolicyEndShare,
     PolicyGuards,
+    PolicyOutcome,
     PolicySpace,
     RunLink,
     RunPolicy,
@@ -36,6 +39,16 @@ from ml_dashboard.core.runs import (
     make_run_id,
     resolve_run_file,
 )
+
+# 守り付きの評価 (ML-Found の evaluate_policy の行) の終え方の並びと,
+# 守りの結果ごとの数の列 (ML-Found の docs/DESIGN.md の「守り付きの評価」)
+POLICY_ENDS: tuple[PolicyEnd, ...] = (
+    "terminated", "truncated", "max_steps", "stop", "handover"
+)
+POLICY_STATUSES = ("ok", "clipped", "fallback", "stop", "handover")
+
+# 守りが行動を返さずにエピソードを終えた終え方
+POLICY_GUARDED_ENDS: tuple[PolicyEnd, ...] = ("stop", "handover")
 
 # ML-Found の実験のディレクトリの任意のファイル (ML-Found の docs/FORMAT.md)
 TASK_FILE = "task.yaml"
@@ -810,6 +823,105 @@ def to_evaluation(data: dict[str, Any]) -> Optional[Evaluation]:
     return evaluation
 
 
+def is_policy_evaluation(data: dict[str, Any]) -> bool:
+    """
+    評価が守り付きの評価 (evaluate_policy の行の表) かを判定する関数
+
+    Parameters
+    ----------
+    data: dict[str, Any]
+        形を確かめた evaluations/<名前>.json の中身
+
+    Returns
+    ----------
+    found: bool
+        表で, 列に end と守りの結果ごとの数の列を全て持つか
+    """
+    columns = data["columns"]
+    found = (
+        data.get("kind") != "curve" and "end" in columns
+        and all(status in columns for status in POLICY_STATUSES)
+    )
+
+    return found
+
+
+def share(count: int, total: int) -> Optional[float]:
+    """
+    数の割合を返す関数
+
+    Parameters
+    ----------
+    count: int
+        数
+    total: int
+        全体の数
+
+    Returns
+    ----------
+    ratio: Optional[float]
+        割合, 全体が 0 の場合は None
+    """
+    ratio = count / total if total > 0 else None
+
+    return ratio
+
+
+def to_policy_outcome(data: dict[str, Any]) -> Optional[PolicyOutcome]:
+    """
+    守り付きの評価の全ての行から, 終え方ごとの割合を数える関数
+
+    画面に返す行は先頭だけなので, 割合はファイルの全ての行から求める
+
+    Parameters
+    ----------
+    data: dict[str, Any]
+        形を確かめた evaluations/<名前>.json の中身
+
+    Returns
+    ----------
+    outcome: Optional[PolicyOutcome]
+        終え方ごとの割合, 守り付きの評価でない場合は None
+    """
+    if not is_policy_evaluation(data):
+        return None
+    rows: list[dict[str, Any]] = data["rows"]
+
+    # 終え方ごとの数. 知らない値と値の無い行は other
+    counts: dict[PolicyEnd, int] = {end: 0 for end in POLICY_ENDS}
+    other = 0
+    for row in rows:
+        end = row.get("end")
+        if isinstance(end, str) and end in counts:
+            counts[end] += 1
+        else:
+            other += 1
+    total = len(rows)
+    ends = [
+        PolicyEndShare(end=end, count=count, ratio=share(count, total))
+        for end, count in counts.items()
+    ]
+    if other > 0:
+        ends.append(
+            PolicyEndShare(end="other", count=other, ratio=share(other, total))
+        )
+
+    # 守りが止めたか元の制御に戻したエピソード
+    guarded = sum(counts[end] for end in POLICY_GUARDED_ENDS)
+    outcome = PolicyOutcome(
+        name=data["name"],
+        split=text_or_none(data.get("split")),
+        description=text_or_none(data.get("description")),
+        epoch=int_or_none(data.get("epoch")),
+        episodes=total,
+        ends=ends,
+        guarded=guarded,
+        guarded_ratio=share(guarded, total)
+    )
+
+    return outcome
+
+
 def evaluation_order(evaluation: Evaluation) -> tuple[bool, str]:
     """
     評価を並べる順を返す関数
@@ -1097,7 +1209,10 @@ def load_checked_evaluations(
     return checked, skipped
 
 
-def read_evaluations(run_dir: Path, notices: list[str]) -> list[Evaluation]:
+def read_evaluations(
+    run_dir: Path, notices: list[str],
+    outcomes: Optional[list[PolicyOutcome]] = None
+) -> list[Evaluation]:
     """
     evaluations/ の評価を読む関数
 
@@ -1107,6 +1222,9 @@ def read_evaluations(run_dir: Path, notices: list[str]) -> list[Evaluation]:
         実験のディレクトリ
     notices: list[str]
         読めなかったファイルの注意を足すリスト
+    outcomes: Optional[list[PolicyOutcome]] = None
+        守り付きの評価の割合を評価と同じ順で足すリスト, None の場合は
+        数えない
 
     Returns
     ----------
@@ -1115,6 +1233,7 @@ def read_evaluations(run_dir: Path, notices: list[str]) -> list[Evaluation]:
     """
     # evaluations/ がリンクなら注意, 形と名前の合う評価だけを守る指標を先に
     evaluations: list[Evaluation] = []
+    found: list[tuple[tuple[bool, str], PolicyOutcome]] = []
     if (run_dir / EVALUATIONS_DIR).is_symlink():
         notices.append(EVALUATIONS_LINK_NOTICE)
     checked, skipped = load_checked_evaluations(
@@ -1122,12 +1241,21 @@ def read_evaluations(run_dir: Path, notices: list[str]) -> list[Evaluation]:
     )
     for _, data in checked:
         evaluation = to_evaluation(data)
-        if evaluation is not None:
-            evaluations.append(evaluation)
+        if evaluation is None:
+            continue
+        evaluations.append(evaluation)
+        outcome = to_policy_outcome(data) if outcomes is not None else None
+        if outcome is not None:
+            found.append((evaluation_order(evaluation), outcome))
     notice = skipped_notice(skipped)
     if notice is not None:
         notices.append(notice)
     evaluations.sort(key=evaluation_order)
+
+    # 守り付きの評価の割合も評価と同じ順
+    if outcomes is not None:
+        found.sort(key=lambda item: item[0])
+        outcomes.extend(outcome for _, outcome in found)
 
     return evaluations
 
@@ -1438,7 +1566,8 @@ def read_results(
     Returns
     ----------
     results: RunResults
-        何の実験か, 評価, 見本. 無い実験は空 (ML-Found を読み込まない)
+        何の実験か, 評価, 見本, 方策の一式, 守り付きの評価の割合.
+        無い実験は空 (ML-Found を読み込まない)
     """
     # evaluations/ がリンクなだけの実験も, 評価の無い実験と見分けられる注意
     notices: list[str] = []
@@ -1461,11 +1590,13 @@ def read_results(
         ])
         return results
 
+    outcomes: list[PolicyOutcome] = []
     results = RunResults(
         task=read_task(run_dir, project, store, notices),
-        evaluations=read_evaluations(run_dir, notices),
+        evaluations=read_evaluations(run_dir, notices, outcomes),
         samples=read_samples(run_dir, notices),
         policy=read_policy(run_dir),
+        policy_outcomes=outcomes,
         notices=notices
     )
 

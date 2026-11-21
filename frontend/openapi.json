@@ -3159,6 +3159,43 @@
         ],
         "title": "ParamSpec"
       },
+      "PolicyEndShare": {
+        "properties": {
+          "end": {
+            "type": "string",
+            "enum": [
+              "terminated",
+              "truncated",
+              "max_steps",
+              "stop",
+              "handover",
+              "other"
+            ],
+            "title": "End"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratio"
+          }
+        },
+        "type": "object",
+        "required": [
+          "end",
+          "count"
+        ],
+        "title": "PolicyEndShare"
+      },
       "PolicyFallback": {
         "properties": {
           "kind": {
@@ -3298,6 +3335,81 @@
           "fallback"
         ],
         "title": "PolicyGuards"
+      },
+      "PolicyOutcome": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "split": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Split"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "epoch": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Epoch"
+          },
+          "episodes": {
+            "type": "integer",
+            "title": "Episodes"
+          },
+          "ends": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyEndShare"
+            },
+            "type": "array",
+            "title": "Ends"
+          },
+          "guarded": {
+            "type": "integer",
+            "title": "Guarded"
+          },
+          "guarded_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guarded Ratio"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "episodes",
+          "ends",
+          "guarded"
+        ],
+        "title": "PolicyOutcome"
       },
       "PolicySpace": {
         "properties": {
@@ -5158,6 +5270,14 @@
                 "type": "null"
               }
             ]
+          },
+          "policy_outcomes": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyOutcome"
+            },
+            "type": "array",
+            "title": "Policy Outcomes",
+            "default": []
           },
           "notices": {
             "items": {
