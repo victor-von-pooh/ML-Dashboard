@@ -5,9 +5,10 @@ import { Link } from 'react-router'
 import type { BatchCandidate, BatchInfo, JobInfo } from '../../api/client'
 import { encodeRunId } from '../../api/client'
 import { useStopBatch } from '../../api/hooks'
-import { Button, ErrorBox } from '../../components/ui'
+import { Button, ErrorBox, StatusBadge } from '../../components/ui'
 import { formatDateTime } from '../../lib/format'
 import { MAX_COMPARE } from '../../lib/metrics'
+import { jobStatus } from '../../lib/progress'
 
 // 環境のジョブを待っていることを表す印 (バックエンドの ENVIRONMENT_MARK)
 const ENVIRONMENT_MARK = 'environment'
@@ -28,6 +29,7 @@ const STATES: Record<
 export function BatchCard({ batch, jobs }: { batch: BatchInfo; jobs: JobInfo[] }) {
   const stop = useStopBatch()
   const runOf = new Map(jobs.map((job) => [job.id, job.run_id]))
+  const jobOf = new Map(jobs.map((job) => [job.id, job]))
   // 候補のジョブが残した実験 (比べられる数まで)
   const runIds = batch.candidates
     .map((candidate) => (candidate.job_id ? runOf.get(candidate.job_id) : null))
@@ -117,6 +119,12 @@ export function BatchCard({ batch, jobs }: { batch: BatchInfo; jobs: JobInfo[] }
                 {label}
               </span>
               <span className="font-mono text-xs">{candidate.name}</span>
+              {/* 終わった候補は, 完了か失敗か中断かをジョブの状態で添える */}
+              {candidate.state === 'finished' &&
+                candidate.job_id &&
+                jobOf.get(candidate.job_id) && (
+                  <StatusBadge status={jobStatus(jobOf.get(candidate.job_id) as JobInfo)} />
+                )}
               {candidate.job_id && (
                 <Link
                   to={`/jobs/${candidate.job_id}`}
