@@ -10,6 +10,7 @@ from typing import Any, Literal, Optional
 
 from ml_dashboard.core.loader import import_ml_found
 from ml_dashboard.core.models import (
+    Better,
     CellValue,
     Evaluation,
     PolicyGuards,
@@ -77,6 +78,13 @@ DIR_FLAGS = (
 
 # 評価の種類 (曲線は横軸の列がある場合だけ)
 EVALUATION_KINDS = ("table", "curve")
+
+# 指標の向き (ML-Found の docs/FORMAT.md の「指標の向き」)
+BETTER_VALUES = ("lower", "higher")
+
+# 比べる相手との表の形で, 同じ指標の向きを持つ列の名前の終わり
+# (<指標>, <指標>_baseline, <指標>_diff)
+METRIC_SUFFIXES = ("_baseline", "_diff")
 
 # 見本の種類 (知らない種類はその他のファイルとして扱う)
 SAMPLE_KINDS = ("image", "text", "audio", "point_cloud", "mask", "file")
@@ -697,6 +705,90 @@ def skip_reason(path: Path) -> str:
     return reason
 
 
+def metric_family(column: str, columns: list[str]) -> list[str]:
+    """
+    比べる相手との表の形で, 列と同じ指標の列を集める関数
+
+    Parameters
+    ----------
+    column: str
+        列の名前
+    columns: list[str]
+        表の列
+
+    Returns
+    ----------
+    family: list[str]
+        <指標>, <指標>_baseline, <指標>_diff のうち表にある列 (列の順).
+        列自体も含む. 終わりは 1 段だけ外す (acc_baseline_diff の指標は
+        acc_baseline)
+    """
+    # 終わりを除いた名前を指標とし, 同じ指標の 3 つの列の候補を作成
+    metric = column
+    for suffix in METRIC_SUFFIXES:
+        if column.endswith(suffix) and len(column) > len(suffix):
+            metric = column[:-len(suffix)]
+            break
+    candidates = {metric} | {metric + suffix for suffix in METRIC_SUFFIXES}
+    family = [
+        item for item in columns if item in candidates or item == column
+    ]
+
+    return family
+
+
+def read_better(data: dict[str, Any]) -> dict[str, Better]:
+    """
+    評価のファイルの中身から列ごとの指標の向きを読む関数
+
+    ML-Found の docs/FORMAT.md の「指標の向き」と同じに読む
+
+    Parameters
+    ----------
+    data: dict[str, Any]
+        evaluations/<名前>.json の中身
+
+    Returns
+    ----------
+    better: dict[str, Better]
+        表の列のうち向きのあるもの (同じ指標の列に広げたもの, 列の順).
+        better を持たないファイルは空. 表に無い列と知らない値の欄は除き,
+        書いていない列に違う向きが届く場合は埋めない
+    """
+    # 列が文字のリストでない場合と better が辞書でない場合は向きが無い扱い
+    columns = data.get("columns")
+    raw = data.get("better")
+    better: dict[str, Better] = {}
+    if (
+        not isinstance(columns, list)
+        or not all(isinstance(column, str) for column in columns)
+        or not isinstance(raw, dict)
+    ):
+        return better
+    filled: dict[str, Better] = {
+        column: value for column, value in raw.items()
+        if column in columns and value in BETTER_VALUES
+    }
+
+    # 向きのある列から同じ指標の列へ届く向きを, 変化が無くなるまで広げる
+    # (各回で全ての列から集めてから決めるので, 書いた順に頼らない)
+    while True:
+        arrivals: dict[str, set[Better]] = {}
+        for column, value in filled.items():
+            for item in metric_family(column, columns):
+                arrivals.setdefault(item, set()).add(value)
+        added = {
+            item: next(iter(values)) for item, values in arrivals.items()
+            if len(values) == 1 and item not in filled
+        }
+        if not added:
+            break
+        filled.update(added)
+    better = {column: filled[column] for column in columns if column in filled}
+
+    return better
+
+
 def to_evaluation(data: dict[str, Any]) -> Optional[Evaluation]:
     """
     評価のファイルの中身を, 画面に返す形にする関数
@@ -738,6 +830,7 @@ def to_evaluation(data: dict[str, Any]) -> Optional[Evaluation]:
         description=text_or_none(data.get("description")),
         baseline=text_or_none(data.get("baseline")),
         guard=data.get("guard") is True,
+        better=read_better(data),
         epoch=int_or_none(data.get("epoch")),
         created_at=text_or_none(data.get("created_at")),
         total_rows=len(rows)

@@ -39,6 +39,7 @@ function evaluation(rows: Evaluation['rows'], columns: string[], x: string | nul
     description: null,
     baseline: null,
     guard: false,
+    better: {},
     epoch: null,
     created_at: null,
     total_rows: rows.length,

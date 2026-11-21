@@ -1150,6 +1150,13 @@ export interface components {
              * @default false
              */
             guard: boolean;
+            /**
+             * Better
+             * @default {}
+             */
+            better: {
+                [key: string]: "lower" | "higher";
+            };
             /** Epoch */
             epoch?: number | null;
             /** Created At */
