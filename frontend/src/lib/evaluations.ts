@@ -92,9 +92,13 @@ export function chooseColumns(
 }
 
 /** 差の値の良し悪し. 向きが分からない値と差でない値は null */
+/** 差を 0 とみなす幅 (計算の誤差で悪いとしないため) */
+export const DIFF_TOLERANCE = 1e-12
+
 export function diffTone(value: EvaluationValue | undefined): 'good' | 'bad' | 'same' | null {
   if (!value?.diff || value.value == null || !value.better) return null
-  if (value.value === 0) return 'same'
+  // 計算の誤差の幅は同じとする (バックエンドの DIFF_TOLERANCE と同じ)
+  if (Math.abs(value.value) <= DIFF_TOLERANCE) return 'same'
   const better = value.better === 'lower' ? value.value < 0 : value.value > 0
   return better ? 'good' : 'bad'
 }

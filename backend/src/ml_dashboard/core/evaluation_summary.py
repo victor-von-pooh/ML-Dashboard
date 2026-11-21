@@ -45,9 +45,18 @@ HIGHER_BETTER = frozenset({
     "accuracy", "acc", "f1", "fbeta", "auc", "auroc", "ap", "map",
     "precision", "recall", "sensitivity", "specificity", "iou", "miou",
     "jaccard", "dice", "r2", "bleu", "rouge", "meteor", "chrf", "psnr",
-    "ssim", "ndcg", "mrr", "hit", "hits", "top1", "top5", "kappa", "mcc",
+    "ssim", "ndcg", "mrr", "hit", "hits", "kappa", "mcc",
     "reward", "return", "success", "coverage",
 })
+# 向きを打ち消すか変える語 (neg_log_loss は大きいほど良く, accuracy_gap は
+# 小さいほど良い). 含む名前は名前の語では向きを決めない
+MODIFIER_WORDS = frozenset({
+    "neg", "negative", "inv", "inverse", "gap", "drop", "delta", "change",
+    "std", "var", "variance", "reduction", "improvement", "increase",
+    "decrease", "gain",
+})
+# 差を 0 とみなす幅 (計算の誤差で落ちたとしないため)
+DIFF_TOLERANCE = 1e-12
 
 # 評価の名前の決まり (ML-Found の docs/FORMAT.md. 列の名前を
 # <評価の名前>:<列> にするので, : を含む名前を除くため)
@@ -86,7 +95,7 @@ def metric_better(
     }
     lower = bool(words & LOWER_BETTER)
     higher = bool(words & HIGHER_BETTER)
-    if lower != higher:
+    if lower != higher and not words & MODIFIER_WORDS:
         better: Optional[Better] = "lower" if lower else "higher"
         return better
 
@@ -216,9 +225,11 @@ def is_worse(diff: float, better: Better) -> bool:
     Returns
     ----------
     worse: bool
-        悪い向きの差かどうか (0 は悪くない)
+        悪い向きの差かどうか (0 と, 幅 DIFF_TOLERANCE の中は悪くない)
     """
-    worse = diff > 0 if better == "lower" else diff < 0
+    worse = (
+        diff > DIFF_TOLERANCE if better == "lower" else diff < -DIFF_TOLERANCE
+    )
 
     return worse
 

@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from ml_dashboard.core import evaluation_summary as summary_module
 from ml_dashboard.core.evaluation_summary import (
+    is_worse,
     metric_better,
     summarize_evaluations,
 )
@@ -216,6 +217,33 @@ def test_metric_better() -> None:
     assert metric_better("score", "valid/other", "max") is None
     # 語の一部だけが同じ名前 (accent は acc でない) は分からない
     assert metric_better("accent", None, None) is None
+    # 向きを打ち消すか変える語を含む名前は, 名前の語では決めない
+    for name in ("neg_log_loss", "neg_mse", "accuracy_gap", "acc_drop",
+                 "f1_std", "loss_reduction"):
+        assert metric_better(name, None, None) is None, name
+    assert metric_better("neg_log_loss", "valid/neg_log_loss", "max") == (
+        "higher"
+    )
+    # top1 と top5 は修飾語で, 向きは acc か err で決まる
+    assert metric_better("top1_error", None, None) == "lower"
+    assert metric_better("top5_acc", None, None) == "higher"
+    assert metric_better("top1", None, None) is None
+
+
+def test_is_worse_tolerance() -> None:
+    """
+    計算の誤差の幅の差は落ちたとしないことを確かめる関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    None
+    """
+    assert not is_worse(-1e-17, "higher") and not is_worse(1e-17, "lower")
+    assert is_worse(-1e-6, "higher") and is_worse(1e-6, "lower")
 
 
 def test_cache_and_skip(project_dir: Path, tmp_path: Path) -> None:
