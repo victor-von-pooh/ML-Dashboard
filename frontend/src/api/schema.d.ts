@@ -821,11 +821,15 @@ export interface paths {
          *         リクエスト
          *     project_id: str
          *         プロジェクトの ID
+         *     script: Optional[str] = None
+         *         学習のスクリプト (default の config の選択に使用)
+         *     default_config: Optional[str] = None
+         *         起動の前の確認に使う default の config, None はスクリプトから選択
          *
          *     Returns
          *     ----------
          *     specs: ModelSpecList
-         *         定義の一覧と, 一覧を作れない理由
+         *         定義の一覧, 一覧を作れない理由, default の config の model.spec
          */
         get: operations["read_model_specs"];
         put?: never;
@@ -1549,6 +1553,8 @@ export interface components {
             specs: components["schemas"]["ModelSpecInfo"][];
             /** Notice */
             notice?: string | null;
+            /** Default Spec */
+            default_spec?: string | null;
         };
         /** OptimizerInfo */
         OptimizerInfo: {
@@ -3320,7 +3326,10 @@ export interface operations {
     };
     read_model_specs: {
         parameters: {
-            query?: never;
+            query?: {
+                script?: string | null;
+                default_config?: string | null;
+            };
             header?: never;
             path: {
                 project_id: string;

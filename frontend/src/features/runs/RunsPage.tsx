@@ -45,6 +45,7 @@ import {
 } from '../../lib/evaluations'
 import { formatDateTime, formatDuration, formatMetric, formatRelative } from '../../lib/format'
 import { MAX_COMPARE, summarizeDiff } from '../../lib/metrics'
+import { modelKey, modelLabels } from '../../lib/modelGroups'
 import { ReadinessCard } from '../projects/ReadinessCard'
 import { StarButton } from '../run/NotePanel'
 import {
@@ -237,6 +238,9 @@ function RunsPage({ projectId }: { projectId: string }) {
       ? shownColumns.find((column) => column.key === key.slice(EVALUATION_SORT_PREFIX.length))
       : undefined
   const hasGuard = all.some((run) => run.evaluations?.guard)
+  // 使ったモデルの定義の名前 (同じ名前で中身の違う定義は sha256 の先頭で見分ける)
+  const hasModel = all.some((run) => run.model)
+  const labelOfModel = modelLabels(all.map((run) => run.model))
   const noticed = all.filter((run) => run.evaluations?.notice)
   // <列><比べ方><数> の語は評価の値で, 他の語は文字で絞り込む
   const { filters, words, unresolved } = parseValueFilters(query, evaluationColumns)
@@ -282,6 +286,7 @@ function RunsPage({ projectId }: { projectId: string }) {
         run.id,
         ...summarizeDiff(run.diff),
         otherDefault(run, commonDefault) ?? '',
+        run.model ? (labelOfModel.get(modelKey(run.model)) ?? '') : '',
         note?.note ?? '',
         ...(note?.tags ?? []),
       ]
@@ -614,7 +619,10 @@ function RunsPage({ projectId }: { projectId: string }) {
         <div className="overflow-x-auto rounded-xl border border-line bg-surface">
           <table
             className="w-full text-sm"
-            style={{ minWidth: 860 + shownColumns.length * 120 + (hasGuard ? 120 : 0) }}
+            style={{
+              minWidth:
+                860 + shownColumns.length * 120 + (hasGuard ? 120 : 0) + (hasModel ? 140 : 0),
+            }}
           >
             <thead className="border-b border-line bg-surface-2/50 text-left text-xs text-ink-3">
               <tr>
@@ -626,6 +634,7 @@ function RunsPage({ projectId }: { projectId: string }) {
                 </th>
                 <th className="px-3 py-2 font-medium">状態</th>
                 <SortHeader label="実験" id="started" sort={sort} onSort={onSort} />
+                {hasModel && <th className="px-3 py-2 font-medium">モデルの定義</th>}
                 <th className="px-3 py-2 font-medium">default との差分</th>
                 <SortHeader
                   label="エポック"
@@ -680,6 +689,13 @@ function RunsPage({ projectId }: { projectId: string }) {
                   }
                   onToggle={() => toggle(run.id)}
                   hasGuard={hasGuard}
+                  modelLabel={
+                    hasModel
+                      ? run.model
+                        ? (labelOfModel.get(modelKey(run.model)) ?? '')
+                        : ''
+                      : null
+                  }
                   columns={shownColumns}
                 />
               ))}
@@ -705,6 +721,7 @@ function RunRow({
   isBest,
   onToggle,
   hasGuard,
+  modelLabel,
   columns,
 }: {
   run: RunSummary
@@ -719,6 +736,8 @@ function RunRow({
   onToggle: () => void
   /** 守る指標の列を出すか */
   hasGuard: boolean
+  /** モデルの定義の名前. 列を出さない場合は null, 記録の無い実験は空 */
+  modelLabel: string | null
   /** 並べる評価の列 */
   columns: EvaluationColumn[]
 }) {
@@ -797,6 +816,20 @@ function RunRow({
           </div>
         )}
       </td>
+      {modelLabel !== null && (
+        <td className="max-w-48 px-3 py-2.5">
+          {modelLabel ? (
+            <span
+              className="font-mono text-xs break-all text-ink-2"
+              title={run.model ? `定義: ${run.model.path}` : undefined}
+            >
+              {modelLabel}
+            </span>
+          ) : (
+            <span className="text-xs text-ink-3">—</span>
+          )}
+        </td>
+      )}
       <td className="max-w-80 px-3 py-2.5">
         <div className="flex flex-wrap gap-1">
           {otherBase && (

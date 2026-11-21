@@ -91,9 +91,9 @@ def get_batches(request: Request) -> BatchManager:
     return batches
 
 
-def default_has_spec(path: Path) -> bool:
+def read_default_spec(path: Path) -> Optional[str]:
     """
-    default の config が model.spec を持つかを確かめる関数
+    default の config の model.spec を読む関数
 
     Parameters
     ----------
@@ -102,17 +102,17 @@ def default_has_spec(path: Path) -> bool:
 
     Returns
     ----------
-    found: bool
-        model.spec に空でない値があるかどうか
+    spec: Optional[str]
+        model.spec の値 (参照は解決しない), 無いか空なら None
     """
     try:
         loaded = OmegaConf.load(path)
     except Exception:
-        return False
+        return None
     value = raw_model_spec(loaded) if isinstance(loaded, DictConfig) else None
-    found = value is not None and str(value).strip() != ""
+    spec = None if value is None or not str(value).strip() else str(value)
 
-    return found
+    return spec
 
 
 def base_text(project: Project, body: BatchCreate) -> str:
@@ -475,7 +475,10 @@ def to_batch_info(request: Request, batch: Batch) -> BatchInfo:
 @router.get(
     "/projects/{project_id}/model-specs", responses=NOT_FOUND
 )
-def read_model_specs(request: Request, project_id: str) -> ModelSpecList:
+def read_model_specs(
+    request: Request, project_id: str, script: Optional[str] = None,
+    default_config: Optional[str] = None
+) -> ModelSpecList:
     """
     プロジェクトの models/ のモデルの定義の一覧を返す関数
 
@@ -485,14 +488,24 @@ def read_model_specs(request: Request, project_id: str) -> ModelSpecList:
         リクエスト
     project_id: str
         プロジェクトの ID
+    script: Optional[str] = None
+        学習のスクリプト (default の config の選択に使用)
+    default_config: Optional[str] = None
+        起動の前の確認に使う default の config, None はスクリプトから選択
 
     Returns
     ----------
     specs: ModelSpecList
-        定義の一覧と, 一覧を作れない理由
+        定義の一覧, 一覧を作れない理由, default の config の model.spec
     """
     project = get_project(request, project_id)
     specs = list_model_specs(Path(project.path))
+
+    # 候補の欄を出すかを決める default の config の model.spec
+    default = resolve_default(project, default_config) or default_config_for(
+        Path(project.path), script
+    )
+    specs.default_spec = read_default_spec(default)
 
     return specs
 
@@ -570,7 +583,7 @@ def create_batch(
     default_path = default or default_config_for(
         Path(project.path), body.script
     )
-    if not default_has_spec(default_path):
+    if read_default_spec(default_path) is None:
         raise HTTPException(
             400,
             "default の config に model.spec が無いので, 学習のスクリプトは"

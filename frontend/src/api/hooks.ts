@@ -24,6 +24,9 @@ export const keys = {
   requires: (projectId: string, text: string, script: string, defaultConfig: string) =>
     ['projects', projectId, 'requires', script, defaultConfig, text] as const,
   jobs: ['jobs'] as const,
+  batches: ['batches'] as const,
+  modelSpecs: (projectId: string, script: string, defaultConfig: string) =>
+    ['projects', projectId, 'model-specs', script, defaultConfig] as const,
   job: (jobId: string) => ['jobs', jobId] as const,
   jobOutput: (jobId: string) => ['jobs', jobId, 'output'] as const,
 }
@@ -413,5 +416,46 @@ export function useRecheckReadiness(projectId: string) {
   return useMutation({
     mutationFn: () => api.getReadiness(projectId, true),
     onSuccess: (readiness) => client.setQueryData(keys.readiness(projectId), readiness),
+  })
+}
+
+/** プロジェクトの models/ のモデルの定義の候補 */
+export function useModelSpecs(projectId: string, script: string, defaultConfig?: string) {
+  return useQuery({
+    queryKey: keys.modelSpecs(projectId, script, defaultConfig ?? ''),
+    queryFn: () => api.getModelSpecs(projectId, script, defaultConfig),
+    enabled: script !== '',
+  })
+}
+
+/** 候補のまとまりの一覧. 進めている途中のまとまりがある間は一定の間隔で読み直す */
+export function useBatches() {
+  return useQuery({
+    queryKey: keys.batches,
+    queryFn: api.listBatches,
+    refetchInterval: (query) =>
+      query.state.data?.some((batch) => !batch.finished) ? LIVE_INTERVAL : 30_000,
+  })
+}
+
+export function useCreateBatch(projectId: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: Parameters<typeof api.createBatch>[1]) => api.createBatch(projectId, body),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.batches })
+      void client.invalidateQueries({ queryKey: keys.jobs })
+    },
+  })
+}
+
+export function useStopBatch() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: api.stopBatch,
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.batches })
+      void client.invalidateQueries({ queryKey: keys.jobs })
+    },
   })
 }

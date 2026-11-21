@@ -74,7 +74,16 @@ export function ProgressBars({ progress }: { progress: Progress }) {
 }
 
 /** ジョブの概要と操作 */
-export function JobCard({ job, detail = false }: { job: JobInfo; detail?: boolean }) {
+export function JobCard({
+  job,
+  detail = false,
+  batchLabel,
+}: {
+  job: JobInfo
+  detail?: boolean
+  /** 候補のまとまりのジョブなら, どの定義の何番目か */
+  batchLabel?: string
+}) {
   const stop = useStopJob()
   const running = job.status === 'running'
   const run = job.run
@@ -96,6 +105,12 @@ export function JobCard({ job, detail = false }: { job: JobInfo; detail?: boolea
               </h3>
             )}
           </div>
+          {batchLabel && (
+            <p className="mt-1 text-xs text-accent-text">
+              候補のまとまり: {batchLabel}
+              {running && ' (中断しても, まとまりは次の候補へ進みます)'}
+            </p>
+          )}
           <p className="mt-1 truncate font-mono text-xs text-ink-3" title={job.config}>
             {job.config_text != null
               ? '画面で書き換えた config'

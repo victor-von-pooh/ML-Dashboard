@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import { ArrowDown, ArrowUp, GitCompareArrows, X } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
 import { encodeRunId, type History, type RunDetail } from '../../api/client'
@@ -23,6 +23,7 @@ import {
 } from '../../lib/evaluations'
 import { formatDateTime, formatDuration, formatMetric, formatValue } from '../../lib/format'
 import { groupImageSeries, sharedImageSeries } from '../../lib/images'
+import { groupByModel } from '../../lib/modelGroups'
 import {
   MAX_COMPARE,
   TRAIN_PREFIXES,
@@ -109,8 +110,24 @@ export function ComparePage() {
     error: details[index]?.error ?? histories[index]?.error ?? undefined,
   }))
   const loading = slots.some((slot) => !slot.error && (!slot.run || !slot.history))
+
+  // 2 種類以上のモデルの定義を使う場合は, 定義で分けて並べ, 実験の名前にも定義を添える
+  // (読み込み中は定義が分からないので分けない)
+  const modelGroups = loading ? [] : groupByModel(slots, (slot) => slot.run?.model)
+  const grouped = modelGroups.length >= 2
+  const modelOf = new Map(
+    modelGroups.flatMap((group) => group.items.map((slot) => [slot.id, group.label] as const)),
+  )
+  const label = (runId: string) =>
+    grouped ? `${shortLabel(runId)} · ${modelOf.get(runId) ?? ''}` : shortLabel(runId)
+  const ordered = grouped ? modelGroups.flatMap((group) => group.items) : slots
+  const position = new Map(ordered.map((slot, index) => [slot.id, index]))
   const ready = slots.filter((slot): slot is Required<Omit<Slot, 'error'>> & Slot =>
     Boolean(slot.run && slot.history),
+  )
+  // 評価の表は, 定義で分ける場合は定義の順に並べる
+  const readyOrdered = [...ready].sort(
+    (a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0),
   )
   // 全ての実験の列を, 指標の順にそろえて並べる
   // 検証用がある指標の学習用は, 指定した場合だけ表示
@@ -126,7 +143,7 @@ export function ComparePage() {
       const having = ready.filter((slot) => slot.history.columns.includes(column))
       const missing = ready.filter((slot) => !slot.history.columns.includes(column))
       const series: ChartSeries[] = having.map((slot) => ({
-        name: shortLabel(slot.id),
+        name: label(slot.id),
         color: slot.color,
         points: toPoints(slot.history, column),
         sparse: judgedOnly(column, validInterval(slot.run.config)) || undefined,
@@ -137,8 +154,8 @@ export function ComparePage() {
         // 検証の間隔を空けた実験 (検証したエポックだけを点で示してつなぐ)
         sparse: having
           .filter((slot) => judgedOnly(column, validInterval(slot.run.config)))
-          .map((slot) => shortLabel(slot.id)),
-        missing: missing.map((slot) => shortLabel(slot.id)),
+          .map((slot) => label(slot.id)),
+        missing: missing.map((slot) => label(slot.id)),
         identical: identicalSeries(series),
       }
     })
@@ -234,79 +251,101 @@ export function ComparePage() {
                 </tr>
               </thead>
               <tbody>
-                {slots.map((slot) => (
-                  <tr key={slot.id} className="border-b border-line last:border-b-0">
-                    <td className="px-4 py-2">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="h-1 w-4 shrink-0 rounded-full"
-                          style={{ background: `var(${slot.color})` }}
-                          aria-hidden
-                        />
-                        <Link
-                          to={`/projects/${projectId}/runs/${encodeRunId(slot.id)}`}
-                          className="font-medium hover:text-accent-text"
-                        >
-                          {shortLabel(slot.id)}
-                        </Link>
-                      </div>
-                      {slot.run && (
-                        <div className="pl-6 text-xs text-ink-3">
-                          {formatDateTime(slot.run.started_at)}
-                        </div>
+                {ordered.map((slot, index) => (
+                  <Fragment key={slot.id}>
+                    {grouped &&
+                      modelOf.get(slot.id) !== modelOf.get(ordered[index - 1]?.id ?? '') && (
+                        <tr className="border-b border-line bg-surface-2/50">
+                          <th
+                            colSpan={6}
+                            scope="rowgroup"
+                            className="px-4 py-1.5 text-left text-xs font-semibold text-ink-2"
+                          >
+                            モデルの定義: <span className="font-mono">{modelOf.get(slot.id)}</span>
+                          </th>
+                        </tr>
                       )}
-                    </td>
-                    {slot.error ? (
-                      <td colSpan={4} className="px-4 py-2">
-                        <ErrorBox error={slot.error} live={false} />
+                    <tr className="border-b border-line last:border-b-0">
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="h-1 w-4 shrink-0 rounded-full"
+                            style={{ background: `var(${slot.color})` }}
+                            aria-hidden
+                          />
+                          <Link
+                            to={`/projects/${projectId}/runs/${encodeRunId(slot.id)}`}
+                            className="font-medium hover:text-accent-text"
+                          >
+                            {shortLabel(slot.id)}
+                          </Link>
+                        </div>
+                        {slot.run && (
+                          <div className="pl-6 text-xs text-ink-3">
+                            {formatDateTime(slot.run.started_at)}
+                          </div>
+                        )}
                       </td>
-                    ) : !slot.run ? (
-                      <td colSpan={4} className="px-4 py-2 text-xs text-ink-3">
-                        読み込み中
+                      {slot.error ? (
+                        <td colSpan={4} className="px-4 py-2">
+                          <ErrorBox error={slot.error} live={false} />
+                        </td>
+                      ) : !slot.run ? (
+                        <td colSpan={4} className="px-4 py-2 text-xs text-ink-3">
+                          読み込み中
+                        </td>
+                      ) : (
+                        <>
+                          <td className="px-4 py-2">
+                            <StatusBadge status={slot.run.status} />
+                          </td>
+                          <td className="tabular px-4 py-2 text-right">
+                            {slot.run.best ? (
+                              <>
+                                {formatMetric(slot.run.best.value)}
+                                <div className="text-[11px] text-ink-3">
+                                  {slot.run.best.monitor} @ {slot.run.best.epoch}
+                                </div>
+                              </>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td className="tabular px-4 py-2 text-right">{slot.run.epochs}</td>
+                          <td className="tabular px-4 py-2 text-right text-ink-2">
+                            {formatDuration(slot.run.duration_sec)}
+                          </td>
+                        </>
+                      )}
+                      <td className="px-2">
+                        <button
+                          type="button"
+                          onClick={() => remove(slot.id)}
+                          className="rounded p-1 text-ink-3 hover:bg-surface-2 hover:text-ink"
+                          aria-label={`${slot.id} を比較から外す`}
+                        >
+                          <X className="size-3.5" aria-hidden />
+                        </button>
                       </td>
-                    ) : (
-                      <>
-                        <td className="px-4 py-2">
-                          <StatusBadge status={slot.run.status} />
-                        </td>
-                        <td className="tabular px-4 py-2 text-right">
-                          {slot.run.best ? (
-                            <>
-                              {formatMetric(slot.run.best.value)}
-                              <div className="text-[11px] text-ink-3">
-                                {slot.run.best.monitor} @ {slot.run.best.epoch}
-                              </div>
-                            </>
-                          ) : (
-                            '—'
-                          )}
-                        </td>
-                        <td className="tabular px-4 py-2 text-right">{slot.run.epochs}</td>
-                        <td className="tabular px-4 py-2 text-right text-ink-2">
-                          {formatDuration(slot.run.duration_sec)}
-                        </td>
-                      </>
-                    )}
-                    <td className="px-2">
-                      <button
-                        type="button"
-                        onClick={() => remove(slot.id)}
-                        className="rounded p-1 text-ink-3 hover:bg-surface-2 hover:text-ink"
-                        aria-label={`${slot.id} を比較から外す`}
-                      >
-                        <X className="size-3.5" aria-hidden />
-                      </button>
-                    </td>
-                  </tr>
+                    </tr>
+                  </Fragment>
                 ))}
               </tbody>
             </table>
           </div>
         </Card>
 
+        {grouped && (
+          <p className="-mt-4 text-xs text-ink-3">
+            {modelGroups.length} 種類のモデルの定義で分けて並べています. 選んだ実験は,
+            名前から詳細を開き, その実験 (重みと写した定義 model_spec.yaml) を推論の段階で使います.
+            プロジェクトの default の model.spec は変わりません.
+          </p>
+        )}
+
         <EvaluationCompare
-          slots={ready}
-          label={shortLabel}
+          slots={readyOrdered}
+          label={label}
           requested={requestedColumns}
           onChange={setShownColumns}
           sort={evaluationSort}
@@ -390,7 +429,7 @@ export function ComparePage() {
             series={sharedImages}
             runs={ready.map((slot) => ({
               id: slot.id,
-              label: shortLabel(slot.id),
+              label: label(slot.id),
               color: slot.color,
             }))}
             projectId={projectId}
@@ -416,7 +455,7 @@ export function ComparePage() {
                               style={{ background: `var(${slot.color})` }}
                               aria-hidden
                             />
-                            {shortLabel(slot.id)}
+                            {label(slot.id)}
                           </span>
                         </th>
                       ))}

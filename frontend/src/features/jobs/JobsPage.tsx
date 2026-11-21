@@ -2,8 +2,10 @@ import { Play, Terminal } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { Link, useParams } from 'react-router'
 
-import { useJob, useJobOutput, useJobs } from '../../api/hooks'
+import { useBatches, useJob, useJobOutput, useJobs } from '../../api/hooks'
 import { Card, EmptyState, ErrorBox, PageHeader, Spinner } from '../../components/ui'
+import { batchLabels } from '../../lib/batches'
+import { BatchCard } from './BatchCard'
 import { JobCard } from './JobCard'
 
 /** ダッシュボードから起動した学習の一覧 */
@@ -11,6 +13,8 @@ export function JobsPage() {
   const jobs = useJobs()
   const running = jobs.data?.filter((job) => job.status === 'running') ?? []
   const finished = jobs.data?.filter((job) => job.status !== 'running') ?? []
+  const batches = useBatches()
+  const labels = batchLabels(batches.data ?? [])
 
   return (
     <>
@@ -25,12 +29,23 @@ export function JobsPage() {
           プロジェクトの実験の一覧にある「学習を起動」から, config を選んで学習を始められます.
         </EmptyState>
       )}
+      {batches.error && <ErrorBox error={batches.error} />}
+      {(batches.data?.length ?? 0) > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-3 text-sm font-semibold">候補のまとまり ({batches.data?.length})</h2>
+          <div className="space-y-3">
+            {batches.data?.map((batch) => (
+              <BatchCard key={batch.id} batch={batch} jobs={jobs.data ?? []} />
+            ))}
+          </div>
+        </section>
+      )}
       {running.length > 0 && (
         <section className="mb-8">
           <h2 className="mb-3 text-sm font-semibold">実行中 ({running.length})</h2>
           <div className="space-y-3">
             {running.map((job) => (
-              <JobCard key={job.id} job={job} />
+              <JobCard key={job.id} job={job} batchLabel={labels.get(job.id)} />
             ))}
           </div>
         </section>
@@ -40,7 +55,7 @@ export function JobsPage() {
           <h2 className="mb-3 text-sm font-semibold">終了 ({finished.length})</h2>
           <div className="space-y-3">
             {finished.map((job) => (
-              <JobCard key={job.id} job={job} />
+              <JobCard key={job.id} job={job} batchLabel={labels.get(job.id)} />
             ))}
           </div>
         </section>

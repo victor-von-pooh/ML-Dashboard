@@ -1244,7 +1244,7 @@
     "/api/projects/{project_id}/model-specs": {
       "get": {
         "summary": "Read Model Specs",
-        "description": "プロジェクトの models/ のモデルの定義の一覧を返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\n\nReturns\n----------\nspecs: ModelSpecList\n    定義の一覧と, 一覧を作れない理由",
+        "description": "プロジェクトの models/ のモデルの定義の一覧を返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\nscript: Optional[str] = None\n    学習のスクリプト (default の config の選択に使用)\ndefault_config: Optional[str] = None\n    起動の前の確認に使う default の config, None はスクリプトから選択\n\nReturns\n----------\nspecs: ModelSpecList\n    定義の一覧, 一覧を作れない理由, default の config の model.spec",
         "operationId": "read_model_specs",
         "parameters": [
           {
@@ -1254,6 +1254,38 @@
             "schema": {
               "type": "string",
               "title": "Project Id"
+            }
+          },
+          {
+            "name": "script",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Script"
+            }
+          },
+          {
+            "name": "default_config",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Default Config"
             }
           }
         ],
@@ -2988,6 +3020,17 @@
               }
             ],
             "title": "Notice"
+          },
+          "default_spec": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Spec"
           }
         },
         "type": "object",

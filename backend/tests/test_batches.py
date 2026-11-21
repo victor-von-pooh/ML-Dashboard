@@ -274,6 +274,7 @@ def test_batch_runs_candidates(
     project_id = register(client, project_dir)
     specs = client.get(f"/api/projects/{project_id}/model-specs").json()
     assert [spec["name"] for spec in specs["specs"]] == ["a", "b"]
+    assert specs["default_spec"] == "models/a.yaml"
 
     response = client.post(
         f"/api/projects/{project_id}/batches",

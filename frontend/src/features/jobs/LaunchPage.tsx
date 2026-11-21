@@ -2,6 +2,7 @@ import clsx from 'clsx'
 import {
   CheckCircle2,
   Info,
+  Layers,
   PackageCheck,
   PackageX,
   Play,
@@ -15,7 +16,9 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { encodeRunId, isCopyRefused, type RelaunchPlan, type Requirement } from '../../api/client'
 import {
+  useBatches,
   useConfig,
+  useCreateBatch,
   useCreateJob,
   useProject,
   useRecheckRequirements,
@@ -28,6 +31,7 @@ import { formatValue } from '../../lib/format'
 import { deleteYamlValue, getYamlValue, setYamlValue } from '../../lib/yamlEdit'
 import { configForScript } from '../../lib/scripts'
 import { RequirementCard } from '../requirements/RequirementCard'
+import { CandidatePicker, MIN_CANDIDATES } from './CandidatePicker'
 import { ConfigForm } from './ConfigForm'
 
 // 実験の config の中身 (プロジェクトの experiment の config の一覧に無いもの) を
@@ -94,6 +98,10 @@ function LaunchForm({
   )
   const validate = useValidateConfig(projectId)
   const create = useCreateJob(projectId)
+  const createBatch = useCreateBatch(projectId)
+  const batches = useBatches()
+  // 選んだモデルの定義の候補 (選んだ順). どのスクリプトと default で選んだかと組で保存
+  const [chosen, setChosen] = useState<{ key: string; paths: string[] }>({ key: '', paths: [] })
 
   // 最初はプロジェクトの train.py と既定の experiment の config を選択
   const scripts = project.data?.scripts ?? []
@@ -203,24 +211,47 @@ function LaunchForm({
     validate.reset()
   }
 
-  const launch = () => {
-    // 使えない (YAML が読めずに止めている) 欄は除く
+  // 起動する config (書き換えた中身か, プロジェクトのファイル)
+  // スクリプトか default を替えたら, 候補は選び直す (候補の欄を出すかも変わるため)
+  const candidateKey = `${selectedScript}:${defaultConfig ?? ''}`
+  const chosenSpecs = chosen.key === candidateKey ? chosen.paths : []
+  const setChosenSpecs = (paths: string[]) => setChosen({ key: candidateKey, paths })
+
+  const launchBody =
+    edited || !filePath
+      ? { script: selectedScript, config_text: text, default_config: defaultConfig }
+      : { script: selectedScript, config_path: filePath, default_config: defaultConfig }
+
+  // フォームに誤りのある欄があれば, 知らせて止める (使えない欄は除く)
+  const formInvalid = () => {
     const invalid = formRef.current?.querySelector<HTMLElement>(
       '[aria-invalid="true"]:not(:disabled)',
     )
     if (invalid) {
       setFormError('フォームに誤りのある欄があります. 直してから開始してください')
       invalid.focus()
-      return
+      return true
     }
     setFormError(null)
-    create.mutate(
-      edited || !filePath
-        ? { script: selectedScript, config_text: text, default_config: defaultConfig }
-        : { script: selectedScript, config_path: filePath, default_config: defaultConfig },
-      { onSuccess: (job) => navigate(`/jobs/${job.id}`) },
+    return false
+  }
+
+  const launch = () => {
+    if (formInvalid()) return
+    create.mutate(launchBody, { onSuccess: (job) => navigate(`/jobs/${job.id}`) })
+  }
+
+  // 選んだ候補を, 同じスクリプトと config で順に学習する
+  const launchCandidates = () => {
+    if (formInvalid()) return
+    createBatch.mutate(
+      { ...launchBody, specs: chosenSpecs },
+      { onSuccess: () => navigate('/jobs') },
     )
   }
+  const activeBatch = batches.data?.find(
+    (batch) => batch.project_id === projectId && !batch.finished,
+  )
 
   if (project.isPending) return <Spinner />
   if (project.error) return <ErrorBox error={project.error} />
@@ -426,8 +457,36 @@ function LaunchForm({
             pending={requiresPending}
             requestError={requires.error ?? recheck.error ?? null}
           />
+          <CandidatePicker
+            key={candidateKey}
+            projectId={projectId}
+            script={selectedScript}
+            defaultConfig={defaultConfig}
+            currentSpec={getYamlValue(text, 'model.spec')}
+            chosen={chosenSpecs}
+            onChange={setChosenSpecs}
+            activeBatch={activeBatch}
+          />
           {formError && <ErrorBox error={formError} />}
           {create.error && <ErrorBox error={create.error} />}
+          {createBatch.error && <ErrorBox error={createBatch.error} />}
+          {chosenSpecs.length >= MIN_CANDIDATES && (
+            <Button
+              icon={Layers}
+              className="h-10 w-full"
+              disabled={
+                !selectedScript ||
+                createBatch.isPending ||
+                loadingConfig ||
+                blockedByRequires ||
+                requiresPending ||
+                activeBatch !== undefined
+              }
+              onClick={launchCandidates}
+            >
+              {chosenSpecs.length} 個の候補を順に学習する
+            </Button>
+          )}
           <Button
             variant="primary"
             icon={Play}

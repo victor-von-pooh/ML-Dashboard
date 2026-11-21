@@ -10,6 +10,12 @@ export type RecordedProjects = Schemas['RecordedProjects']
 export type RunSummary = Schemas['RunSummary']
 export type RunDetail = Schemas['RunDetail']
 export type RunModelSpec = Schemas['RunModelSpec']
+export type RunModel = Schemas['RunModel']
+export type ModelSpecList = Schemas['ModelSpecList']
+export type ModelSpecInfo = Schemas['ModelSpecInfo']
+export type BatchInfo = Schemas['BatchInfo']
+export type BatchCandidate = Schemas['BatchCandidate']
+export type BatchCreate = Schemas['BatchCreate']
 export type ModelParam = Schemas['ModelParam']
 export type RunStatus = RunSummary['status']
 export type BestValue = Schemas['BestValue']
@@ -255,4 +261,21 @@ export const api = {
     }),
   getJobOutput: (jobId: string) =>
     request<{ text: string }>(`/api/jobs/${encodeURIComponent(jobId)}/output`),
+  // script と defaultConfig は, 候補の欄を出すかを決める default の config を選ぶのに使う
+  getModelSpecs: (projectId: string, script?: string, defaultConfig?: string) => {
+    const query = new URLSearchParams()
+    if (script) query.set('script', script)
+    if (defaultConfig) query.set('default_config', defaultConfig)
+    return request<ModelSpecList>(
+      `/api/projects/${encodeURIComponent(projectId)}/model-specs?${query.toString()}`,
+    )
+  },
+  createBatch: (projectId: string, body: BatchCreate) =>
+    request<BatchInfo>(`/api/projects/${encodeURIComponent(projectId)}/batches`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  listBatches: () => request<BatchInfo[]>('/api/batches'),
+  stopBatch: (batchId: string) =>
+    request<BatchInfo>(`/api/batches/${encodeURIComponent(batchId)}/stop`, { method: 'POST' }),
 }

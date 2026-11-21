@@ -114,6 +114,9 @@ class ModelSpecList(BaseModel):
     # models/ の定義の一覧と, 一覧を作れない理由 (models/ が無いかリンク)
     specs: list[ModelSpecInfo] = []
     notice: Optional[str] = None
+    # 起動の前の確認に使う default の config の model.spec (無ければ None.
+    # 学習の起動の画面は, 無ければ候補の欄を出さない)
+    default_spec: Optional[str] = None
 
 
 # 候補のまとまりの候補の状態 (待つ, 学習中, 終わった, 取りやめた,
