@@ -22,6 +22,7 @@ from ml_dashboard.core.results import (
     evaluation_problem,
     load_checked_evaluations,
     load_plain_evaluations,
+    read_better,
     read_evaluations,
     read_plain_file,
     shown_name,
@@ -39,7 +40,8 @@ PLAIN_RUN = "demo/2026-11-08/11-00-00"
 def write_evaluation(
     run_dir: Path, name: str, rows: list[dict[str, Any]],
     split: str = "test", guard: bool = False, kind: str = "table",
-    baseline: Optional[str] = "今のやり方"
+    baseline: Optional[str] = "今のやり方",
+    better: Optional[dict[str, Any]] = None
 ) -> None:
     """
     ML-Found の約束の形の評価のファイルを書く関数
@@ -60,6 +62,8 @@ def write_evaluation(
         table か curve
     baseline: Optional[str] = "今のやり方"
         比べる相手の名前
+    better: Optional[dict[str, Any]] = None
+        列ごとの指標の向き, None の場合は書かない (前の ML-Found の形)
 
     Returns
     ----------
@@ -75,6 +79,8 @@ def write_evaluation(
         "guard": guard, "epoch": 2,
         "created_at": "2026-11-08T22:00:03+09:00"
     }
+    if better is not None:
+        data["better"] = better
     path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
 
@@ -248,6 +254,101 @@ def test_metric_better() -> None:
     assert metric_better("top1", None, None) is None
     # 普通の名前に使う語 (変化検出の change) は打ち消しの語にしない
     assert metric_better("change_detection_f1", None, None) == "higher"
+
+
+def test_read_better() -> None:
+    """
+    評価の better を ML-Found の docs/FORMAT.md と同じに読むことを確かめる
+    関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    None
+    """
+    def read(columns: list[str], better: Any) -> dict[str, str]:
+        found = dict(read_better({"columns": columns, "better": better}))
+        return found
+
+    # 書いた向きを同じ指標の列に広げ, 表に無い列と知らない値の欄は除く
+    columns = ["group", "iou", "iou_baseline", "iou_diff", "acc"]
+    assert read(columns, {
+        "iou": "higher", "nope": "lower", "acc": "better", "group": 1
+    }) == {"iou": "higher", "iou_baseline": "higher", "iou_diff": "higher"}
+
+    # 終わりは 1 段ずつ外し, 広げた列からさらに広げる
+    columns = ["acc", "acc_baseline", "acc_diff", "acc_baseline_diff"]
+    assert read(columns, {"acc_baseline_diff": "higher"}) == {
+        column: "higher" for column in columns
+    }
+    # 終わりを外す向きだけに広げる (acc は acc_baseline_diff に届かない)
+    assert "acc_baseline_diff" not in read(columns, {"acc": "lower"})
+
+    # 書いていない列に違う向きが届けば埋めず, 書いた列は書いた向きのまま
+    assert read(columns, {"acc": "lower", "acc_baseline_diff": "higher"}) == {
+        "acc": "lower", "acc_diff": "lower", "acc_baseline_diff": "higher"
+    }
+
+    # better を持たないファイルと, 辞書でない better は空
+    assert read(columns, None) == {}
+    assert read(columns, ["acc"]) == {}
+    assert read_better({"columns": "acc", "better": {"acc": "lower"}}) == {}
+
+
+def test_better_before_name(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    評価の better を名前からの推測より先に使い, 無い列だけを名前から
+    推し量ることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 名前から決まらない neg_log_loss と, 名前と逆の向きを書いた cost
+    run_dir = project_dir / "outputs" / EVALUATED_RUN
+    write_evaluation(run_dir, "guard", [{
+        "neg_log_loss": -0.3, "neg_log_loss_diff": -0.1,
+        "cost": 5.0, "cost_diff": 1.0, "acc": 0.9, "acc_diff": 0.01
+    }], guard=True, better={"neg_log_loss": "higher", "cost_diff": "higher"})
+
+    project_id = register(client, project_dir)
+    response = client.get(f"/api/projects/{project_id}/runs")
+    found = {
+        run["id"]: run["evaluations"] for run in response.json()
+    }[EVALUATED_RUN]
+    directions = {
+        value["column"]: value["better"] for value in found["values"]
+    }
+    assert directions == {
+        "neg_log_loss": "higher", "neg_log_loss_diff": "higher",
+        "cost": "higher", "cost_diff": "higher",
+        "acc": "higher", "acc_diff": "higher",
+    }
+    assert found["guard"] == {
+        "state": "dropped", "dropped": ["guard: neg_log_loss (差 -0.1)"],
+        "unknown": []
+    }
+
+    # 評価のタブにも広げた向きを返す
+    results = client.get(
+        f"/api/projects/{project_id}/runs/{EVALUATED_RUN}/results"
+    ).json()
+    assert results["evaluations"][0]["better"] == {
+        "neg_log_loss": "higher", "neg_log_loss_diff": "higher",
+        "cost": "higher", "cost_diff": "higher",
+    }
 
 
 def test_is_worse_tolerance() -> None:

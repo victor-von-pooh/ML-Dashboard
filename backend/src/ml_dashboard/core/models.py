@@ -290,6 +290,9 @@ class Evaluation(BaseModel):
     description: Optional[str] = None
     baseline: Optional[str] = None
     guard: bool = False
+    # 列ごとの指標の向き (評価の better を同じ指標の列に広げたもの.
+    # 書いていない列は無い)
+    better: dict[str, Better] = {}
     epoch: Optional[int] = None
     created_at: Optional[str] = None
     # 行が多く, 先頭だけを返した場合の全体の行数
