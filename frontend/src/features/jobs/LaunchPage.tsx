@@ -25,6 +25,7 @@ import {
 } from '../../api/hooks'
 import { Button, Card, ErrorBox, PageHeader, Spinner } from '../../components/ui'
 import { formatValue } from '../../lib/format'
+import { deleteYamlValue, getYamlValue, setYamlValue } from '../../lib/yamlEdit'
 import { configForScript } from '../../lib/scripts'
 import { RequirementCard } from '../requirements/RequirementCard'
 import { ConfigForm } from './ConfigForm'
@@ -128,6 +129,10 @@ function LaunchForm({
     draft.text !== original
   const text = draft !== null && draft.path === configPath ? draft.text : original
   const loadingConfig = filePath !== null && config.isPending
+  // 実験に写したモデルの定義を使う間 (model.spec が写しを指す間) だけ, そのお知らせと
+  // 今の定義に戻すボタンを出す
+  const copySpec = fromRun?.model_spec ?? null
+  const usingCopy = copySpec !== null && getYamlValue(text, 'model.spec') === copySpec
 
   // config の requires に書いた機能が足りなければ, 開始のボタンを止めて次の一手を出す
   // (起動の API も同じ決まりで止めるので, 確かめる前に押しても学習は始まらない)
@@ -254,6 +259,16 @@ function LaunchForm({
           plan={plan}
           error={planError}
           defaultConfig={defaultConfig}
+          copyNote={usingCopy ? (fromRun?.model_spec_note ?? null) : null}
+          onRestoreSpec={() => {
+            // model.spec だけを今の定義 (戻す値が無ければ default の値) に戻す
+            const original = fromRun?.model_spec_original ?? null
+            editText(
+              original === null
+                ? deleteYamlValue(text, 'model.spec')
+                : setYamlValue(text, 'model.spec', original),
+            )
+          }}
         />
       )}
 
@@ -560,12 +575,16 @@ function RunSourceNotice({
   plan,
   error,
   defaultConfig,
+  copyNote,
+  onRestoreSpec,
 }: {
   projectId: string
   runId: string
   plan: RelaunchPlan | null
   error: Error | null
   defaultConfig: string | undefined
+  copyNote: string | null
+  onRestoreSpec: () => void
 }) {
   const runLink = (
     <Link
@@ -608,6 +627,15 @@ function RunSourceNotice({
           )}
         </span>
       </p>
+      {copyNote && (
+        <p className="flex flex-wrap items-start gap-1.5 text-xs text-ink-3">
+          <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          <span className="min-w-0 flex-1">{copyNote}</span>
+          <Button variant="ghost" icon={RotateCcw} onClick={onRestoreSpec}>
+            今の定義で起動する
+          </Button>
+        </p>
+      )}
       {(plan?.notes ?? []).map((note) => (
         <p key={note} className="flex items-start gap-1.5 text-xs text-ink-3">
           <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />

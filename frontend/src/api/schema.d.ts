@@ -1605,6 +1605,10 @@ export interface components {
             config_text?: string | null;
             /** Model Spec */
             model_spec?: string | null;
+            /** Model Spec Note */
+            model_spec_note?: string | null;
+            /** Model Spec Original */
+            model_spec_original?: string | null;
             /**
              * Notes
              * @default []

@@ -19,6 +19,14 @@ export function setYamlValue(text: string, key: string, value: unknown): string 
   return document.toString()
 }
 
+/** 点区切りの項目の値を読む. 読めない YAML と無い項目は undefined */
+export function getYamlValue(text: string, key: string): unknown {
+  const document = parseDocument(text)
+  if (document.errors.length > 0) return undefined
+  const value: unknown = document.getIn(key.split('.'))
+  return value
+}
+
 /** 点区切りの項目を消す. 消した結果, 空になった親の辞書も消す */
 export function deleteYamlValue(text: string, key: string): string {
   const document = parseDocument(text)

@@ -2,11 +2,13 @@ import hashlib
 import os
 import time
 from pathlib import Path
+from typing import Optional
 
 from fastapi.testclient import TestClient
 from omegaconf import OmegaConf
 
-from ml_dashboard.api.jobs import describe_missing_path, find_model_spec_copy
+from ml_dashboard.api.jobs import describe_missing_path
+from ml_dashboard.core.model_spec import find_model_spec_copy
 from ml_dashboard.core.models import RunModelSpec
 
 from test_api import register
@@ -926,11 +928,11 @@ def test_relaunch_plan(
 
 
 def test_relaunch_model_spec(
-    client: TestClient, project_dir: Path, tmp_path: Path
+    client: TestClient, project_dir: Path
 ) -> None:
     """
-    実験に写したモデルの定義が記録と合えば, その写しで起動し直すことを
-    確かめる関数
+    実験に写したモデルの定義が記録と合えば, その写しで起動し直し, 使えない
+    場合は今の定義に戻すことを確かめる関数
 
     Parameters
     ----------
@@ -938,8 +940,6 @@ def test_relaunch_model_spec(
         API を呼ぶクライアント
     project_dir: Path
         プロジェクトのディレクトリ
-    tmp_path: Path
-        pytest が用意する一時ディレクトリ
 
     Returns
     ----------
@@ -953,7 +953,8 @@ def test_relaunch_model_spec(
     content = b"layers:\n- type: Linear\n"
     copy.write_bytes(content)
     sha = hashlib.sha256(content).hexdigest()
-    (project_dir / "configs" / "experiment" / "train.yaml").write_text(
+    experiment = project_dir / "configs" / "experiment" / "train.yaml"
+    experiment.write_text(
         "# 例\nmodel:\n  spec: models/model.yaml\n  hidden_dim: 8\n"
     )
 
@@ -968,68 +969,196 @@ def test_relaunch_model_spec(
         assert result["reason"] is None
         return result
 
-    # 記録と合う写しは, model.spec をその場所に書き換えて使う
+    # 記録と合う写しは, model.spec をその場所に書き換えて使う. 戻す値は
+    # experiment の config の今の値
     result = plan()
     assert result["model_spec"] == f"{relative}/model_spec.yaml"
+    assert result["model_spec_original"] == "models/model.yaml"
     assert result["config_path"] == "configs/experiment/train.yaml"
     assert OmegaConf.to_container(OmegaConf.create(result["config_text"])) == {
         "model": {
             "spec": f"{relative}/model_spec.yaml", "hidden_dim": 8
         }
     }
-    assert any("この実験に写した定義" in note for note in result["notes"])
+    assert "この実験に写した定義" in result["model_spec_note"]
+    assert "models/model.yaml" in result["model_spec_note"]
+    assert not any("モデルの定義" in note for note in result["notes"])
 
     # 中身が記録と違う写し, 写していない実験, 知らない status は今の定義
     for status, digest, message in (
         ("copied", "0" * 64, "中身が"),
-        ("missing", sha, "定義のファイルが無かった"),
-        ("renamed", sha, "写していない (renamed)"),
+        ("missing", sha, "定義のファイルが無い"),
+        ("renamed", sha, "(renamed)"),
     ):
         result = plan(status, digest)
         assert result["model_spec"] is None
+        assert result["model_spec_note"] is None
         assert "spec: models/model.yaml" in result["config_text"]
         assert any(
             "今のプロジェクトの models/model.yaml" in note
             and message in note for note in result["notes"]
         ), status
 
-    # 写しがリンクか無い場合も今の定義
-    target = tmp_path / "elsewhere.yaml"
-    target.write_bytes(content)
-    copy.unlink()
-    copy.symlink_to(target)
-    assert plan()["model_spec"] is None
-    copy.unlink()
-    assert plan()["model_spec"] is None
-
-    # 実験のディレクトリがプロジェクトの外か, 途中にリンクのある実験も
-    # 今の定義 (ML-Found が新しい実験に写し直せないため)
+    # 外部の重みのファイルを読む定義と, 16 MiB を超える写しは今の定義
+    for text, message in (
+        (b"nodes:\n  a:\n    weights: {path: w.pt}\n", "weights.path"),
+        (b"x" * (16 * 1024 * 1024 + 1), "16 MiB"),
+    ):
+        copy.write_bytes(text)
+        result = plan(digest=hashlib.sha256(text).hexdigest())
+        assert result["model_spec"] is None
+        assert any(message in note for note in result["notes"])
     copy.write_bytes(content)
-    record = RunModelSpec(
-        path="models/model.yaml", status="copied", sha256=sha
+
+    # model が辞書でない experiment の config も今の定義
+    experiment.write_text("model: 3\n")
+    result = plan()
+    assert result["model_spec"] is None
+    assert any("辞書ではありません" in note for note in result["notes"])
+
+    # 写しから起動し直した実験の config (model.spec が写しを指す) で写しが
+    # 使えなければ, model.spec を消して default の値に戻す
+    (project_dir / "configs" / "default" / "train.yaml").write_text(
+        "experiment:\n  name: demo\n  output_dir: outputs\n"
+        "model:\n  spec: models/base.yaml\n"
     )
-    outside = tmp_path / "outside_run"
-    outside.mkdir()
-    (outside / "model_spec.yaml").write_bytes(content)
-    path, reason = find_model_spec_copy(project_dir, outside, record)
-    assert path is None and reason is not None and "外か" in reason
-    (project_dir / "linked").symlink_to(outside, target_is_directory=True)
-    path, reason = find_model_spec_copy(
-        project_dir, project_dir / "linked", record
+    experiment.write_text(
+        f"model:\n  spec: {relative}/model_spec.yaml\n"
     )
-    assert path is None and reason is not None and "シンボリック" in reason
-    assert find_model_spec_copy(project_dir, run_dir, record) == (
-        f"{relative}/model_spec.yaml", None
+    result = plan(digest="0" * 64)
+    assert result["model_spec"] is None
+    assert "spec" not in result["config_text"]
+    assert any(
+        "今のプロジェクトの models/base.yaml" in note
+        for note in result["notes"]
     )
+    # 使える場合は戻す値を消すこと (None) にする
+    result = plan()
+    assert result["model_spec"] == f"{relative}/model_spec.yaml"
+    assert result["model_spec_original"] is None
+    assert "models/base.yaml" in result["model_spec_note"]
 
     # model_spec の無い実験は何も足さない
+    experiment.write_text("{}\n")
     (run_dir / "source.yaml").write_text(
         "script: train.py\ndefault: configs/default/train.yaml\n"
         "experiment: configs/experiment/train.yaml\n"
     )
     result = client.get(url).json()
     assert result["model_spec"] is None
+    assert result["model_spec_note"] is None
     assert not any("モデルの定義" in note for note in result["notes"])
+
+
+def test_model_spec_copy_place(project_dir: Path, tmp_path: Path) -> None:
+    """
+    写しを使えない場所 (プロジェクトの外, 途中のリンク, 写しのリンク,
+    ${ と ~) を見分けることを確かめる関数
+
+    Parameters
+    ----------
+    project_dir: Path
+        プロジェクトのディレクトリ
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    content = b"layers: []\n"
+    record = RunModelSpec(
+        path="models/model.yaml", status="copied",
+        sha256=hashlib.sha256(content).hexdigest()
+    )
+
+    def place(run_dir: Path) -> Optional[str]:
+        run_dir.mkdir(parents=True, exist_ok=True)
+        if not (run_dir / "model_spec.yaml").exists():
+            (run_dir / "model_spec.yaml").write_bytes(content)
+        path, reason = find_model_spec_copy(project_dir, run_dir, record)
+        assert (path is None) != (reason is None)
+        return reason
+
+    # プロジェクトの中の普通の場所は使える
+    assert place(project_dir / "outputs" / "ok") is None
+
+    # 外と, 途中のリンクは理由を分ける
+    outside = place(tmp_path / "outside_run")
+    assert outside is not None and "外にあります" in outside
+    (project_dir / "linked").symlink_to(
+        tmp_path / "outside_run", target_is_directory=True
+    )
+    linked = place(project_dir / "linked")
+    assert linked is not None and "途中にシンボリックリンク" in linked
+
+    # 写し自体のリンクと, 無い写し
+    run_dir = project_dir / "outputs" / "copy_link"
+    run_dir.mkdir(parents=True)
+    (run_dir / "model_spec.yaml").symlink_to(
+        tmp_path / "outside_run" / "model_spec.yaml"
+    )
+    reason = place(run_dir)
+    assert reason is not None and "写した定義 (model_spec.yaml) が" in reason
+    assert "シンボリックリンクです" in reason
+    (run_dir / "model_spec.yaml").unlink()
+    path, reason = find_model_spec_copy(project_dir, run_dir, record)
+    assert reason is not None and "ありません" in reason
+
+    # config の参照とホームの展開に読まれる場所
+    for name in ("${oops}", "~home"):
+        reason = place(project_dir / name / "run")
+        assert reason is not None and "書けません" in reason, name
+
+
+def test_launch_rechecks_model_spec(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    model.spec が実験に写した定義を指す起動では, 写しを確かめ直し, 記録と
+    違えば起動しないことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    project_id = register(client, project_dir)
+    relative = "outputs/demo/2026-11-08/10-00-00"
+    run_dir = project_dir / relative
+    content = b"layers: []\n"
+    (run_dir / "model_spec.yaml").write_bytes(content)
+    (run_dir / "source.yaml").write_text(
+        "script: train.py\nmodel_spec:\n  path: models/model.yaml\n"
+        f"  status: copied\n  sha256: '{hashlib.sha256(content).hexdigest()}'"
+        "\n"
+    )
+    (project_dir / "configs" / "default" / "train.yaml").write_text(
+        "experiment:\n  name: demo\n  output_dir: outputs\n"
+        "model:\n  spec: models/model.yaml\n"
+    )
+    body = {
+        "script": "train.py",
+        "config_text": f"model:\n  spec: {relative}/model_spec.yaml\n"
+    }
+
+    # 起動の画面を開いた後に写しが書き換わった場合は起動しない
+    (run_dir / "model_spec.yaml").write_bytes(b"layers: [changed]\n")
+    response = client.post(f"/api/projects/{project_id}/jobs", json=body)
+    assert response.status_code == 400
+    assert "起動しません" in response.json()["detail"]
+    assert "中身が" in response.json()["detail"]
+
+    # 記録と合えば起動する
+    (run_dir / "model_spec.yaml").write_bytes(content)
+    response = client.post(f"/api/projects/{project_id}/jobs", json=body)
+    assert response.status_code == 201, response.json()
 
 
 def test_launch_with_default_config(

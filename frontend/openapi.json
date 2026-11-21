@@ -3476,6 +3476,28 @@
             ],
             "title": "Model Spec"
           },
+          "model_spec_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Spec Note"
+          },
+          "model_spec_original": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Spec Original"
+          },
           "notes": {
             "items": {
               "type": "string"
