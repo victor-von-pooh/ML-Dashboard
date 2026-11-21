@@ -351,7 +351,12 @@ export function RunDetailPage() {
           ))}
         {tab === 'policy' &&
           (results.data?.policy ? (
-            <PolicyTab policy={results.data.policy} />
+            <PolicyTab
+              policy={results.data.policy}
+              outcomes={results.data.policy_outcomes}
+              history={history.data}
+              best={data.best}
+            />
           ) : results.error ? (
             <ErrorBox error={results.error} />
           ) : (

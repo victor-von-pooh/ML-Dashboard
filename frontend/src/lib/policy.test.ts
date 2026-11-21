@@ -6,7 +6,9 @@ import {
   describeFallback,
   discreteRows,
   formatBound,
+  formatShare,
   spaceSize,
+  trainingSuccess,
   weightsStatus,
 } from './policy'
 
@@ -70,5 +72,30 @@ describe('方策の守りの表', () => {
     expect(weightsStatus('match')).toEqual({ label: '一致', tone: 'good' })
     expect(weightsStatus('mismatch').tone).toBe('critical')
     expect(weightsStatus('missing').label).toBe('重みが無い')
+  })
+})
+
+describe('評価の割合と学習の成功の割合', () => {
+  it('割合を百分率にし, 無い割合は - にする', () => {
+    expect(formatShare(0.125)).toBe('12.5%')
+    expect(formatShare(null)).toBe('-')
+  })
+
+  it('valid/success のベストと最後の値を, epoch の無い行は並びの番号で取る', () => {
+    const history = {
+      columns: ['valid/success'],
+      rows: [{ 'valid/success': 0.5 }, { 'valid/success': 0.75 }, { 'valid/success': null }],
+      lr_steps: [],
+      named_lr_steps: {},
+    }
+    expect(
+      trainingSuccess(history, { monitor: 'valid/reward', mode: 'max', epoch: 1, value: 1 }),
+    ).toEqual({ best: { epoch: 1, value: 0.5 }, last: { epoch: 2, value: 0.75 } })
+    // ベストのエポックに値が無ければ最後の値だけ
+    expect(
+      trainingSuccess(history, { monitor: 'valid/reward', mode: 'max', epoch: 3, value: 1 }),
+    ).toEqual({ best: null, last: { epoch: 2, value: 0.75 } })
+    expect(trainingSuccess({ ...history, rows: [{ 'valid/success': null }] }, null)).toBeNull()
+    expect(trainingSuccess({ ...history, columns: [] }, null)).toBeNull()
   })
 })

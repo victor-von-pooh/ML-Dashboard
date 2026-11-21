@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import type { RunPolicy } from '../../api/client'
+import type { History, PolicyOutcome, RunPolicy } from '../../api/client'
 import { PolicyTab } from './PolicyTab'
 
 const policy: RunPolicy = {
@@ -62,5 +62,94 @@ describe('PolicyTab', () => {
     expect(screen.getByText(/版 2 は新しい/)).toBeInTheDocument()
     expect(screen.queryByRole('table')).toBeNull()
     expect(screen.getByRole('note')).toBeInTheDocument()
+  })
+
+  it('守り付きの評価の終え方ごとの割合, 守りが働いた割合, 学習の成功の割合を出す', () => {
+    const outcome: PolicyOutcome = {
+      name: 'guarded_episodes',
+      split: 'simulator',
+      description: '守りを当てて動かしたエピソード',
+      epoch: 7,
+      episodes: 8,
+      ends: [
+        { end: 'terminated', count: 2, ratio: 0.25 },
+        { end: 'truncated', count: 4, ratio: 0.5 },
+        { end: 'max_steps', count: 0, ratio: 0 },
+        { end: 'stop', count: 1, ratio: 0.125 },
+        { end: 'handover', count: 1, ratio: 0.125 },
+      ],
+      guarded: 2,
+      guarded_ratio: 0.25,
+    }
+    const history: History = {
+      columns: ['epoch', 'valid/reward', 'valid/success'],
+      rows: [
+        { epoch: 1, 'valid/reward': 10, 'valid/success': 0.2 },
+        { epoch: 2, 'valid/reward': 30, 'valid/success': 0.9 },
+        { epoch: 3, 'valid/reward': 20, 'valid/success': null },
+      ],
+      lr_steps: [],
+      named_lr_steps: {},
+    }
+    render(
+      <PolicyTab
+        policy={policy}
+        outcomes={[outcome]}
+        history={history}
+        best={{ monitor: 'valid/reward', mode: 'max', epoch: 1, value: 10 }}
+      />,
+    )
+    const table = screen.getByRole('table', { name: 'guarded_episodes の終え方ごとの割合' })
+    const rows = within(table).getAllByRole('row')
+    expect(rows).toHaveLength(6)
+    expect(rows[2]).toHaveTextContent('環境の時間切れ')
+    expect(rows[2]).toHaveTextContent('50.0%')
+    expect(rows[5]).toHaveTextContent('守りが元の制御に戻した')
+    expect(screen.getByText(/守りが止めたか元の制御に戻した: 25.0%/)).toHaveTextContent('(2 / 8)')
+    expect(screen.getByText(/分割 simulator · エポック 7 · 8 エピソード/)).toBeInTheDocument()
+
+    // ベストのエポックと, 値のある最後のエポックの成功の割合
+    const success = screen.getByRole('region', { name: '学習の成功の割合' })
+    expect(within(success).getByText('ベストのエポック (1)').nextSibling).toHaveTextContent('20.0%')
+    expect(within(success).getByText('最後のエポック (2)').nextSibling).toHaveTextContent('90.0%')
+  })
+
+  it('評価の無い実験と成功の割合の無い学習はそう出す', () => {
+    render(
+      <PolicyTab
+        policy={policy}
+        outcomes={[]}
+        history={{
+          columns: ['epoch', 'valid/reward'],
+          rows: [{ epoch: 1, 'valid/reward': 1 }],
+          lr_steps: [],
+          named_lr_steps: {},
+        }}
+        best={null}
+      />,
+    )
+    expect(screen.getByText(/守り付きの評価がありません/)).toBeInTheDocument()
+    expect(screen.getByText(/valid\/success がありません/)).toBeInTheDocument()
+  })
+
+  it('行の無い評価と知らない終え方を出す', () => {
+    render(
+      <PolicyTab
+        policy={policy}
+        outcomes={[
+          { name: 'empty', episodes: 0, ends: [], guarded: 0, guarded_ratio: null },
+          {
+            name: 'odd',
+            episodes: 1,
+            ends: [{ end: 'other', count: 1, ratio: 1 }],
+            guarded: 0,
+            guarded_ratio: 0,
+          },
+        ]}
+      />,
+    )
+    expect(screen.getByText('エピソードの行が無いので, 割合を出せません.')).toBeInTheDocument()
+    expect(screen.getByText('その他 (知らない値, 値なし)')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: '学習の成功の割合' })).toBeNull()
   })
 })
