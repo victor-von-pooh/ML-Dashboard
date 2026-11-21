@@ -71,7 +71,9 @@ def metric_better(
     name: str, monitor: Optional[str], mode: Optional[Mode]
 ) -> Optional[Better]:
     """
-    指標の名前から, 小さいほど良いか大きいほど良いかを決める関数
+    指標の名前から, 小さいほど良いか大きいほど良いかを推し量る関数
+
+    評価の better に向きの無い列だけに使う
 
     Parameters
     ----------
@@ -103,6 +105,39 @@ def metric_better(
         better = "lower" if mode == "min" else "higher"
 
     return better
+
+
+def column_better(
+    column: str, metric: str, better: dict[str, Better],
+    monitor: Optional[str], mode: Optional[Mode]
+) -> Optional[Better]:
+    """
+    評価の列の向きを, 評価の better を先に, 無ければ名前から決める関数
+
+    Parameters
+    ----------
+    column: str
+        列の名前 (<指標> か <指標>_diff)
+    metric: str
+        名前から向きを推し量る指標の名前 (<指標>_diff の <指標>)
+    better: dict[str, Better]
+        評価の列ごとの向き (同じ指標の列に広げたもの)
+    monitor: Optional[str]
+        実験の監視する指標
+    mode: Optional[Mode]
+        監視する指標の向き
+
+    Returns
+    ----------
+    direction: Optional[Better]
+        lower か higher. 決まらなければ None
+    """
+    # 書いた側が決めた向きを, 名前からの推測より優先
+    direction = better.get(column)
+    if direction is None:
+        direction = metric_better(metric, monitor, mode)
+
+    return direction
 
 
 def number_or_none(value: Any) -> Optional[float]:
@@ -202,7 +237,10 @@ def evaluation_values(
         values.append(EvaluationValue(
             evaluation=evaluation.name, column=column,
             value=number_or_none(row.get(column)), guard=evaluation.guard,
-            diff=diff, better=metric_better(metric, monitor, mode),
+            diff=diff,
+            better=column_better(
+                column, metric, evaluation.better, monitor, mode
+            ),
             baseline=evaluation.baseline
         ))
 
@@ -233,7 +271,8 @@ def is_worse(diff: float, better: Better) -> bool:
 
 
 def judge_guard(
-    data: dict[str, Any], monitor: Optional[str], mode: Optional[Mode]
+    data: dict[str, Any], better: dict[str, Better],
+    monitor: Optional[str], mode: Optional[Mode]
 ) -> tuple[list[str], list[str]]:
     """
     1 つの守る指標の表の全ての行の差を見る関数
@@ -242,6 +281,8 @@ def judge_guard(
     ----------
     data: dict[str, Any]
         evaluations/<名前>.json の中身 (形を確かめたもの)
+    better: dict[str, Better]
+        評価の列ごとの向き (同じ指標の列に広げたもの)
     monitor: Optional[str]
         実験の監視する指標
     mode: Optional[Mode]
@@ -266,8 +307,10 @@ def judge_guard(
 
     # 指標ごとに, 全ての行 (グループ) の差を見る
     for metric in metrics:
-        better = metric_better(metric, monitor, mode)
-        if better is None:
+        direction = column_better(
+            metric + DIFF_SUFFIX, metric, better, monitor, mode
+        )
+        if direction is None:
             unknown.append(f"{name}: {metric} の向きが分かりません")
             continue
         diffs = [
@@ -275,10 +318,10 @@ def judge_guard(
         ]
         worse = [
             diff for diff in diffs if diff is not None
-            and is_worse(diff, better)
+            and is_worse(diff, direction)
         ]
         if worse:
-            worst = max(worse) if better == "lower" else min(worse)
+            worst = max(worse) if direction == "lower" else min(worse)
             dropped.append(f"{name}: {metric} (差 {worst:+.4g})")
         elif not diffs or None in diffs:
             unknown.append(f"{name}: {metric} の差の値がありません")
@@ -355,7 +398,9 @@ def build_summary(
         values += evaluation_values(evaluation, monitor, mode)
         if evaluation.guard:
             has_guard = True
-            found, unclear = judge_guard(data, monitor, mode)
+            found, unclear = judge_guard(
+                data, evaluation.better, monitor, mode
+            )
             dropped += found
             unknown += unclear
     guard = (

@@ -1983,6 +1983,18 @@
             "title": "Guard",
             "default": false
           },
+          "better": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "lower",
+                "higher"
+              ]
+            },
+            "type": "object",
+            "title": "Better",
+            "default": {}
+          },
           "epoch": {
             "anyOf": [
               {
