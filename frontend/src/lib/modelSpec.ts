@@ -1,15 +1,15 @@
 import type { RunModelSpec } from '../api/client'
 
-// モデルの定義の写しの記録 (ML-Found の source.yaml の model_spec) の状態の言葉
-const STATUS_LABELS: Record<string, string> = {
-  copied: '写した',
-  missing: 'ファイルが無いので写していない',
-  outside: 'プロジェクトの外なので写していない',
-  link: 'シンボリックリンクなので写していない',
-  not_file: '普通のファイルでないので写していない',
-  unreadable: '読めないので写していない',
-  too_large: '16 MiB を超えるので写していない',
-  invalid: '場所として読めないので写していない',
+// モデルの定義を写さなかった理由 (ML-Found の source.yaml の model_spec の status).
+// 起動し直すときのお知らせ (バックエンドの MODEL_SPEC_REASONS) と同じ言葉
+const STATUS_REASONS: Record<string, string> = {
+  missing: '定義のファイルが無い',
+  outside: '定義がプロジェクトの外にある',
+  link: '定義の場所がシンボリックリンク',
+  not_file: '定義が普通のファイルでない',
+  unreadable: '定義を読めない',
+  too_large: '定義が 16 MiB を超える',
+  invalid: '定義の場所を読めない',
   write_failed: '写しを書けなかった',
 }
 
@@ -18,12 +18,13 @@ export function modelSpecStatus(spec: RunModelSpec): string {
   const status = spec.status ?? null
   if (status === 'copied') {
     const sha = spec.sha256 ? `, sha256 ${spec.sha256.slice(0, 12)}` : ''
-    return `写した (model_spec.yaml${sha})`
+    return `写した: model_spec.yaml${sha}`
   }
-  const label = status && Object.hasOwn(STATUS_LABELS, status) ? STATUS_LABELS[status] : undefined
-  if (label) return label
-  // 知らない値は写していないものとして読む (ML-Found の約束)
-  if (status) return `写していない (${status})`
+  // 知らない値は写していないものとして値のまま出す (ML-Found の約束)
+  if (status) {
+    const reason = Object.hasOwn(STATUS_REASONS, status) ? STATUS_REASONS[status] : undefined
+    return `写していない: ${reason ?? status}`
+  }
   return '写したか分からない'
 }
 
