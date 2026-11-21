@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 from typing import Any, Optional
 
-import pytest
 from fastapi.testclient import TestClient
 
 from ml_dashboard.core import evaluation_summary as summary_module
@@ -11,7 +10,6 @@ from ml_dashboard.core.evaluation_summary import (
     summarize_evaluations,
 )
 
-from conftest import write_run
 from test_api import register
 
 # 評価を持つ実験と持たない実験の場所
@@ -220,12 +218,10 @@ def test_metric_better() -> None:
     assert metric_better("accent", None, None) is None
 
 
-def test_cache_and_skip(
-    project_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cache_and_skip(project_dir: Path, tmp_path: Path) -> None:
     """
-    ファイルが変わらなければ前の結果を使い, 評価の無い実験とリンクの評価を
-    読まないことを確かめる関数
+    ファイルと監視する指標が変わらなければ前の結果を使い, リンクと形の違う
+    評価を読まないことを確かめる関数
 
     Parameters
     ----------
@@ -233,58 +229,109 @@ def test_cache_and_skip(
         プロジェクトのディレクトリ
     tmp_path: Path
         pytest が用意する一時ディレクトリ
-    monkeypatch: pytest.MonkeyPatch
-        pytest の書き換えの道具
 
     Returns
     ----------
     None
     """
     run_dir = project_dir / "outputs" / EVALUATED_RUN
-    write_evaluation(run_dir, "metrics", [{"acc": 0.5}])
+    write_evaluation(run_dir, "metrics", [{"score": 0.5}])
     first = summarize_evaluations(run_dir, None, None)
-    assert first is not None
+    assert first is not None and first.notice is None
     assert summarize_evaluations(run_dir, None, None) is first
 
+    # 監視する指標が変わると, 向きを決め直す
+    monitored = summarize_evaluations(run_dir, "valid/score", "max")
+    assert monitored is not None and monitored is not first
+    assert monitored.values[0].better == "higher"
+
     # 書き直すと読み直し
-    write_evaluation(run_dir, "metrics", [{"acc": 0.75, "extra": 1}])
+    write_evaluation(run_dir, "metrics", [{"score": 0.75, "extra": 1}])
     second = summarize_evaluations(run_dir, None, None)
     assert second is not None and second is not first
     assert [item.value for item in second.values] == [0.75, 1.0]
 
-    # 外のファイルを指すリンクの評価は出さない
+    # 外のファイルを指すリンクは, 中の名前がファイルの名前と違っても読まない
     outside = tmp_path / "outside_eval"
-    write_evaluation(outside, "outside", [{"secret": 1}])
-    (run_dir / "evaluations" / "outside.json").symlink_to(
-        outside / "evaluations" / "outside.json"
+    write_evaluation(outside, "secret", [{"secret": 42}])
+    (run_dir / "evaluations" / "linked.json").symlink_to(
+        outside / "evaluations" / "secret.json"
     )
+    # 名前に : を含む評価と, float にできない大きな整数の値
+    write_evaluation(run_dir, "bad:name", [{"acc": 0.1}])
+    write_evaluation(run_dir, "huge", [{"big": 10 ** 400, "acc": 0.5}])
     third = summarize_evaluations(run_dir, None, None)
     assert third is not None
-    assert {item.evaluation for item in third.values} == {"metrics"}
+    assert {item.evaluation for item in third.values} == {"metrics", "huge"}
+    assert [
+        item.column for item in third.values if item.evaluation == "huge"
+    ] == ["acc"]
+    assert third.notice is not None and "2 個" in third.notice
 
-    # evaluations/ の無い実験では ML-Found を読み込まない
-    def fail() -> None:
-        """
-        呼ばれたら失敗する関数
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        ----------
-        None
-        """
-        raise AssertionError("ML-Found を読み込みました")
-
-    monkeypatch.setattr(summary_module, "import_ml_found", fail)
+    # evaluations/ の無い実験は None
     plain = project_dir / "outputs" / PLAIN_RUN
     assert summarize_evaluations(plain, None, None) is None
 
-    # 読み込めない環境は理由を返し, 覚えない
-    other = write_run(project_dir, "12-00-00")
-    write_evaluation(other, "metrics", [{"acc": 0.5}])
-    failed = summarize_evaluations(other, None, None)
-    assert failed is not None and failed.values == []
-    assert failed.notice is not None and "読めませんでした" in failed.notice
-    assert str(other) not in summary_module.SUMMARY_CACHE
+
+def test_guard_edge_cases(project_dir: Path) -> None:
+    """
+    行の無い守る指標の表, 値の上限, 表として読む曲線を確かめる関数
+
+    Parameters
+    ----------
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    run_dir = project_dir / "outputs" / EVALUATED_RUN
+    write_evaluation(run_dir, "empty", [], guard=True)
+    (run_dir / "evaluations" / "empty.json").write_text(
+        '{"name": "empty", "split": "test", "kind": "table", "columns": '
+        '["acc", "acc_diff"], "rows": [], "guard": true}',
+        encoding="utf-8"
+    )
+    # x の無い曲線は 1 行の表として値にする. 値は上限まで
+    write_evaluation(run_dir, "wide", [
+        {f"m{index}": index for index in range(150)}
+    ], kind="curve")
+    (run_dir / "evaluations" / "wide.json").write_text(
+        (run_dir / "evaluations" / "wide.json").read_text().replace(
+            '"x": "m0"', '"x": null'
+        ),
+        encoding="utf-8"
+    )
+    summary = summarize_evaluations(run_dir, None, None)
+    assert summary is not None and summary.guard is not None
+    assert summary.guard.state == "unknown"
+    assert summary.guard.unknown == ["empty: acc の差の値がありません"]
+    assert len(summary.values) == summary_module.MAX_LIST_VALUES
+    assert summary.values[0].column == "m0"
+
+
+def test_detail_has_evaluations(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    実験の詳細の本体にも評価の値と判定が入ることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    run_dir = project_dir / "outputs" / EVALUATED_RUN
+    write_evaluation(run_dir, "guard", [{"acc_diff": -0.1}], guard=True)
+    project_id = register(client, project_dir)
+    detail = client.get(
+        f"/api/projects/{project_id}/runs/{EVALUATED_RUN}"
+    ).json()
+    assert detail["evaluations"]["guard"]["state"] == "dropped"

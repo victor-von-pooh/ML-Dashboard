@@ -11,6 +11,7 @@ import { Card, EmptyState, ErrorBox, PageHeader, Spinner, StatusBadge } from '..
 import { seriesVar } from '../../lib/colors'
 import {
   MAX_COMPARE_COLUMNS,
+  NO_COLUMNS,
   chooseColumns,
   collectColumns,
   findValue,
@@ -161,7 +162,8 @@ export function ComparePage() {
   const setShownColumns = (keys: string[]) => {
     const next = new URLSearchParams(params)
     next.delete('ev')
-    for (const key of keys) next.append('ev', key)
+    // 全て外した場合は, 並べない印を残す (先頭の列に戻さないため)
+    for (const key of keys.length > 0 ? keys : [NO_COLUMNS]) next.append('ev', key)
     setParams(next, { replace: true })
   }
 
@@ -445,8 +447,8 @@ function EvaluationCompare({
   const [sort, setSort] = useState<{ key: string; desc: boolean } | null>(null)
   const columns = useMemo(() => collectColumns(slots.map((slot) => slot.run.evaluations)), [slots])
   const hasGuard = slots.some((slot) => slot.run.evaluations?.guard)
-  const notice = slots.find((slot) => slot.run.evaluations?.notice)?.run.evaluations?.notice
-  if (columns.length === 0 && !hasGuard && !notice) return null
+  const noticed = slots.filter((slot) => slot.run.evaluations?.notice)
+  if (columns.length === 0 && !hasGuard && noticed.length === 0) return null
   const shown = chooseColumns(columns, requested, MAX_COMPARE_COLUMNS)
 
   // 値の無い実験は末尾. 並べ替えない場合は選んだ順
@@ -482,11 +484,11 @@ function EvaluationCompare({
         ) : undefined
       }
     >
-      {notice && (
-        <p className="px-4 pt-3 text-xs text-ink-3">
-          テスト用の評価を出せない実験があります: {notice}
+      {noticed.map((slot) => (
+        <p key={slot.id} className="px-4 pt-3 text-xs text-ink-3">
+          {label(slot.id)}: {slot.run.evaluations?.notice}
         </p>
-      )}
+      ))}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="text-left text-xs text-ink-3">

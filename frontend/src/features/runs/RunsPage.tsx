@@ -34,6 +34,7 @@ import {
   EVALUATION_SORT_PREFIX,
   GUARD_LABELS,
   MAX_LIST_COLUMNS,
+  NO_COLUMNS,
   chooseColumns,
   collectColumns,
   findValue,
@@ -54,8 +55,9 @@ import {
 } from './EvaluationColumns'
 
 // 並べ替えの名前. 評価の列は ev:<評価の名前>:<列>
-type SortKey = string
-const SORT_KEYS: SortKey[] = ['started', 'best', 'duration', 'epochs']
+type FixedSortKey = 'started' | 'best' | 'duration' | 'epochs'
+type SortKey = FixedSortKey | `${typeof EVALUATION_SORT_PREFIX}${string}`
+const SORT_KEYS: FixedSortKey[] = ['started', 'best', 'duration', 'epochs']
 
 const GUARD_FILTERS: GuardCheck['state'][] = ['dropped', 'kept', 'unknown']
 
@@ -225,19 +227,25 @@ function RunsPage({ projectId }: { projectId: string }) {
   const setShownColumns = (keys: string[]) => {
     const next = new URLSearchParams(params)
     next.delete('ev')
-    for (const key of keys) next.append('ev', key)
+    // 全て外した場合は, 並べない印を残す (先頭の列に戻さないため)
+    for (const key of keys.length > 0 ? keys : [NO_COLUMNS]) next.append('ev', key)
     setParams(next, { replace: true })
   }
+  // 並べている評価の列 (並べていない列の並べ替えは捨てる. 何で並んでいるか分かるように)
   const findColumn = (key: string): EvaluationColumn | undefined =>
     key.startsWith(EVALUATION_SORT_PREFIX)
-      ? evaluationColumns.find((column) => column.key === key.slice(EVALUATION_SORT_PREFIX.length))
+      ? shownColumns.find((column) => column.key === key.slice(EVALUATION_SORT_PREFIX.length))
       : undefined
   const hasGuard = all.some((run) => run.evaluations?.guard)
-  const notice = all.find((run) => run.evaluations?.notice)?.evaluations?.notice
+  const noticed = all.filter((run) => run.evaluations?.notice)
+  // <列><比べ方><数> の語は評価の値で, 他の語は文字で絞り込む
+  const { filters, words, unresolved } = parseValueFilters(query, evaluationColumns)
 
   const sortParam = params.get('sort') ?? ''
   const sortKey: SortKey =
-    SORT_KEYS.includes(sortParam) || findColumn(sortParam) ? sortParam : 'started'
+    SORT_KEYS.includes(sortParam as FixedSortKey) || findColumn(sortParam)
+      ? (sortParam as SortKey)
+      : 'started'
   const sortDesc = params.get('desc') !== '0'
   const sort = { key: sortKey, desc: sortDesc }
   const setSort = (
@@ -262,8 +270,6 @@ function RunsPage({ projectId }: { projectId: string }) {
 
   // 絞り込みと並べ替え (URL の値から求めるので, 毎回計算する. 軽い計算)
   const visible = (() => {
-    // <列><比べ方><数> の語は評価の値で, 他の語は文字で絞り込む
-    const { filters, words } = parseValueFilters(query, evaluationColumns)
     const filtered = all.filter((run) => {
       if (status !== 'all' && run.status !== status) return false
       if (guardFilter && run.evaluations?.guard?.state !== guardFilter) return false
@@ -512,8 +518,17 @@ function RunsPage({ projectId }: { projectId: string }) {
           )}
         </div>
       )}
-      {notice && (
-        <p className="mb-2 text-xs text-ink-3">テスト用の評価を出せない実験があります: {notice}</p>
+      {unresolved.length > 0 && (
+        <p className="mb-2 text-xs text-ink-3">
+          {unresolved.join(', ')} の列が無いか, 2 つ以上の評価にあるので, 文字で絞り込んでいます.
+          値で絞り込むには「評価の列」の名前 (評価の名前:列) で書いてください.
+        </p>
+      )}
+      {noticed.length > 0 && (
+        <p className="mb-2 text-xs text-ink-3">
+          評価の一部を出せない実験が {noticed.length} 件あります ({noticed[0]!.id}:{' '}
+          {noticed[0]!.evaluations?.notice})
+        </p>
       )}
       {(tagChips.length > 0 || starredCount > 0 || starredOnly) && (
         <div

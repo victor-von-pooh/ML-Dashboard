@@ -25,6 +25,9 @@ CLASS_COLORS = ((37, 99, 235), (234, 88, 12))
 BASELINE_POINTS = 20
 BASELINE_NAME = f"先頭 {BASELINE_POINTS} 点の最近傍の規則"
 
+# テスト用の点のシード (実験の seed によらず, 全ての実験を同じ点で比べるため)
+TEST_SEED = 2026
+
 
 def make_spiral(
     n: int, noise: float, generator: torch.Generator
@@ -98,7 +101,7 @@ def make_loaders(cfg: DictConfig) -> tuple[DataLoader, DataLoader]:
 
 def make_test(cfg: DictConfig) -> tuple[torch.Tensor, torch.Tensor]:
     """
-    学習用と検証用とは別の乱数でテスト用の点を作る関数
+    実験によらない決まったシードでテスト用の点を作る関数
 
     Parameters
     ----------
@@ -108,12 +111,12 @@ def make_test(cfg: DictConfig) -> tuple[torch.Tensor, torch.Tensor]:
     Returns
     ----------
     x: torch.Tensor
-        点の座標, 形は (検証用の点の数, 2)
+        点の座標, 形は (data.valid_size, 2). 点の数は検証用と同じにする
     y: torch.Tensor
         クラスのラベル
     """
-    # 学習用と検証用の点を変えないように, 別のシードの生成器
-    generator = torch.Generator().manual_seed(cfg.experiment.seed + 1)
+    # 学習用と検証用の点を変えないように, 別の決まったシードの生成器
+    generator = torch.Generator().manual_seed(TEST_SEED)
     x, y = make_spiral(cfg.data.valid_size, cfg.data.noise, generator)
 
     return x, y

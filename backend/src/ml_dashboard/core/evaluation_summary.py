@@ -3,7 +3,6 @@ import re
 from pathlib import Path
 from typing import Any, Optional
 
-from ml_dashboard.core.loader import import_ml_found
 from ml_dashboard.core.models import (
     Better,
     Evaluation,
@@ -50,10 +49,14 @@ HIGHER_BETTER = frozenset({
     "reward", "return", "success", "coverage",
 })
 
-# 実験のディレクトリごとに覚えた結果 (ファイルの名前, 大きさ, 更新の時刻と,
-# 監視する指標と向きが同じ間は使い直す)
-SUMMARY_CACHE: dict[
-    str, tuple[tuple[Any, ...], Optional[RunEvaluations]]
+# 評価の名前の決まり (ML-Found の docs/FORMAT.md. 列の名前を
+# <評価の名前>:<列> にするので, : を含む名前を除くため)
+EVALUATION_NAME = re.compile(r"^[A-Za-z0-9_@-][A-Za-z0-9_.@-]*$")
+
+# 実験のディレクトリごとに覚えた結果 (ファイルの名前, i-node, 大きさ,
+# 更新の時刻と, 監視する指標と向きが同じ間は使い直す)
+EVALUATION_SUMMARY_CACHE: dict[
+    str, tuple[tuple[Any, ...], RunEvaluations]
 ] = {}
 
 
@@ -110,12 +113,15 @@ def number_or_none(value: Any) -> Optional[float]:
         数 (真偽値は除く), それ以外と nan, 無限大は None
     """
     cell = to_cell(value)
-    number = (
-        float(cell)
-        if isinstance(cell, (int, float)) and not isinstance(cell, bool)
-        and math.isfinite(cell)
-        else None
-    )
+    if not isinstance(cell, (int, float)) or isinstance(cell, bool):
+        return None
+
+    # float にできない大きな整数も無いものとして扱う
+    try:
+        converted = float(cell)
+    except OverflowError:
+        return None
+    number = converted if math.isfinite(converted) else None
 
     return number
 
@@ -296,16 +302,13 @@ def guard_state(dropped: list[str], unknown: list[str]) -> GuardState:
 
 
 def build_summary(
-    run_dir: Path, files: list[Path], monitor: Optional[str],
-    mode: Optional[Mode]
+    files: list[Path], monitor: Optional[str], mode: Optional[Mode]
 ) -> RunEvaluations:
     """
     テスト用の評価の値と守る指標の判定を求める関数
 
     Parameters
     ----------
-    run_dir: Path
-        実験のディレクトリ
     files: list[Path]
         evaluations/ の評価のファイル
     monitor: Optional[str]
@@ -316,31 +319,23 @@ def build_summary(
     Returns
     ----------
     summary: RunEvaluations
-        値 (守る指標の表を先に), 守る指標の判定, 読めない場合の理由
+        値 (守る指標の表を先に), 守る指標の判定, 出せなかったファイルの理由
     """
-    # ML-Found (と PyTorch) を読み込み. 読み込めない環境は理由だけ
-    if not files:
-        summary = RunEvaluations()
-        return summary
-    try:
-        import_ml_found()
-        loaded = load_plain_evaluations(run_dir, files)
-    except Exception as error:
-        summary = RunEvaluations(
-            notice=(
-                "evaluations/ を読めませんでした: "
-                f"{type(error).__name__}: {error}"
-            )
-        )
-        return summary
-
-    # テスト用の評価だけを, 守る指標の表を先に名前の順で
-    tests: list[tuple[Evaluation, dict[str, Any]]] = []
-    for data in loaded:
-        parsed = to_evaluation(data)
-        if parsed is not None and parsed.split == LIST_SPLIT:
-            tests.append((parsed, data))
+    # 形の合う評価を読み, テスト用だけを守る指標の表を先に名前の順で
+    loaded = load_plain_evaluations(files)
+    parsed = [
+        (evaluation, data) for data in loaded
+        if (evaluation := to_evaluation(data)) is not None
+        and EVALUATION_NAME.match(evaluation.name) is not None
+    ]
+    tests = [item for item in parsed if item[0].split == LIST_SPLIT]
     tests.sort(key=lambda item: evaluation_order(item[0]))
+    skipped = len(files) - len(parsed)
+    notice = (
+        f"evaluations/ の {skipped} 個のファイルは形が違うか, 読めない "
+        "(シンボリックリンク, 大きすぎるなど) ので出していません"
+        if skipped > 0 else None
+    )
 
     # 列にする値と, 守る指標の表の判定
     values: list[EvaluationValue] = []
@@ -361,7 +356,9 @@ def build_summary(
         )
         if has_guard else None
     )
-    summary = RunEvaluations(values=values[:MAX_LIST_VALUES], guard=guard)
+    summary = RunEvaluations(
+        values=values[:MAX_LIST_VALUES], guard=guard, notice=notice
+    )
 
     return summary
 
@@ -385,28 +382,37 @@ def summarize_evaluations(
     ----------
     summary: Optional[RunEvaluations]
         値と守る指標の判定. evaluations/ の無い実験は None
-        (ML-Found を読み込まない)
     """
     if not is_plain_dir(run_dir / EVALUATIONS_DIR):
         return None
 
-    # ファイルの名前, 大きさ, 更新の時刻が同じなら, 前に求めた結果
+    # ファイル (リンクはリンクそのもの) の名前, i-node, 大きさ, 更新の時刻が
+    # 同じなら, 前に求めた結果
     files = evaluation_files(run_dir)
-    stats: list[tuple[str, int, int]] = []
+    stats: list[tuple[str, int, int, int]] = []
     for path in files:
         try:
-            stat = path.stat()
+            stat = path.lstat()
         except OSError:
             continue
-        stats.append((path.name, stat.st_size, stat.st_mtime_ns))
+        stats.append(
+            (path.name, stat.st_ino, stat.st_size, stat.st_mtime_ns)
+        )
     key = (tuple(stats), monitor, mode)
-    cached = SUMMARY_CACHE.get(str(run_dir))
+    cached = EVALUATION_SUMMARY_CACHE.get(str(run_dir))
     if cached is not None and cached[0] == key:
         return cached[1]
 
-    summary = build_summary(run_dir, files, monitor, mode)
-    # 読めなかった結果は覚えない (ML-Found を入れた後に読み直すため)
-    if summary.notice is None:
-        SUMMARY_CACHE[str(run_dir)] = (key, summary)
+    # 壊れた評価 1 つで実験の行が読めなくならないように, 理由を残して返却
+    try:
+        summary = build_summary(files, monitor, mode)
+    except Exception as error:
+        summary = RunEvaluations(
+            notice=(
+                "evaluations/ を読めませんでした: "
+                f"{type(error).__name__}: {error}"
+            )
+        )
+    EVALUATION_SUMMARY_CACHE[str(run_dir)] = (key, summary)
 
     return summary

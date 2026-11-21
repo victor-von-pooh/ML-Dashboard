@@ -7,6 +7,9 @@ export const MAX_COMPARE_COLUMNS = 6
 // 評価の列で並べ替えるときの並べ替えの名前の頭
 export const EVALUATION_SORT_PREFIX = 'ev:'
 
+// 評価の列を 1 つも並べないことを URL に残す印 (ev= の空の値)
+export const NO_COLUMNS = ''
+
 /** テスト用の評価の 1 つの列 (全ての実験を合わせたもの) */
 export interface EvaluationColumn {
   /** <評価の名前>:<列> */
@@ -71,12 +74,16 @@ export function collectColumns(list: (RunEvaluations | null | undefined)[]): Eva
   )
 }
 
-/** 並べる列. 選んだ列 (今ある列だけ) か, 選んでいなければ先頭の列 */
+/**
+ * 並べる列. 選んだ列 (今ある列だけ) か, 選んでいないか選んだ列が全て無くなった
+ * 場合は先頭の列. 列を並べない印 (NO_COLUMNS) だけなら並べない
+ */
 export function chooseColumns(
   columns: EvaluationColumn[],
   requested: string[],
   limit: number,
 ): EvaluationColumn[] {
+  if (requested.length > 0 && requested.every((key) => key === NO_COLUMNS)) return []
   const chosen = requested
     .map((key) => columns.find((column) => column.key === key))
     .filter((column): column is EvaluationColumn => column !== undefined)
@@ -113,19 +120,22 @@ const FILTER_PATTERN = /^([^<>=\s]+?)(<=|>=|<|>)(-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\
 export function parseValueFilters(
   query: string,
   columns: EvaluationColumn[],
-): { filters: ValueFilter[]; words: string[] } {
+): { filters: ValueFilter[]; words: string[]; unresolved: string[] } {
   const filters: ValueFilter[] = []
   const words: string[] = []
+  // 比べ方の形なのに列に当たらなかった語 (利用者に知らせる)
+  const unresolved: string[] = []
   for (const word of query.split(/\s+/).filter(Boolean)) {
     const match = FILTER_PATTERN.exec(word)
     const key = match ? resolveColumn(match[1]!, columns) : undefined
     if (match && key) {
       filters.push({ key, op: match[2] as ValueFilter['op'], threshold: Number(match[3]) })
     } else {
+      if (match && columns.length > 0) unresolved.push(word)
       words.push(word.toLowerCase())
     }
   }
-  return { filters, words }
+  return { filters, words, unresolved }
 }
 
 /** 絞り込みの列の名前を, 列の名前 (<評価の名前>:<列>) にする (大文字と小文字は区別しない) */

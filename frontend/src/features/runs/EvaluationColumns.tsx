@@ -9,7 +9,7 @@ import {
   TriangleAlert,
   type LucideIcon,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 
 import type { EvaluationValue, GuardCheck } from '../../api/client'
 import { formatMetric } from '../../lib/format'
@@ -81,7 +81,9 @@ export function ColumnLabel({ column }: { column: EvaluationColumn }) {
   return (
     <span className="inline-flex flex-col items-end leading-tight">
       <span className="font-mono">{column.column}</span>
+      <span className="sr-only"> (</span>
       <span className="font-mono text-[10px] font-normal text-ink-3">{column.evaluation}</span>
+      <span className="sr-only">)</span>
     </span>
   )
 }
@@ -99,6 +101,22 @@ export function EvaluationColumnPicker({
   onChange: (keys: string[]) => void
 }) {
   const [search, setSearch] = useState('')
+  const details = useRef<HTMLDetailsElement>(null)
+  // 外を押したときと Esc で閉じる (表に重なったまま残らないように)
+  useEffect(() => {
+    const close = (event: MouseEvent) => {
+      const element = details.current
+      if (element?.open && !element.contains(event.target as Node)) element.open = false
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [])
+  const onKeyDown = (event: KeyboardEvent<HTMLDetailsElement>) => {
+    const element = details.current
+    if (event.key !== 'Escape' || !element?.open) return
+    element.open = false
+    element.querySelector('summary')?.focus()
+  }
   const chosenKeys = chosen.map((column) => column.key)
   const word = search.trim().toLowerCase()
   const shown = columns.filter((column) => !word || column.key.toLowerCase().includes(word))
@@ -112,7 +130,7 @@ export function EvaluationColumnPicker({
           : [...chosenKeys, key],
     )
   return (
-    <details className="relative">
+    <details ref={details} className="relative" onKeyDown={onKeyDown}>
       <summary className="inline-flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-xs font-medium text-ink-2 hover:bg-surface-2">
         <Columns3 className="size-4" aria-hidden />
         評価の列 ({chosen.length}/{Math.min(limit, columns.length)})

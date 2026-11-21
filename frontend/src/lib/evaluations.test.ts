@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { EvaluationValue, RunEvaluations } from '../api/client'
 import {
+  NO_COLUMNS,
   chooseColumns,
   collectColumns,
   diffTone,
@@ -71,6 +72,12 @@ describe('chooseColumns', () => {
     const chosen = chooseColumns(columns, ['other:score', 'gone:x', 'other:score'], 3)
     expect(chosen.map((column) => column.key)).toEqual(['other:score'])
   })
+  it('並べない印だけなら並べず, 選んだ列が全て無くなったら先頭の列', () => {
+    expect(chooseColumns(columns, [NO_COLUMNS], 3)).toEqual([])
+    expect(chooseColumns(columns, ['gone:x'], 1).map((column) => column.key)).toEqual([
+      'guard_test:acc',
+    ])
+  })
 })
 
 describe('diffTone', () => {
@@ -106,9 +113,10 @@ describe('parseValueFilters', () => {
     expect(words).toEqual(['adam', 'lr=0.1'])
   })
   it('列に当たらない語は文字の語のまま', () => {
-    const { filters, words } = parseValueFilters('missing<1 mae<abc', columns)
+    const { filters, words, unresolved } = parseValueFilters('missing<1 mae<abc', columns)
     expect(filters).toEqual([])
     expect(words).toEqual(['missing<1', 'mae<abc'])
+    expect(unresolved).toEqual(['missing<1'])
   })
   it('値で絞り込み, 値の無い実験は外す', () => {
     const { filters } = parseValueFilters('mae_diff<0', columns)
