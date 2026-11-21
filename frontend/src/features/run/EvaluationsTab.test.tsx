@@ -14,6 +14,7 @@ const table: Evaluation = {
   description: '見逃し',
   baseline: '今の処理',
   guard: true,
+  better: {},
   epoch: 9,
   created_at: null,
   total_rows: 3000,
