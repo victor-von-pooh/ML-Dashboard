@@ -78,7 +78,24 @@ describe('GuardBadge', () => {
     expect(badge).toHaveAttribute('aria-expanded', 'true')
     // 押すとフォーカスが印を包む main に移る場合も閉じない
     fireEvent.blur(badge, { relatedTarget: screen.getByRole('main') })
+    fireEvent.focusIn(screen.getByRole('main'))
     expect(badge).toHaveAttribute('aria-expanded', 'true')
+  })
+  it('説明の文を押した後に Tab で印の外へ移ると閉じる', () => {
+    render(
+      <main tabIndex={-1}>
+        <GuardBadge guard={{ state: 'kept', dropped: [], unknown: [] }} />
+        <button type="button">次</button>
+      </main>,
+    )
+    const badge = screen.getByRole('button', { name: '守る指標: 保った' })
+    fireEvent.click(badge)
+    // 説明の文を押してフォーカスが main に移った後, Tab で次のボタンへ
+    fireEvent.blur(badge, { relatedTarget: screen.getByRole('main') })
+    fireEvent.focusIn(badge)
+    expect(badge).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.focusIn(screen.getByRole('button', { name: '次' }))
+    expect(badge).toHaveAttribute('aria-expanded', 'false')
   })
   it('守る指標の表が無い実験には印を出さない', () => {
     render(<GuardBadge guard={null} />)

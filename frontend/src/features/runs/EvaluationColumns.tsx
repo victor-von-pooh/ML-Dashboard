@@ -37,6 +37,15 @@ const GUARD_OPEN_EVENT = 'guard-badge-open'
 const DETAIL_WIDTH = 288
 
 /**
+ * フォーカスの行き先が印の外か. 行き先が無いか, 印を包む要素 (説明の文を押したとき)
+ * なら外としない
+ */
+function leftBadge(wrapper: HTMLElement | null, next: Node | null): boolean {
+  if (next === null || wrapper === null) return false
+  return !wrapper.contains(next) && !next.contains(wrapper)
+}
+
+/**
  * 守る指標の印. 色だけに頼らずアイコンと文字も付ける. 押すと (キーボードとタッチでも)
  * 落ちた指標と判断できなかった理由の説明が印の下に浮いて開く (表の形を変えないため)
  */
@@ -89,11 +98,16 @@ export function GuardBadge({ guard }: { guard: GuardCheck | null | undefined }) 
     observer.observe(main.firstElementChild ?? main)
     return () => observer.disconnect()
   }, [open, place])
-  // 開いている間は, 外を押す, Esc, 他の印を開くと閉じ, 流すか窓の大きさを
-  // 変えると置き直す
+  // 開いている間は, 外を押す, Esc, 他の印を開く, 印の外へフォーカスが移ると閉じ,
+  // 流すか窓の大きさを変えると置き直す
   useEffect(() => {
     if (!open) return
     const close = () => setPosition(null)
+    // 説明の文を押してフォーカスが印を包む要素に移った後に Tab で移る場合は,
+    // 印の blur が起きないので, 行き先で確かめる
+    const onFocusIn = (event: globalThis.FocusEvent) => {
+      if (leftBadge(wrapper.current, event.target as Node | null)) close()
+    }
     const onPointerDown = (event: PointerEvent) => {
       if (!wrapper.current?.contains(event.target as Node)) close()
     }
@@ -104,12 +118,14 @@ export function GuardBadge({ guard }: { guard: GuardCheck | null | undefined }) 
       if ((event as CustomEvent<string>).detail !== detailId) close()
     }
     document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('focusin', onFocusIn)
     document.addEventListener('keydown', onKeyDown)
     document.addEventListener(GUARD_OPEN_EVENT, onOther)
     window.addEventListener('scroll', place, true)
     window.addEventListener('resize', place)
     return () => {
       document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('focusin', onFocusIn)
       document.removeEventListener('keydown', onKeyDown)
       document.removeEventListener(GUARD_OPEN_EVENT, onOther)
       window.removeEventListener('scroll', place, true)
@@ -129,10 +145,7 @@ export function GuardBadge({ guard }: { guard: GuardCheck | null | undefined }) 
   // Tab などで印から離れたら閉じる (説明の文を選ぶために押して, 行き先が無いか
   // 印を包む要素になる場合は閉じない)
   const onBlur = (event: FocusEvent<HTMLSpanElement>) => {
-    const next = event.relatedTarget as Node | null
-    const inside = wrapper.current?.contains(next) ?? false
-    const ancestor = next !== null && wrapper.current !== null && next.contains(wrapper.current)
-    if (next && !inside && !ancestor) setPosition(null)
+    if (leftBadge(wrapper.current, event.relatedTarget as Node | null)) setPosition(null)
   }
   return (
     <span ref={wrapper} className="inline-block" onBlur={onBlur}>
