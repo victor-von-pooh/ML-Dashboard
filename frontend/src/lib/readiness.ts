@@ -1,7 +1,10 @@
 import type { ConfigPath, EnvironmentJob, ProjectReadiness } from '../api/client'
 
-/** 準備の 1 項目の状態. ok = そろっている, missing = 足りない, unknown = 分からない */
-export type ReadinessState = 'ok' | 'missing' | 'unknown'
+/**
+ * 準備の 1 項目の状態. ok = そろっている, missing = 足りない, unknown = 分からない,
+ * notice = 無いが学習は止めない (知らせるだけ)
+ */
+export type ReadinessState = 'ok' | 'missing' | 'unknown' | 'notice'
 
 export type ReadinessItem = {
   label: string
@@ -108,12 +111,18 @@ export function readinessItems(readiness: ProjectReadiness): ReadinessItem[] {
     ),
   ]
   if (readiness.model_spec) {
+    const hint = 'モデルの作成 (ML-CreateArchitecture) で定義をこの場所に置きます'
+    const item = pathItem('モデルの定義', readiness.model_spec, hint)
+    // 仮のモデルの目印があれば, 無くても学習は止めず知らせるだけ
     items.push(
-      pathItem(
-        'モデルの定義',
-        readiness.model_spec,
-        'モデルの作成 (ML-CreateArchitecture) で定義をこの場所に置きます',
-      ),
+      readiness.model_placeholder && item.state === 'missing'
+        ? {
+            ...item,
+            state: 'notice',
+            text: 'まだありません. 置くまでは学習のスクリプトの仮のモデルで学習します',
+            hint: `課題に合うモデルにするには, ${hint}`,
+          }
+        : item,
     )
   }
   items.push(environmentItem(readiness))

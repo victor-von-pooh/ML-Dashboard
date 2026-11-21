@@ -460,6 +460,9 @@ class ProjectReadiness(BaseModel):
     dataset: ConfigPath
     # config に model.spec が無い場合は None
     model_spec: Optional[ConfigPath] = None
+    # config の model.placeholder が true か (定義のファイルが無くても仮の
+    # モデルで学習できるプロジェクト. model.spec が無い場合は False)
+    model_placeholder: bool = False
     # 学習に使う Python (登録したもの) と, 確かめと入れる先の Python
     python: str
     target_python: str

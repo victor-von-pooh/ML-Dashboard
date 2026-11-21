@@ -3048,6 +3048,11 @@
               }
             ]
           },
+          "model_placeholder": {
+            "type": "boolean",
+            "title": "Model Placeholder",
+            "default": false
+          },
           "python": {
             "type": "string",
             "title": "Python"
