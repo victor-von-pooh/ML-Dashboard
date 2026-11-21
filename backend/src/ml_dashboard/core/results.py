@@ -549,35 +549,6 @@ def evaluation_problem(
     return problem
 
 
-def check_evaluation(
-    stem: str, data: dict[str, Any], folder: Optional[Path] = None
-) -> Optional[str]:
-    """
-    評価のファイルの形と名前を確かめる関数
-
-    Parameters
-    ----------
-    stem: str
-        ファイルの名前 (.json を除く)
-    data: dict[str, Any]
-        evaluations/<名前>.json の中身
-    folder: Optional[Path] = None
-        evaluations/ (evaluation_problem を参照)
-
-    Returns
-    ----------
-    name: Optional[str]
-        評価の名前. 形が違うか, 名前がファイルの名前と違うか, 決まり
-        (英数字と _ . @ - だけ. 先頭は . 以外) に合わない場合は None
-    """
-    name: Optional[str] = (
-        str(data["name"]) if evaluation_problem(folder, stem, data) is None
-        else None
-    )
-
-    return name
-
-
 def shown_name(name: str) -> str:
     """
     注意の文に出すファイルの名前を整える関数
