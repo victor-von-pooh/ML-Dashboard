@@ -9,7 +9,14 @@ import {
   TriangleAlert,
   type LucideIcon,
 } from 'lucide-react'
-import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FocusEvent,
+  type KeyboardEvent,
+} from 'react'
 
 import type { EvaluationValue, GuardCheck } from '../../api/client'
 import { useStableId } from '../../lib/a11y'
@@ -38,7 +45,14 @@ export function GuardBadge({ guard }: { guard: GuardCheck | null | undefined }) 
   const wrapper = useRef<HTMLSpanElement>(null)
   const button = useRef<HTMLButtonElement>(null)
   const detailId = useStableId('guard-detail')
-  // 開いている間は, 外を押す, Esc, 他の印を開く, 流す, 窓の大きさを変えると閉じる
+  // 印の下に, 画面の端からはみ出さないように置く
+  const place = useCallback(() => {
+    const rect = button.current?.getBoundingClientRect()
+    const left = Math.max(8, Math.min(rect?.left ?? 0, window.innerWidth - DETAIL_WIDTH - 8))
+    setPosition({ top: (rect?.bottom ?? 0) + 4, left })
+  }, [])
+  // 開いている間は, 外を押す, Esc, 他の印を開くと閉じ, 流すか窓の大きさを
+  // 変えると置き直す
   useEffect(() => {
     if (!open) return
     const close = () => setPosition(null)
@@ -54,16 +68,16 @@ export function GuardBadge({ guard }: { guard: GuardCheck | null | undefined }) 
     document.addEventListener('pointerdown', onPointerDown)
     document.addEventListener('keydown', onKeyDown)
     document.addEventListener(GUARD_OPEN_EVENT, onOther)
-    window.addEventListener('scroll', close, true)
-    window.addEventListener('resize', close)
+    window.addEventListener('scroll', place, true)
+    window.addEventListener('resize', place)
     return () => {
       document.removeEventListener('pointerdown', onPointerDown)
       document.removeEventListener('keydown', onKeyDown)
       document.removeEventListener(GUARD_OPEN_EVENT, onOther)
-      window.removeEventListener('scroll', close, true)
-      window.removeEventListener('resize', close)
+      window.removeEventListener('scroll', place, true)
+      window.removeEventListener('resize', place)
     }
-  }, [open, detailId])
+  }, [open, detailId, place])
   if (!guard) return <span className="text-xs text-ink-3">—</span>
   const { icon: Icon, className } = GUARD_STYLE[guard.state]
   const toggle = () => {
@@ -71,10 +85,7 @@ export function GuardBadge({ guard }: { guard: GuardCheck | null | undefined }) 
       setPosition(null)
       return
     }
-    // 印の下に, 画面の端からはみ出さないように置く
-    const rect = button.current?.getBoundingClientRect()
-    const left = Math.max(8, Math.min(rect?.left ?? 0, window.innerWidth - DETAIL_WIDTH - 8))
-    setPosition({ top: (rect?.bottom ?? 0) + 4, left })
+    place()
     document.dispatchEvent(new CustomEvent(GUARD_OPEN_EVENT, { detail: detailId }))
   }
   // Tab などで印から離れたら閉じる
