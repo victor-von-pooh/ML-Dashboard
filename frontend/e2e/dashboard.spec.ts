@@ -43,7 +43,7 @@ test('プロジェクトから実験の一覧と詳細を開く', async ({ page 
   const badge = page.getByRole('button', { name: '守る指標: 落ちた' }).first()
   await badge.click()
   await expect(badge).toHaveAttribute('aria-expanded', 'true')
-  await expect(page.getByRole('status').filter({ hasText: /落ちた: / })).toBeVisible()
+  await expect(page.getByText(/^落ちた: by_class_test/)).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(badge).toHaveAttribute('aria-expanded', 'false')
   // 守る指標の印と評価の値で絞り込む

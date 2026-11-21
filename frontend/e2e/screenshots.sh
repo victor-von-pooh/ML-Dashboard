@@ -5,8 +5,16 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
-WORK="$PWD/.work/shots"
+# 画面の通しのテスト (e2e/.work) と同時に動かしても消し合わない場所
+WORK="$PWD/.work-shots"
 PORT="${SHOTS_PORT:-8792}"
+URL="http://127.0.0.1:$PORT"
+
+# 他のものが待ち受けているポートでは起動しない (別のものを撮らないため)
+if curl -s -o /dev/null "$URL"; then
+  echo "ポート $PORT は使われています. SHOTS_PORT=... で変えてください" >&2
+  exit 1
+fi
 
 # 前回の結果を消し, デモのプロジェクトを作業用のディレクトリに写す
 rm -rf "$WORK"
@@ -24,26 +32,41 @@ for config in train.yaml examples/sgd.yaml examples/small.yaml examples/eval_tra
   fi
 done
 
-# データの置き場も作業用のディレクトリにして起動し, 終わったら止める
+# データの置き場も作業用のディレクトリにして起動する. uv run を挟むと止めても
+# 中の Python が残りうるので, 環境の ml-dashboard を直に起動する
 ML_DASHBOARD_HOME="$WORK/home" ML_DASHBOARD_TOKEN=shots-token \
-  uv run ml-dashboard --port "$PORT" > "$WORK/server.log" 2>&1 &
+  .venv/bin/ml-dashboard --port "$PORT" > "$WORK/server.log" 2>&1 &
 SERVER=$!
-trap 'kill "$SERVER" 2> /dev/null || true' EXIT
+stop() {
+  kill "$SERVER" 2> /dev/null || true
+  wait "$SERVER" 2> /dev/null || true
+}
+trap stop EXIT
+
+# 起動を待つ. 途中で止まるか, 待ちきれなければログを出して止める
 ready=0
 for _ in $(seq 60); do
-  if curl -sf -H 'x-dashboard-token: shots-token' \
-    "http://127.0.0.1:$PORT/api/projects" > /dev/null; then
+  if ! kill -0 "$SERVER" 2> /dev/null; then
+    break
+  fi
+  if curl -sf -H 'x-dashboard-token: shots-token' "$URL/api/projects" > /dev/null; then
     ready=1
     break
   fi
   sleep 1
 done
-# 起動しなければ, ログを出して止める
 if [ "$ready" != 1 ]; then
   cat "$WORK/server.log"
   exit 1
 fi
 
 cd ../frontend
-SHOTS_URL="http://127.0.0.1:$PORT" SHOTS_TOKEN=shots-token SHOTS_DEMO="$WORK/demo" \
-  node e2e/screenshots.ts
+SHOTS_URL="$URL" SHOTS_TOKEN=shots-token SHOTS_DEMO="$WORK/demo" node e2e/screenshots.ts
+
+# 止めた後にポートが空いたことを確かめる
+stop
+trap - EXIT
+if curl -s -o /dev/null "$URL"; then
+  echo "ダッシュボードが止まっていません (ポート $PORT)" >&2
+  exit 1
+fi

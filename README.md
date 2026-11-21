@@ -82,7 +82,7 @@ make dev-frontend   # 画面 (http://localhost:5173, API に転送. ポートを
 make check          # lint, 型検査, テスト
 make e2e            # 画面の通しのテスト (Playwright). デモの実験を作ってからダッシュボードを起動して操作する
 make api            # バックエンドの API を変えたら, 画面の型を作り直す
-make screenshots    # README と操作ガイドの画面の図 (実験の一覧と比較) を撮り直す
+make screenshots    # README と操作ガイドの画面の図 (実験の一覧と比較) を撮り直す. 手元の Chrome を使い, git に入っている docs/images の図を上書きする
 ```
 
 | ディレクトリ | 内容 |
