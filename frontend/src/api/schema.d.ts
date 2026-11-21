@@ -1596,6 +1596,18 @@ export interface components {
              */
             exclusive_maximum: boolean;
         };
+        /** PolicyEndShare */
+        PolicyEndShare: {
+            /**
+             * End
+             * @enum {string}
+             */
+            end: "terminated" | "truncated" | "max_steps" | "stop" | "handover" | "other";
+            /** Count */
+            count: number;
+            /** Ratio */
+            ratio?: number | null;
+        };
         /** PolicyFallback */
         PolicyFallback: {
             /** Kind */
@@ -1616,6 +1628,25 @@ export interface components {
             /** Observation High */
             observation_high?: (number | null)[] | null;
             fallback: components["schemas"]["PolicyFallback"];
+        };
+        /** PolicyOutcome */
+        PolicyOutcome: {
+            /** Name */
+            name: string;
+            /** Split */
+            split?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Epoch */
+            epoch?: number | null;
+            /** Episodes */
+            episodes: number;
+            /** Ends */
+            ends: components["schemas"]["PolicyEndShare"][];
+            /** Guarded */
+            guarded: number;
+            /** Guarded Ratio */
+            guarded_ratio?: number | null;
         };
         /** PolicySpace */
         PolicySpace: {
@@ -2170,6 +2201,11 @@ export interface components {
              */
             samples: components["schemas"]["Sample"][];
             policy?: components["schemas"]["RunPolicy"] | null;
+            /**
+             * Policy Outcomes
+             * @default []
+             */
+            policy_outcomes: components["schemas"]["PolicyOutcome"][];
             /**
              * Notices
              * @default []

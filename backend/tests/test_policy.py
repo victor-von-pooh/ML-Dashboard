@@ -261,3 +261,117 @@ def test_policy_weights_not_served(
     assert files["final_model.pt"]["downloadable"] is False
     assert files["policy/policy.json"]["downloadable"] is True
     assert files["loss_curve.png"]["downloadable"] is True
+
+
+def episode_row(index: int, end: Any) -> dict[str, Any]:
+    """
+    ML-Found の evaluate_policy の形の 1 エピソードの行を作る関数
+
+    Parameters
+    ----------
+    index: int
+        エピソードの番号
+    end: Any
+        終えた理由
+
+    Returns
+    ----------
+    row: dict[str, Any]
+        episode, seed, reward, length, end と守りの結果ごとの数
+    """
+    row = {
+        "episode": index, "seed": 20000 + index, "reward": 10.0,
+        "length": 10, "end": end, "ok": 10, "clipped": 0, "fallback": 0,
+        "stop": 1 if end == "stop" else 0,
+        "handover": 1 if end == "handover" else 0
+    }
+
+    return row
+
+
+def test_policy_outcomes(client: TestClient, project_dir: Path) -> None:
+    """
+    守り付きの評価の全ての行から終え方ごとの割合と, 守りが止めたか元の
+    制御に戻したエピソードの割合を数えることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    from ml_found import save_evaluation
+
+    project_id = register(client, project_dir)
+    write_policy(project_dir)
+    url = f"/api/projects/{project_id}/runs/{RUN}/results"
+    # 評価の無い実験は空
+    assert client.get(url).json()["policy_outcomes"] == []
+
+    # 返す行 (先頭の 2000 行) より多い評価. 2000 行の後に stop を置き,
+    # 割合が全ての行から求まることを確かめる
+    ends = (
+        ["truncated"] * 1500 + ["terminated"] * 400 + ["handover"] * 100
+        + ["stop"] * 200 + ["max_steps"] * 300 + ["landed", None]
+    )
+    rows = [episode_row(index, end) for index, end in enumerate(ends)]
+    run_dir = project_dir / "outputs" / RUN
+    save_evaluation(
+        run_dir, "guarded_episodes", rows, "simulator",
+        description="守りを当てて動かしたエピソード", guard=True, epoch=7
+    )
+    # 守りの結果の列の無い表と曲線は数えない
+    save_evaluation(run_dir, "plain", [{"end": "stop", "ok": 1}], "test")
+    save_evaluation(
+        run_dir, "curve", rows[:3], "test", kind="curve", x="episode"
+    )
+    # 行の無い守り付きの評価 (ML-Found は列の無い表に書くので手で置く)
+    # は割合を出さない
+    (run_dir / "evaluations" / "empty.json").write_text(json.dumps({
+        "name": "empty", "split": "simulator", "kind": "table",
+        "columns": [
+            "episode", "end", "ok", "clipped", "fallback", "stop", "handover"
+        ],
+        "rows": []
+    }), encoding="utf-8")
+
+    data = client.get(url).json()
+    guarded = next(
+        item for item in data["evaluations"]
+        if item["name"] == "guarded_episodes"
+    )
+    assert len(guarded["rows"]) == 2000
+    outcomes = data["policy_outcomes"]
+    assert [item["name"] for item in outcomes] == [
+        "guarded_episodes", "empty"
+    ]
+    outcome = outcomes[0]
+    total = len(ends)
+    assert outcome["episodes"] == total
+    assert outcome["split"] == "simulator"
+    assert outcome["description"] == "守りを当てて動かしたエピソード"
+    assert outcome["epoch"] == 7
+    assert {item["end"]: item["count"] for item in outcome["ends"]} == {
+        "terminated": 400, "truncated": 1500, "max_steps": 300,
+        "stop": 200, "handover": 100, "other": 2
+    }
+    assert [item["end"] for item in outcome["ends"]] == [
+        "terminated", "truncated", "max_steps", "stop", "handover", "other"
+    ]
+    assert outcome["ends"][1]["ratio"] == 1500 / total
+    assert outcome["guarded"] == 300
+    assert outcome["guarded_ratio"] == 300 / total
+
+    # 行の無い評価は割合が無く, 知らない値の無い評価は other を持たない
+    empty = outcomes[1]
+    assert empty["episodes"] == 0
+    assert empty["guarded_ratio"] is None
+    assert [item["end"] for item in empty["ends"]] == [
+        "terminated", "truncated", "max_steps", "stop", "handover"
+    ]
+    assert all(item["ratio"] is None for item in empty["ends"])

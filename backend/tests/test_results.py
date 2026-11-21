@@ -269,7 +269,7 @@ def test_results_legacy_and_missing(
     (legacy / "epoch_020.png").write_bytes(b"\x89PNG")
     project_id = register(client, project_dir)
     empty = {"task": None, "evaluations": [], "samples": [], "policy": None,
-             "notices": []}
+             "policy_outcomes": [], "notices": []}
     for run_id in (RESULTS_RUN, LEGACY_RUN):
         response = client.get(results_url(project_id, run_id))
         assert response.status_code == 200

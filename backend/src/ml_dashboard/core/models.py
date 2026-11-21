@@ -486,6 +486,34 @@ class RunPolicy(BaseModel):
     metadata: dict[str, Any] = {}
 
 
+# 守り付きの評価のエピソードの終え方 (ML-Found の evaluate_policy の end.
+# other は知らない値と値の無い行)
+PolicyEnd = Literal[
+    "terminated", "truncated", "max_steps", "stop", "handover", "other"
+]
+
+
+class PolicyEndShare(BaseModel):
+    # 終え方ごとのエピソードの数と割合 (エピソードが無ければ ratio は None)
+    end: PolicyEnd
+    count: int
+    ratio: Optional[float] = None
+
+
+class PolicyOutcome(BaseModel):
+    # 守り付きの評価 (ML-Found の evaluate_policy の行を save_evaluation で
+    # 残した表) の全ての行から数えた, 終え方ごとの割合と, 守りが止めたか
+    # 元の制御に戻した (end が stop か handover の) エピソードの割合
+    name: str
+    split: Optional[str] = None
+    description: Optional[str] = None
+    epoch: Optional[int] = None
+    episodes: int
+    ends: list[PolicyEndShare]
+    guarded: int
+    guarded_ratio: Optional[float] = None
+
+
 class RunResults(BaseModel):
     # 実験の任意のファイル (task.yaml, evaluations/, samples/,
     # policy/policy.json). 無い実験は None と空のリスト
@@ -493,6 +521,8 @@ class RunResults(BaseModel):
     evaluations: list[Evaluation] = []
     samples: list[Sample] = []
     policy: Optional[RunPolicy] = None
+    # 守り付きの評価の割合 (評価の並びと同じ順. 無ければ空)
+    policy_outcomes: list[PolicyOutcome] = []
     # 読めなかったファイルなど (画面に注意として出す)
     notices: list[str] = []
 
