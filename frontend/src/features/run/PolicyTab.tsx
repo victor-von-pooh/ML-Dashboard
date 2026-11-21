@@ -1,15 +1,19 @@
 import clsx from 'clsx'
 import { CheckCircle2, ShieldAlert, TriangleAlert, XCircle } from 'lucide-react'
 
-import type { PolicySpace, RunPolicy } from '../../api/client'
+import type { BestValue, History, PolicyOutcome, PolicySpace, RunPolicy } from '../../api/client'
 import { Card, ErrorBox } from '../../components/ui'
 import { formatBytes, formatDateTime } from '../../lib/format'
 import {
   boundRows,
+  describeEnd,
   describeFallback,
   describeHead,
   discreteRows,
   formatBound,
+  formatShare,
+  SUCCESS_COLUMN,
+  trainingSuccess,
   weightsStatus,
 } from '../../lib/policy'
 
@@ -142,8 +146,129 @@ function ActionsTable({ space, allowed }: { space: PolicySpace; allowed: number[
   )
 }
 
+/** 守り付きの評価 1 つの, 終え方ごとの割合と守りが止めたか元の制御に戻した割合 */
+function OutcomeTable({ outcome }: { outcome: PolicyOutcome }) {
+  const details = [
+    outcome.split && `分割 ${outcome.split}`,
+    outcome.epoch != null && `エポック ${outcome.epoch}`,
+    `${outcome.episodes.toLocaleString()} エピソード`,
+  ].filter(Boolean)
+  return (
+    <section aria-label={`守り付きの評価 ${outcome.name}`} className="space-y-2">
+      <div>
+        <h4 className="font-mono text-sm font-medium">{outcome.name}</h4>
+        <p className="text-xs text-ink-3">
+          {details.join(' · ')}
+          {outcome.description && <span className="ml-2">{outcome.description}</span>}
+        </p>
+      </div>
+      {outcome.episodes === 0 ? (
+        <p className="text-sm text-ink-2">エピソードの行が無いので, 割合を出せません.</p>
+      ) : (
+        <>
+          <p className="inline-flex items-center gap-1 text-sm font-medium">
+            <ShieldAlert
+              className={clsx('size-4', outcome.guarded > 0 ? 'text-warning-text' : 'text-ink-3')}
+              aria-hidden
+            />
+            守りが止めたか元の制御に戻した: {formatShare(outcome.guarded_ratio)} (
+            {outcome.guarded.toLocaleString()} / {outcome.episodes.toLocaleString()})
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <caption className="sr-only">{`${outcome.name} の終え方ごとの割合`}</caption>
+              <thead>
+                <tr className="border-b border-line text-left text-xs text-ink-3">
+                  <th className="px-4 py-1.5 font-medium">終え方</th>
+                  <th className="px-4 py-1.5 text-right font-medium">エピソード</th>
+                  <th className="px-4 py-1.5 text-right font-medium">割合</th>
+                </tr>
+              </thead>
+              <tbody>
+                {outcome.ends.map((share) => (
+                  <tr key={share.end} className="tabular border-b border-line last:border-b-0">
+                    <td className="px-4 py-1.5">
+                      {describeEnd(share.end)}
+                      {share.end !== 'other' && (
+                        <span className="ml-2 font-mono text-xs text-ink-3">{share.end}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-1.5 text-right">{share.count.toLocaleString()}</td>
+                    <td className="px-4 py-1.5 text-right">{formatShare(share.ratio)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
+
+/** 守り付きの評価の割合と, 学習の指標の成功の割合 (valid/success) */
+function OutcomesCard({
+  outcomes,
+  history,
+  best,
+}: {
+  outcomes: PolicyOutcome[]
+  history: History | undefined
+  best: BestValue | null | undefined
+}) {
+  const success = history ? trainingSuccess(history, best) : null
+  return (
+    <Card title="評価の終え方と成功の割合">
+      <div className="space-y-4">
+        {outcomes.length === 0 ? (
+          <p className="text-sm text-ink-2">
+            守り付きの評価がありません. ML-Found の <code>evaluate_policy</code> の行を{' '}
+            <code>save_evaluation</code> で残すと, 終え方ごとの割合をここに出します.
+          </p>
+        ) : (
+          outcomes.map((outcome) => <OutcomeTable key={outcome.name} outcome={outcome} />)
+        )}
+        {history && (
+          <section aria-label="学習の成功の割合" className="border-t border-line pt-3">
+            <h4 className="text-sm font-medium">
+              学習の成功の割合{' '}
+              <span className="font-mono text-xs text-ink-3">{SUCCESS_COLUMN}</span>
+            </h4>
+            {success ? (
+              <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+                {success.best && (
+                  <>
+                    <dt className="text-ink-3">ベストのエポック ({success.best.epoch})</dt>
+                    <dd className="tabular">{formatShare(success.best.value)}</dd>
+                  </>
+                )}
+                <dt className="text-ink-3">最後のエポック ({success.last.epoch})</dt>
+                <dd className="tabular">{formatShare(success.last.value)}</dd>
+              </dl>
+            ) : (
+              <p className="mt-1 text-sm text-ink-2">
+                指標の推移に {SUCCESS_COLUMN} がありません (環境が成功を知らせない学習).
+              </p>
+            )}
+          </section>
+        )}
+      </div>
+    </Card>
+  )
+}
+
 /** 方策の一式 (ML-Found の policy/policy.json) の守り, 空間, 重みの確かめ */
-export function PolicyTab({ policy }: { policy: RunPolicy }) {
+export function PolicyTab({
+  policy,
+  outcomes = [],
+  history,
+  best,
+}: {
+  policy: RunPolicy
+  outcomes?: PolicyOutcome[]
+  history?: History
+  best?: BestValue | null
+}) {
   if (policy.error || !policy.guards || !policy.observation_space || !policy.action_space) {
     return (
       <div className="space-y-4">
@@ -207,6 +332,8 @@ export function PolicyTab({ policy }: { policy: RunPolicy }) {
           </p>
         </Card>
       </div>
+
+      <OutcomesCard outcomes={outcomes} history={history} best={best} />
 
       <Card title="外れたときの動き">
         <p className="text-sm font-medium">{describeFallback(guards.fallback)}</p>

@@ -1,4 +1,11 @@
-import type { PolicyGuards, PolicySpace, RunPolicy } from '../api/client'
+import type {
+  BestValue,
+  History,
+  PolicyEndShare,
+  PolicyGuards,
+  PolicySpace,
+  RunPolicy,
+} from '../api/client'
 
 // 表にする要素の上限 (要素の多い空間は先頭だけ)
 export const MAX_POLICY_ROWS = 200
@@ -93,4 +100,56 @@ export function weightsStatus(status: RunPolicy['weights_status']): {
   if (status === 'mismatch') return { label: '違う (読む側は読まない)', tone: 'critical' }
   if (status === 'missing') return { label: '重みが無い', tone: 'warning' }
   return { label: '確かめていない', tone: 'warning' }
+}
+
+// 守り付きの評価の終え方の説明 (ML-Found の evaluate_policy の end)
+const END_LABELS: Record<PolicyEndShare['end'], string> = {
+  terminated: '環境が終えた',
+  truncated: '環境の時間切れ',
+  max_steps: '歩数の上限',
+  stop: '守りが止めた',
+  handover: '守りが元の制御に戻した',
+  other: 'その他 (知らない値, 値なし)',
+}
+
+/** 終え方の説明 */
+export function describeEnd(end: PolicyEndShare['end']): string {
+  return END_LABELS[end]
+}
+
+/** 割合を百分率で出す (小数 1 桁). 無い割合は「-」 */
+export function formatShare(ratio: number | null | undefined): string {
+  if (ratio === null || ratio === undefined) return '-'
+  return `${(ratio * 100).toFixed(1)}%`
+}
+
+// 学習の指標の成功の割合の列 (ML-Found の強化学習の検証の success)
+export const SUCCESS_COLUMN = 'valid/success'
+
+export interface SuccessValue {
+  epoch: number
+  value: number
+}
+
+/**
+ * 学習の指標の成功の割合 (valid/success) の, ベストのエポックと最後のエポックの値.
+ * 列が無いか値が 1 つも無ければ null
+ */
+export function trainingSuccess(
+  history: History,
+  best: BestValue | null | undefined,
+): { best: SuccessValue | null; last: SuccessValue } | null {
+  if (!history.columns.includes(SUCCESS_COLUMN)) return null
+  const points: SuccessValue[] = []
+  history.rows.forEach((row, index) => {
+    const value = row[SUCCESS_COLUMN]
+    // 学習曲線と同じく, epoch の無い行は並びの番号
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      points.push({ epoch: row.epoch ?? index + 1, value })
+    }
+  })
+  const last = points.at(-1)
+  if (!last) return null
+  const found = best ? points.find((point) => point.epoch === best.epoch) : undefined
+  return { best: found ?? null, last }
 }
