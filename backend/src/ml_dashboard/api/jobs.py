@@ -16,7 +16,18 @@ from ml_dashboard.api.routes import (
 )
 from ml_dashboard.core.jobs import Job, JobManager
 from ml_dashboard.core.loader import import_ml_found
-from ml_dashboard.core.models import Progress, RunSummary
+from ml_dashboard.core.model_spec import (
+    CopyRefusedError,
+    check_copy_for_launch,
+    compare_current,
+    default_model_spec,
+    find_model_spec_copy,
+    load_mapping,
+    raw_model_spec,
+    run_of_copy,
+    set_model_spec,
+)
+from ml_dashboard.core.models import Progress, RunSource, RunSummary
 from ml_dashboard.core.projects import (
     Project,
     ProjectError,
@@ -202,6 +213,15 @@ class RelaunchPlan(BaseModel):
     config_path: Optional[str] = None
     # experiment の config の中身 (上書きを重ねたもの)
     config_text: Optional[str] = None
+    # 起動に使う, 実験に写したモデルの定義 (プロジェクトからの相対パス).
+    # 写しを使わない場合は None
+    model_spec: Optional[str] = None
+    # 写しを使うことのお知らせ (config_text の model.spec が写しを指す間だけ
+    # 画面に出す)
+    model_spec_note: Optional[str] = None
+    # 今の定義に戻すときの experiment の config の model.spec. None は消して
+    # default の値に戻す
+    model_spec_original: Optional[str] = None
     # 実験の時と違うかもしれない点などのお知らせ
     notes: list[str] = []
 
@@ -1078,6 +1098,18 @@ def create_job(
             400, f"config に誤りがあります: {describe(error)}"
         ) from error
 
+    # model.spec が実験に写した定義を指す場合は, 写しが今も記録の中身かを
+    # 確かめ直し (起動の画面を開いた後に書き換わった写しで学習しないため)
+    launched = body.config_text or ""
+    if body.config_text is None and config_path is not None:
+        try:
+            launched = config_path.read_text(encoding="utf-8")
+        except OSError:
+            launched = ""
+    spec_reason = check_copy_for_launch(Path(project.path), launched)
+    if spec_reason is not None:
+        raise CopyRefusedError(spec_reason)
+
     # 中身を渡された場合はジョブのディレクトリに保存して起動
     jobs = get_jobs(request)
     job_id = jobs.create()
@@ -1393,6 +1425,97 @@ def newer_than(path: Path, reference: Path) -> bool:
     return newer
 
 
+class ModelSpecPlan(BaseModel):
+    # もう一度起動するときのモデルの定義 (RelaunchPlan の model_spec の欄)
+    path: Optional[str] = None
+    text: str
+    note: Optional[str] = None
+    fallback: Optional[str] = None
+    original: Optional[str] = None
+
+
+def plan_model_spec(
+    project_dir: Path, run_dir: Path, source: RunSource, text: str
+) -> ModelSpecPlan:
+    """
+    もう一度起動するときのモデルの定義を決める関数
+
+    Parameters
+    ----------
+    project_dir: Path
+        プロジェクトのディレクトリ
+    run_dir: Path
+        実験のディレクトリ
+    source: RunSource
+        実験の起動のしかた
+    text: str
+        experiment の config の中身 (上書きを重ねたもの)
+
+    Returns
+    ----------
+    plan: ModelSpecPlan
+        使う写しの場所 (path), 中身 (text), 写しを使うお知らせ (note),
+        写しを使わないお知らせ (fallback), 今の定義に戻す値 (original)
+    """
+    # model_spec の無い実験 (model.spec が無いか, 前の ML-Found) はそのまま
+    spec = source.model_spec
+    if spec is None:
+        return ModelSpecPlan(text=text)
+
+    # experiment の config の今の model.spec. 前に写しから起動し直した
+    # 実験の config (写しの場所) は, 今の定義に戻すときに消す
+    try:
+        written = raw_model_spec(load_mapping(text))
+    except Exception as error:
+        return ModelSpecPlan(
+            text=text,
+            fallback=f"モデルの定義の写しを使えません: {describe(error)}"
+        )
+    stale = run_of_copy(project_dir, written) is not None
+    original = (
+        written if isinstance(written, str) and not stale else None
+    )
+    current = original or default_model_spec(project_dir, source.default)
+    current_text = (
+        str(current) if current is not None else "config の model.spec"
+    )
+
+    # 写しが使えれば model.spec をその場所に書き換え
+    path, reason = find_model_spec_copy(project_dir, run_dir, spec)
+    if path is not None:
+        try:
+            changed = set_model_spec(text, path)
+        except Exception as error:
+            reason = describe(error)
+        else:
+            return ModelSpecPlan(
+                path=path, text=changed, original=original,
+                note=(
+                    f"モデルの定義は, この実験に写した定義 ({path}) を"
+                    "使います (config の model.spec を書き換えました. 今の"
+                    f"プロジェクトの {current_text} とは違うことがあります)"
+                )
+            )
+
+    # 使えなければ今の定義. 写しを指す model.spec は default の値に戻す
+    changed = text
+    if stale:
+        try:
+            changed = set_model_spec(text, None)
+        except Exception:
+            changed = text
+    same = compare_current(project_dir, current, spec.sha256)
+    plan = ModelSpecPlan(
+        text=changed,
+        fallback=(
+            f"モデルの定義は, 今のプロジェクトの {current_text} から組み立て"
+            f"ます ({same}): {reason}"
+        )
+    )
+
+    return plan
+
+
 def plan_relaunch(
     project: Project, jobs_dir: Path, run_dir: Path
 ) -> RelaunchPlan:
@@ -1451,8 +1574,13 @@ def plan_relaunch(
                 f"上書き ({' '.join(source.overrides)}) を experiment の "
                 "config に重ねました (元の YAML のコメントは消えます)"
             )
+        # 実験に写したモデルの定義が使えれば, model.spec をその場所に変更
+        spec_plan = plan_model_spec(project_dir, run_dir, source, text)
+        text = spec_plan.text
+        if spec_plan.fallback is not None:
+            notes.append(spec_plan.fallback)
         # 中身を渡して起動する場合だけ, 起動と同じく出力先の変更を拒否
-        if config_path is None or source.overrides:
+        if config_path is None or source.overrides or spec_plan.path:
             check_output_dir(
                 OmegaConf.create(text) if text.strip() else {}
             )
@@ -1481,7 +1609,9 @@ def plan_relaunch(
         )
     plan = RelaunchPlan(
         script=source.script, default_config=default_config,
-        config_path=config_path, config_text=text, notes=notes
+        config_path=config_path, config_text=text,
+        model_spec=spec_plan.path, model_spec_note=spec_plan.note,
+        model_spec_original=spec_plan.original, notes=notes
     )
 
     return plan

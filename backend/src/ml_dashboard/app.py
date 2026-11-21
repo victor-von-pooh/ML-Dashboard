@@ -18,6 +18,7 @@ from ml_dashboard.api.requirements import router as requirements_router
 from ml_dashboard.api.routes import router
 from ml_dashboard.core.environment import EnvironmentJobs
 from ml_dashboard.core.jobs import JobManager
+from ml_dashboard.core.model_spec import COPY_REFUSED_CODE, CopyRefusedError
 from ml_dashboard.core.notes import NoteStore
 from ml_dashboard.core.projects import ProjectError, ProjectStore
 from ml_dashboard.core.settings import get_data_dir
@@ -212,6 +213,29 @@ async def project_error(request: Request, error: Exception) -> Response:
     return response
 
 
+async def copy_refused(request: Request, error: Exception) -> Response:
+    """
+    実験に写した定義を使えずに起動しないことを応答に変える関数
+
+    Parameters
+    ----------
+    request: Request
+        リクエスト
+    error: Exception
+        起きたエラー (CopyRefusedError)
+
+    Returns
+    ----------
+    response: Response
+        400 と理由と code (画面が見分けて次の一手を出すため)
+    """
+    response = JSONResponse(
+        {"detail": str(error), "code": COPY_REFUSED_CODE}, status_code=400
+    )
+
+    return response
+
+
 def mount_frontend(app: FastAPI, static_dir: Path) -> None:
     """
     ビルド済みの画面を配信する設定を加える関数
@@ -336,6 +360,7 @@ def create_app(
 
         return response
     app.add_exception_handler(ProjectError, project_error)
+    app.add_exception_handler(CopyRefusedError, copy_refused)
 
     # API と画面の登録
     app.include_router(router)

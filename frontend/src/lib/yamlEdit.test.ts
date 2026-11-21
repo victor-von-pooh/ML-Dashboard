@@ -5,6 +5,7 @@ import {
   describeRange,
   deleteYamlValue,
   formatInput,
+  getYamlValue,
   parseInput,
   setYamlValue,
 } from './yamlEdit'
@@ -39,6 +40,15 @@ describe('deleteYamlValue', () => {
   it('項目を消し, 空になった親も消す', () => {
     const text = 'optimizer:\n  params:\n    lr: 0.01\ntrainer:\n  epochs: 3\n'
     expect(deleteYamlValue(text, 'optimizer.params.lr')).toBe('trainer:\n  epochs: 3\n')
+  })
+})
+
+describe('getYamlValue', () => {
+  it('点区切りの項目の値を読み, 無い項目と読めない YAML は undefined', () => {
+    const text = 'model:\n  spec: outputs/a/model_spec.yaml\n'
+    expect(getYamlValue(text, 'model.spec')).toBe('outputs/a/model_spec.yaml')
+    expect(getYamlValue(text, 'model.other')).toBeUndefined()
+    expect(getYamlValue('model: [unclosed\n', 'model.spec')).toBeUndefined()
   })
 })
 

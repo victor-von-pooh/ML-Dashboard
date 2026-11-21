@@ -13,7 +13,7 @@ import {
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 
-import { encodeRunId, type RelaunchPlan, type Requirement } from '../../api/client'
+import { encodeRunId, isCopyRefused, type RelaunchPlan, type Requirement } from '../../api/client'
 import {
   useConfig,
   useCreateJob,
@@ -25,6 +25,7 @@ import {
 } from '../../api/hooks'
 import { Button, Card, ErrorBox, PageHeader, Spinner } from '../../components/ui'
 import { formatValue } from '../../lib/format'
+import { deleteYamlValue, getYamlValue, setYamlValue } from '../../lib/yamlEdit'
 import { configForScript } from '../../lib/scripts'
 import { RequirementCard } from '../requirements/RequirementCard'
 import { ConfigForm } from './ConfigForm'
@@ -128,6 +129,10 @@ function LaunchForm({
     draft.text !== original
   const text = draft !== null && draft.path === configPath ? draft.text : original
   const loadingConfig = filePath !== null && config.isPending
+  // 実験に写したモデルの定義を使う間 (model.spec が写しを指す間) だけ, そのお知らせと
+  // 今の定義に戻すボタンを出す
+  const copySpec = fromRun?.model_spec ?? null
+  const usingCopy = copySpec !== null && getYamlValue(text, 'model.spec') === copySpec
 
   // config の requires に書いた機能が足りなければ, 開始のボタンを止めて次の一手を出す
   // (起動の API も同じ決まりで止めるので, 確かめる前に押しても学習は始まらない)
@@ -254,6 +259,19 @@ function LaunchForm({
           plan={plan}
           error={planError}
           defaultConfig={defaultConfig}
+          copyNote={usingCopy ? (fromRun?.model_spec_note ?? null) : null}
+          copyRefused={usingCopy && isCopyRefused(create.error)}
+          onRestoreSpec={() => {
+            // model.spec だけを今の定義 (戻す値が無ければ default の値) に戻す
+            const original = fromRun?.model_spec_original ?? null
+            // 写しを使えなかった起動のエラーも消す (今の定義で起動し直すため)
+            create.reset()
+            editText(
+              original === null
+                ? deleteYamlValue(text, 'model.spec')
+                : setYamlValue(text, 'model.spec', original),
+            )
+          }}
         />
       )}
 
@@ -560,12 +578,18 @@ function RunSourceNotice({
   plan,
   error,
   defaultConfig,
+  copyNote,
+  copyRefused,
+  onRestoreSpec,
 }: {
   projectId: string
   runId: string
   plan: RelaunchPlan | null
   error: Error | null
   defaultConfig: string | undefined
+  copyNote: string | null
+  copyRefused: boolean
+  onRestoreSpec: () => void
 }) {
   const runLink = (
     <Link
@@ -608,6 +632,19 @@ function RunSourceNotice({
           )}
         </span>
       </p>
+      {copyNote && (
+        <p className="flex flex-wrap items-start gap-1.5 text-xs text-ink-3">
+          <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          <span className="min-w-0 flex-1">
+            {copyRefused
+              ? '写した定義が使えなくなったので起動していません. 「今の定義で起動する」を押すか, 実験の詳細から開き直してください'
+              : copyNote}
+          </span>
+          <Button variant="ghost" icon={RotateCcw} onClick={onRestoreSpec}>
+            今の定義で起動する
+          </Button>
+        </p>
+      )}
       {(plan?.notes ?? []).map((note) => (
         <p key={note} className="flex items-start gap-1.5 text-xs text-ink-3">
           <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
