@@ -756,6 +756,22 @@ def test_orphan_batches(tmp_path: Path) -> None:
     read = manager.refresh_foreign(foreign.id, lambda job_id: False)
     assert read is not None and read.candidates[0].state == "finished"
 
+    # 終わったまとまりは持ち主を確かめずに返す (ps を呼ばない)
+    done = manager.create("s", "train.py", None, [(candidate, "{}\n")])
+    done.owner = foreign.owner
+    done.candidates[0].state = "finished"
+    manager.save(done)
+
+    def no_ps(pid: int) -> None:
+        raise AssertionError("終わったまとまりで ps を呼びました")
+
+    original = batches_module.process_started
+    batches_module.process_started = no_ps  # type: ignore[assignment]
+    try:
+        assert manager.refresh_foreign(done.id, lambda job_id: True) == done
+    finally:
+        batches_module.process_started = original
+
 
 def test_batch_create_once(client: TestClient, project_dir: Path) -> None:
     """

@@ -420,8 +420,10 @@ class BatchManager:
             読み直したまとまり, 無い場合は None
         """
         with self.lock(batch_id):
+            # 終わったまとまりは読み直すものが無いので, 持ち主を確かめない
+            # (ps を呼ばない)
             batch = self.load(batch_id)
-            if batch is None or self.owned(batch):
+            if batch is None or self.owned(batch) or not is_active(batch):
                 return batch
             orphaned = self.orphaned(batch)
             changed = False
