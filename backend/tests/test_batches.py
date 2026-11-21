@@ -840,6 +840,7 @@ def test_runs_have_model(client: TestClient, project_dir: Path) -> None:
         f"/api/projects/{project_id}/runs/demo/2026-11-08/11-00-00"
     ).json()
     assert detail["model"] == expected
+    assert detail["path"] == str(copied)
 
 
 def test_stop_foreign_batch(client: TestClient, tmp_path: Path) -> None:

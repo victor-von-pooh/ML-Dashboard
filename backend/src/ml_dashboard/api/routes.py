@@ -465,6 +465,7 @@ def get_run(
     """
     data = get_run_data(request, project_id, name, date, time)
     detail = data.detail()
+    detail.path = str(data.run_dir)
 
     # モデルの定義の名前は, プロジェクトの全ての実験の source.yaml だけを
     # 読んで決定 (写しから起動し直した実験の元を辿るため)

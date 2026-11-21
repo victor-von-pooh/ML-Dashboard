@@ -4490,6 +4490,17 @@
               }
             ]
           },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
           "config": {
             "additionalProperties": true,
             "type": "object",

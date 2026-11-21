@@ -272,6 +272,8 @@ class OptimizerInfo(BaseModel):
 
 
 class RunDetail(RunSummary):
+    # 実験のディレクトリの場所 (次の段階で使うときにコピーする)
+    path: Optional[str] = None
     config: dict[str, Any]
     seed: Optional[int]
     device: Optional[str]

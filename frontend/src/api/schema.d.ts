@@ -1983,6 +1983,8 @@ export interface components {
             source?: components["schemas"]["RunSource"] | null;
             evaluations?: components["schemas"]["RunEvaluations"] | null;
             model?: components["schemas"]["RunModel"] | null;
+            /** Path */
+            path?: string | null;
             /** Config */
             config: {
                 [key: string]: unknown;

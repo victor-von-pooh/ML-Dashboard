@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
 import { useHistory, useLog, useProject, useRelaunch, useResults, useRun } from '../../api/hooks'
+import { CopyButton } from '../requirements/RequirementCard'
 import {
   Button,
   ErrorBox,
@@ -191,7 +192,10 @@ export function RunDetailPage() {
         </p>
       )}
       {data.model && data.status === 'completed' && (
-        <NextStageNote hasBundle={data.files.some((file) => file.path.startsWith('inference/'))} />
+        <NextStageNote
+          hasBundle={data.files.some((file) => file.path.startsWith('inference/'))}
+          path={data.path ?? null}
+        />
       )}
       {data.error && <ErrorBox error={data.error} live={false} />}
       {data.notices.map((notice) => (
@@ -374,7 +378,7 @@ export function RunDetailPage() {
 }
 
 /** 比べて選んだ実験を次の段階 (推論) で使う案内 */
-function NextStageNote({ hasBundle }: { hasBundle: boolean }) {
+function NextStageNote({ hasBundle, path }: { hasBundle: boolean; path: string | null }) {
   return (
     <details className="mb-4 text-xs text-ink-3">
       <summary className="cursor-pointer">この実験を推論の段階で使うには</summary>
@@ -384,6 +388,13 @@ function NextStageNote({ hasBundle }: { hasBundle: boolean }) {
           : 'ML-Provide の「学習の結果から作る」で, この実験のディレクトリ (重み) と, 写したモデルの定義 (model_spec.yaml) を選びます.'}{' '}
         プロジェクトの default の config の model.spec は変わりません.
       </p>
+      {path && (
+        <p className="mt-1 flex flex-wrap items-center gap-2">
+          <span>実験のディレクトリ:</span>
+          <code className="font-mono break-all text-ink-2 select-all">{path}</code>
+          <CopyButton text={path} label="実験のディレクトリの場所" />
+        </p>
+      )}
     </details>
   )
 }

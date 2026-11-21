@@ -501,7 +501,9 @@ function LaunchForm({
                   .join(' ') || undefined
               }
             >
-              {chosenSpecs.length} 個の候補を順に学習する
+              {createBatch.isPending
+                ? '候補のまとまりを作っています (候補の config を確かめています)'
+                : `${chosenSpecs.length} 個の候補を順に学習する`}
             </Button>
           )}
           {usingCandidates && (
