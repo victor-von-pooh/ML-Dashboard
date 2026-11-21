@@ -66,6 +66,13 @@ describe('GuardBadge', () => {
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(second).toHaveAttribute('aria-expanded', 'false')
   })
+  it('説明の文を押しても (行き先の無いフォーカスの移り) 閉じない', () => {
+    render(<GuardBadge guard={{ state: 'kept', dropped: [], unknown: [] }} />)
+    const badge = screen.getByRole('button', { name: '守る指標: 保った' })
+    fireEvent.click(badge)
+    fireEvent.blur(badge, { relatedTarget: null })
+    expect(badge).toHaveAttribute('aria-expanded', 'true')
+  })
   it('守る指標の表が無い実験には印を出さない', () => {
     render(<GuardBadge guard={null} />)
     expect(screen.getByText('—')).toBeInTheDocument()

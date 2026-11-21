@@ -12,6 +12,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type FocusEvent,
@@ -44,13 +45,49 @@ export function GuardBadge({ guard }: { guard: GuardCheck | null | undefined }) 
   const open = position !== null
   const wrapper = useRef<HTMLSpanElement>(null)
   const button = useRef<HTMLButtonElement>(null)
+  const detail = useRef<HTMLSpanElement>(null)
   const detailId = useStableId('guard-detail')
-  // 印の下に, 画面の端からはみ出さないように置く
+  // 印の下 (窓の下端で足りなければ上) に, 画面の端からはみ出さないように置く.
+  // 印が横に流れる表や画面の見える範囲から外れたら閉じる (別の列の上に浮かないため)
   const place = useCallback(() => {
-    const rect = button.current?.getBoundingClientRect()
-    const left = Math.max(8, Math.min(rect?.left ?? 0, window.innerWidth - DETAIL_WIDTH - 8))
-    setPosition({ top: (rect?.bottom ?? 0) + 4, left })
+    const element = button.current
+    if (!element) return
+    const rect = element.getBoundingClientRect()
+    const visible = [element.closest('.overflow-x-auto'), element.closest('main')].every((area) => {
+      if (!area) return true
+      const bounds = area.getBoundingClientRect()
+      return (
+        rect.right >= bounds.left &&
+        rect.left <= bounds.right &&
+        rect.bottom >= bounds.top &&
+        rect.top <= bounds.bottom
+      )
+    })
+    if (!visible) {
+      setPosition(null)
+      return
+    }
+    const width = document.documentElement.clientWidth
+    const height = document.documentElement.clientHeight
+    const detailHeight = detail.current?.offsetHeight ?? 0
+    const left = Math.max(8, Math.min(rect.left, width - DETAIL_WIDTH - 8))
+    const below = rect.bottom + 4
+    const top =
+      below + detailHeight > height - 8 && rect.top - 4 - detailHeight >= 8
+        ? rect.top - 4 - detailHeight
+        : below
+    setPosition({ top, left })
   }, [])
+  // 開いた直後に説明の高さを測って置き直し, 上の部分の高さが変わっても置き直す
+  useLayoutEffect(() => {
+    if (!open) return
+    place()
+    const main = button.current?.closest('main')
+    if (!main || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(place)
+    observer.observe(main)
+    return () => observer.disconnect()
+  }, [open, place])
   // 開いている間は, 外を押す, Esc, 他の印を開くと閉じ, 流すか窓の大きさを
   // 変えると置き直す
   useEffect(() => {
@@ -88,9 +125,11 @@ export function GuardBadge({ guard }: { guard: GuardCheck | null | undefined }) 
     place()
     document.dispatchEvent(new CustomEvent(GUARD_OPEN_EVENT, { detail: detailId }))
   }
-  // Tab などで印から離れたら閉じる
+  // Tab などで印から離れたら閉じる (行き先の無いもの, 例えば説明の文を
+  // 選ぶために押した場合は閉じない)
   const onBlur = (event: FocusEvent<HTMLSpanElement>) => {
-    if (!wrapper.current?.contains(event.relatedTarget as Node | null)) setPosition(null)
+    const next = event.relatedTarget as Node | null
+    if (next && !wrapper.current?.contains(next)) setPosition(null)
   }
   return (
     <span ref={wrapper} className="inline-block" onBlur={onBlur}>
@@ -113,6 +152,7 @@ export function GuardBadge({ guard }: { guard: GuardCheck | null | undefined }) 
       <span id={detailId} role="status">
         {position && (
           <span
+            ref={detail}
             className="fixed z-30 block rounded-md border border-line bg-surface px-2 py-1 text-left text-[11px] whitespace-pre-line text-ink-2 shadow-lg"
             style={{ top: position.top, left: position.left, width: DETAIL_WIDTH }}
           >
