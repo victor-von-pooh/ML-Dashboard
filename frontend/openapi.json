@@ -3453,6 +3453,17 @@
             ],
             "title": "Config Text"
           },
+          "model_spec": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Spec"
+          },
           "notes": {
             "items": {
               "type": "string"

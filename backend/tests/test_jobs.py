@@ -1,3 +1,4 @@
+import hashlib
 import os
 import time
 from pathlib import Path
@@ -5,7 +6,8 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from omegaconf import OmegaConf
 
-from ml_dashboard.api.jobs import describe_missing_path
+from ml_dashboard.api.jobs import describe_missing_path, find_model_spec_copy
+from ml_dashboard.core.models import RunModelSpec
 
 from test_api import register
 
@@ -921,6 +923,113 @@ def test_relaunch_plan(
     assert result["reason"] is None
     assert result["default_config"] is None
     assert any("/elsewhere/train.yaml" in note for note in result["notes"])
+
+
+def test_relaunch_model_spec(
+    client: TestClient, project_dir: Path, tmp_path: Path
+) -> None:
+    """
+    実験に写したモデルの定義が記録と合えば, その写しで起動し直すことを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    project_id = register(client, project_dir)
+    relative = "outputs/demo/2026-11-08/10-00-00"
+    run_dir = project_dir / relative
+    url = f"/api/projects/{project_id}/runs/demo/2026-11-08/10-00-00/relaunch"
+    copy = run_dir / "model_spec.yaml"
+    content = b"layers:\n- type: Linear\n"
+    copy.write_bytes(content)
+    sha = hashlib.sha256(content).hexdigest()
+    (project_dir / "configs" / "experiment" / "train.yaml").write_text(
+        "# 例\nmodel:\n  spec: models/model.yaml\n  hidden_dim: 8\n"
+    )
+
+    def plan(status: str = "copied", digest: str = sha) -> dict:
+        (run_dir / "source.yaml").write_text(
+            "script: train.py\ndefault: configs/default/train.yaml\n"
+            "experiment: configs/experiment/train.yaml\n"
+            "model_spec:\n  path: models/model.yaml\n"
+            f"  status: {status}\n  sha256: '{digest}'\n"
+        )
+        result: dict = client.get(url).json()
+        assert result["reason"] is None
+        return result
+
+    # 記録と合う写しは, model.spec をその場所に書き換えて使う
+    result = plan()
+    assert result["model_spec"] == f"{relative}/model_spec.yaml"
+    assert result["config_path"] == "configs/experiment/train.yaml"
+    assert OmegaConf.to_container(OmegaConf.create(result["config_text"])) == {
+        "model": {
+            "spec": f"{relative}/model_spec.yaml", "hidden_dim": 8
+        }
+    }
+    assert any("この実験に写した定義" in note for note in result["notes"])
+
+    # 中身が記録と違う写し, 写していない実験, 知らない status は今の定義
+    for status, digest, message in (
+        ("copied", "0" * 64, "中身が"),
+        ("missing", sha, "定義のファイルが無かった"),
+        ("renamed", sha, "写していない (renamed)"),
+    ):
+        result = plan(status, digest)
+        assert result["model_spec"] is None
+        assert "spec: models/model.yaml" in result["config_text"]
+        assert any(
+            "今のプロジェクトの models/model.yaml" in note
+            and message in note for note in result["notes"]
+        ), status
+
+    # 写しがリンクか無い場合も今の定義
+    target = tmp_path / "elsewhere.yaml"
+    target.write_bytes(content)
+    copy.unlink()
+    copy.symlink_to(target)
+    assert plan()["model_spec"] is None
+    copy.unlink()
+    assert plan()["model_spec"] is None
+
+    # 実験のディレクトリがプロジェクトの外か, 途中にリンクのある実験も
+    # 今の定義 (ML-Found が新しい実験に写し直せないため)
+    copy.write_bytes(content)
+    record = RunModelSpec(
+        path="models/model.yaml", status="copied", sha256=sha
+    )
+    outside = tmp_path / "outside_run"
+    outside.mkdir()
+    (outside / "model_spec.yaml").write_bytes(content)
+    path, reason = find_model_spec_copy(project_dir, outside, record)
+    assert path is None and reason is not None and "外か" in reason
+    (project_dir / "linked").symlink_to(outside, target_is_directory=True)
+    path, reason = find_model_spec_copy(
+        project_dir, project_dir / "linked", record
+    )
+    assert path is None and reason is not None and "シンボリック" in reason
+    assert find_model_spec_copy(project_dir, run_dir, record) == (
+        f"{relative}/model_spec.yaml", None
+    )
+
+    # model_spec の無い実験は何も足さない
+    (run_dir / "source.yaml").write_text(
+        "script: train.py\ndefault: configs/default/train.yaml\n"
+        "experiment: configs/experiment/train.yaml\n"
+    )
+    result = client.get(url).json()
+    assert result["model_spec"] is None
+    assert not any("モデルの定義" in note for note in result["notes"])
 
 
 def test_launch_with_default_config(
