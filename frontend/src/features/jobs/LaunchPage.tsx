@@ -506,6 +506,10 @@ function LaunchForm({
                 : `${chosenSpecs.length} 個の候補を順に学習する`}
             </Button>
           )}
+          {/* まとまりを作っている間の文を読み上げにも出す */}
+          <p className="sr-only" aria-live="polite">
+            {createBatch.isPending ? '候補のまとまりを作っています' : ''}
+          </p>
           {usingCandidates && (
             <p id={singleNoteId} className="text-xs text-ink-3">
               「学習を開始」は選んだ候補を使わず, 今の config で 1 つだけ学習します.

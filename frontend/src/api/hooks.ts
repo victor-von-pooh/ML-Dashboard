@@ -438,11 +438,15 @@ export function useBatches() {
   const client = useQueryClient()
   return useQuery({
     queryKey: keys.batches,
-    // 読み終えたときに進めている途中のまとまりがあれば, ジョブの一覧も読み直す
+    // 進めている途中のまとまりが現れたら, ジョブの一覧も読み直す
     // (ジョブの一覧の間隔は, ジョブの一覧を読み直したときにしか決め直さないため)
     queryFn: async () => {
+      const before = client.getQueryData<BatchInfo[]>(keys.batches)
       const batches = await api.listBatches()
-      if (batches.some((batch) => !batch.finished)) {
+      // 進めている途中のまとまりが無いから有るに変わったときだけ (読み直しのたびに
+      // ジョブの一覧を読まないため)
+      const was = before?.some((batch) => !batch.finished) ?? false
+      if (!was && batches.some((batch) => !batch.finished)) {
         void client.invalidateQueries({ queryKey: keys.jobs })
       }
       return batches
