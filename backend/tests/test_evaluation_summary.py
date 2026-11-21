@@ -15,7 +15,13 @@ from ml_dashboard.core.evaluation_summary import (
     summarize_evaluations,
 )
 from ml_dashboard.core.models import Evaluation
-from ml_dashboard.core.results import read_plain_file
+from ml_dashboard.core.results import (
+    check_evaluation,
+    evaluation_files,
+    load_plain_evaluations,
+    read_evaluations,
+    read_plain_file,
+)
 
 from test_api import register
 
@@ -373,10 +379,124 @@ def test_detail_has_evaluations(
     assert detail["evaluations"]["guard"]["state"] == "dropped"
 
 
-def test_read_plain_file(tmp_path: Path) -> None:
+NO_FIFO = pytest.mark.skipif(
+    not hasattr(os, "mkfifo"), reason="FIFO を作れない環境"
+)
+
+
+@NO_FIFO
+@pytest.mark.parametrize("use_dir_fd", [True, False])
+def test_read_plain_file(tmp_path: Path, use_dir_fd: bool) -> None:
     """
     評価のファイルを開くときに, リンク, FIFO, 上限を超えるファイルを
-    読まないことを確かめる関数
+    読まないことを, dir_fd を使う場合と使わない場合で確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    use_dir_fd: bool
+        dir_fd を使うか
+
+    Returns
+    ----------
+    None
+    """
+    (tmp_path / "plain.json").write_bytes(b"12345")
+    (tmp_path / "link.json").symlink_to(tmp_path / "plain.json")
+    os.mkfifo(tmp_path / "fifo.json")
+    dir_fd = (
+        os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+        if use_dir_fd else None
+    )
+    try:
+        plain = tmp_path / "plain.json"
+        assert read_plain_file(plain, dir_fd, 5) == b"12345"
+        # 上限 + 1 バイトまでで止め, 超えれば読まない
+        assert read_plain_file(plain, dir_fd, 4) is None
+        assert read_plain_file(tmp_path / "link.json", dir_fd, 5) is None
+        # FIFO は書く側を待たずに, 普通のファイルでないとして読まない
+        assert read_plain_file(tmp_path / "fifo.json", dir_fd, 5) is None
+        assert read_plain_file(tmp_path / "missing.json", dir_fd, 5) is None
+    finally:
+        if dir_fd is not None:
+            os.close(dir_fd)
+
+
+def test_read_plain_file_swapped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    dir_fd を使わない場合に, 確かめた後に別のファイルに替わると読まない
+    ことを確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        pytest が用意する差し替えの道具
+
+    Returns
+    ----------
+    None
+    """
+    (tmp_path / "plain.json").write_bytes(b"12345")
+    (tmp_path / "other.json").write_bytes(b"secret")
+    # 開くときだけ別のファイル (確かめた後に置き換えられた場合)
+    real_open = os.open
+
+    def swapped(path: Any, flags: int, *args: Any, **kwargs: Any) -> int:
+        return real_open(tmp_path / "other.json", flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", swapped)
+    assert read_plain_file(tmp_path / "plain.json", None, 100) is None
+
+
+def test_load_plain_evaluations_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    集めた後に evaluations/ がリンクに替わると読まず, dir_fd を使えない
+    環境でも普通のファイルを読むことを確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        pytest が用意する差し替えの道具
+
+    Returns
+    ----------
+    None
+    """
+    run_dir = tmp_path / "run"
+    write_evaluation(run_dir, "metrics", [{"score": 0.5}])
+    files = evaluation_files(run_dir)
+    assert [stem for stem, _ in load_plain_evaluations(run_dir, files)] == [
+        "metrics"
+    ]
+
+    # dir_fd を使えない環境 (Windows など) でも, 普通のファイルは読む
+    monkeypatch.setattr(os, "supports_dir_fd", set())
+    assert len(load_plain_evaluations(run_dir, files)) == 1
+    monkeypatch.undo()
+
+    # 集めた後に evaluations/ を外を指すリンクに置き換えると読まない
+    outside = tmp_path / "outside"
+    write_evaluation(outside, "metrics", [{"score": 0.9}])
+    shutil.rmtree(run_dir / "evaluations")
+    (run_dir / "evaluations").symlink_to(outside / "evaluations")
+    assert load_plain_evaluations(run_dir, files) == []
+    monkeypatch.setattr(os, "supports_dir_fd", set())
+    assert load_plain_evaluations(run_dir, files) == []
+
+
+def test_check_evaluation(tmp_path: Path) -> None:
+    """
+    名前がファイルの名前と同じで決まりに合う評価だけを, 評価のタブでも
+    出すことを確かめる関数
 
     Parameters
     ----------
@@ -387,22 +507,30 @@ def test_read_plain_file(tmp_path: Path) -> None:
     ----------
     None
     """
-    (tmp_path / "plain.json").write_bytes(b"12345")
-    (tmp_path / "link.json").symlink_to(tmp_path / "plain.json")
-    os.mkfifo(tmp_path / "fifo.json")
-    dir_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
-    try:
-        assert read_plain_file("plain.json", dir_fd, 5) == b"12345"
-        # 上限 + 1 バイトまでで止め, 超えれば読まない
-        assert read_plain_file("plain.json", dir_fd, 4) is None
-        assert read_plain_file("link.json", dir_fd, 5) is None
-        # FIFO は書く側を待たずに, 普通のファイルでないとして読まない
-        assert read_plain_file("fifo.json", dir_fd, 5) is None
-        assert read_plain_file("missing.json", dir_fd, 5) is None
-    finally:
-        os.close(dir_fd)
+    data = {"name": "metrics", "columns": [], "rows": []}
+    assert check_evaluation("metrics", data) == "metrics"
+    assert check_evaluation("other", data) is None
+    # 末尾の改行も決まりに合わない
+    newline = {**data, "name": "metrics\n"}
+    assert check_evaluation("metrics\n", newline) is None
+    assert check_evaluation("metrics", {**data, "rows": [1]}) is None
+
+    # 評価のタブも, ファイルの名前と違う評価を出さない
+    run_dir = tmp_path / "run"
+    write_evaluation(run_dir, "metrics", [{"score": 0.5}])
+    write_evaluation(run_dir, "other", [{"score": 0.9}])
+    (run_dir / "evaluations" / "metrics.json").replace(
+        run_dir / "evaluations" / "copy.json"
+    )
+    (run_dir / "evaluations" / "other.json").replace(
+        run_dir / "evaluations" / "metrics.json"
+    )
+    notices: list[str] = []
+    assert [item.name for item in read_evaluations(run_dir, notices)] == []
+    assert len(notices) == 1 and "2 個" in notices[0]
 
 
+@NO_FIFO
 def test_skip_fifo_and_renamed(
     project_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -478,3 +606,12 @@ def test_forget_removed_runs(
     shutil.rmtree(run_dir)
     assert client.get(f"/api/projects/{project_id}/runs").status_code == 200
     assert str(run_dir) not in EVALUATION_SUMMARY_CACHE
+
+    # 実験を残して evaluations/ だけを消しても, 覚えから消える
+    other = project_dir / "outputs" / PLAIN_RUN
+    write_evaluation(other, "metrics", [{"score": 0.5}])
+    assert client.get(f"/api/projects/{project_id}/runs").status_code == 200
+    assert str(other) in EVALUATION_SUMMARY_CACHE
+    shutil.rmtree(other / "evaluations")
+    assert client.get(f"/api/projects/{project_id}/runs").status_code == 200
+    assert str(other) not in EVALUATION_SUMMARY_CACHE

@@ -14,11 +14,12 @@ from ml_dashboard.core.models import (
 )
 from ml_dashboard.core.results import (
     EVALUATIONS_DIR,
+    check_evaluation,
     evaluation_files,
-    evaluation_name,
     evaluation_order,
     is_plain_dir,
     load_plain_evaluations,
+    skipped_notice,
     to_cell,
     to_evaluation,
 )
@@ -58,10 +59,6 @@ MODIFIER_WORDS = frozenset({
 })
 # 差を 0 とみなす幅 (計算の誤差で落ちたとしないため)
 DIFF_TOLERANCE = 1e-12
-
-# 評価の名前の決まり (ML-Found の docs/FORMAT.md. 列の名前を
-# <評価の名前>:<列> にするので, : を含む名前を除くため)
-EVALUATION_NAME = re.compile(r"^[A-Za-z0-9_@-][A-Za-z0-9_.@-]*$")
 
 # 実験のディレクトリごとに覚えた結果 (ファイルの名前, i-node, 大きさ,
 # 更新の時刻と, 監視する指標と向きが同じ間は使い直す)
@@ -341,8 +338,7 @@ def build_summary(
     tests: list[tuple[Evaluation, dict[str, Any]]] = []
     valid = 0
     for stem, data in load_plain_evaluations(run_dir, files):
-        name = evaluation_name(data)
-        if name != stem or EVALUATION_NAME.match(stem) is None:
+        if check_evaluation(stem, data) is None:
             continue
         valid += 1
         if data.get("split") != LIST_SPLIT:
@@ -352,12 +348,7 @@ def build_summary(
             tests.append((evaluation, data))
     tests.sort(key=lambda item: evaluation_order(item[0]))
     skipped = len(files) - valid
-    notice = (
-        f"evaluations/ の {skipped} 個のファイルは, 形が違うか, 名前が決まり "
-        "(ファイルの名前と同じで, 英数字と _ . @ - だけ) に合わないか, "
-        "読めない (シンボリックリンク, 大きすぎるなど) ので出していません"
-        if skipped > 0 else None
-    )
+    notice = skipped_notice(skipped) if skipped > 0 else None
 
     # 列にする値と, 守る指標の表の判定
     values: list[EvaluationValue] = []

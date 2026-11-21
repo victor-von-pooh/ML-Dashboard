@@ -1,6 +1,7 @@
 import json
 import math
 import os
+import re
 import stat
 import threading
 from pathlib import Path
@@ -49,6 +50,20 @@ MAX_EVALUATION_ROWS = 2000
 
 # 読む評価のファイルの大きさの上限
 MAX_EVALUATION_BYTES = 20 * 1024 * 1024
+
+# 評価の名前の決まり (ML-Found の docs/FORMAT.md. 一覧の列の名前を
+# <評価の名前>:<列> にするので, : を含む名前も除く)
+EVALUATION_NAME = re.compile(r"[A-Za-z0-9_@-][A-Za-z0-9_.@-]*")
+
+# 評価のファイルを, リンクを辿らず (O_NOFOLLOW) 待たずに (O_NONBLOCK) 開く旗.
+# 旗の無い環境では 0
+FILE_FLAGS = (
+    os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    | getattr(os, "O_BINARY", 0)
+)
+DIR_FLAGS = (
+    os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+)
 
 # 評価の種類 (曲線は横軸の列がある場合だけ)
 EVALUATION_KINDS = ("table", "curve")
@@ -420,7 +435,7 @@ def to_cell(value: Any) -> CellValue:
     return cell
 
 
-def evaluation_name(data: dict[str, Any]) -> Optional[str]:
+def has_evaluation_shape(data: dict[str, Any]) -> bool:
     """
     評価のファイルの中身の形 (名前, 列, 行) を確かめる関数
 
@@ -433,22 +448,73 @@ def evaluation_name(data: dict[str, Any]) -> Optional[str]:
 
     Returns
     ----------
-    name: Optional[str]
-        評価の名前. 名前, 列 (文字のリスト), 行 (辞書のリスト) の形が
-        違う場合は None
+    shaped: bool
+        名前 (空でない文字), 列 (文字のリスト), 行 (辞書のリスト) を
+        持つかどうか
     """
-    name = text_or_none(data.get("name"))
     columns = data.get("columns")
     rows = data.get("rows")
+    shaped = (
+        text_or_none(data.get("name")) is not None
+        and isinstance(columns, list)
+        and all(isinstance(column, str) for column in columns)
+        and isinstance(rows, list)
+        and all(isinstance(row, dict) for row in rows)
+    )
+
+    return shaped
+
+
+def check_evaluation(stem: str, data: dict[str, Any]) -> Optional[str]:
+    """
+    評価のファイルの形と名前を確かめる関数
+
+    評価のタブと一覧で同じ評価を出すため, どちらもこの関数で確かめる
+
+    Parameters
+    ----------
+    stem: str
+        ファイルの名前 (.json を除く)
+    data: dict[str, Any]
+        evaluations/<名前>.json の中身
+
+    Returns
+    ----------
+    name: Optional[str]
+        評価の名前. 形が違うか, 名前がファイルの名前と違うか, 決まり
+        (英数字と _ . @ - だけ. 先頭は . 以外) に合わない場合は None
+    """
+    name: Optional[str] = None
     if (
-        not isinstance(columns, list)
-        or not all(isinstance(column, str) for column in columns)
-        or not isinstance(rows, list)
-        or not all(isinstance(row, dict) for row in rows)
+        has_evaluation_shape(data) and data["name"] == stem
+        and EVALUATION_NAME.fullmatch(stem) is not None
     ):
-        name = None
+        name = stem
 
     return name
+
+
+def skipped_notice(count: int) -> str:
+    """
+    出さなかった評価のファイルの注意の文を作る関数
+
+    Parameters
+    ----------
+    count: int
+        出さなかったファイルの数
+
+    Returns
+    ----------
+    notice: str
+        注意の文
+    """
+    notice = (
+        f"evaluations/ の {count} 個のファイルは, 形が違うか, 名前が決まり "
+        "(ファイルの名前と同じで, 英数字と _ . @ - だけ) に合わないか, "
+        "読めない (シンボリックリンク, 大きすぎるなど) ので出していません"
+    )
+
+    return notice
 
 
 def to_evaluation(data: dict[str, Any]) -> Optional[Evaluation]:
@@ -466,9 +532,9 @@ def to_evaluation(data: dict[str, Any]) -> Optional[Evaluation]:
         評価, 名前, 列, 行の形が違う場合は None
     """
     # 名前, 列 (文字のリスト), 行 (辞書のリスト) を持つものだけ
-    name = evaluation_name(data)
-    if name is None:
+    if not has_evaluation_shape(data):
         return None
+    name: str = data["name"]
     columns: list[str] = data["columns"]
     rows: list[dict[str, Any]] = data["rows"]
 
@@ -548,20 +614,23 @@ def evaluation_files(run_dir: Path) -> list[Path]:
     return files
 
 
-def read_plain_file(name: str, dir_fd: int, limit: int) -> Optional[bytes]:
+def read_plain_file(
+    path: Path, dir_fd: Optional[int], limit: int
+) -> Optional[bytes]:
     """
-    ディレクトリの中の普通のファイルを, 上限の大きさまで読む関数
+    普通のファイルを, 上限の大きさまで読む関数
 
     確かめてから読むまでの間にリンクや FIFO に置き換えられても外を読まず
     止まらないように, リンクを辿らず (O_NOFOLLOW), 待たずに (O_NONBLOCK)
-    開き, 開いたものが普通のファイルかを確かめてから読む
+    開き, 開いたものが普通のファイルかを確かめてから読む. dir_fd を使えない
+    環境では, lstat で確かめたファイルと開いたファイルが同じかも比べる
 
     Parameters
     ----------
-    name: str
-        ファイルの名前 (dir_fd のディレクトリの中)
-    dir_fd: int
-        開いたディレクトリ
+    path: Path
+        ファイルのパス
+    dir_fd: Optional[int]
+        開いた親のディレクトリ (使えない環境では None)
     limit: int
         読む大きさの上限 (バイト)
 
@@ -571,18 +640,29 @@ def read_plain_file(name: str, dir_fd: int, limit: int) -> Optional[bytes]:
         中身. リンク, 普通でないファイル, 上限を超えるファイル, 読めない
         ファイルは None
     """
+    # dir_fd があれば名前で, 無ければ lstat で確かめてからパスで開く
+    expected: Optional[tuple[int, int]] = None
     try:
-        fd = os.open(
-            name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dir_fd
-        )
-    except OSError:
+        if dir_fd is not None:
+            fd = os.open(path.name, FILE_FLAGS, dir_fd=dir_fd)
+        else:
+            link_stat = path.lstat()
+            if not stat.S_ISREG(link_stat.st_mode):
+                return None
+            expected = (link_stat.st_dev, link_stat.st_ino)
+            fd = os.open(path, FILE_FLAGS)
+    except (OSError, NotImplementedError):
         return None
 
     # 上限 + 1 バイトまでの読み込み (超えれば None)
     chunks: list[bytes] = []
     total = 0
     try:
-        if not stat.S_ISREG(os.fstat(fd).st_mode):
+        opened = os.fstat(fd)
+        if not stat.S_ISREG(opened.st_mode) or (
+            expected is not None
+            and (opened.st_dev, opened.st_ino) != expected
+        ):
             return None
         while total <= limit:
             chunk = os.read(fd, min(1024 * 1024, limit + 1 - total))
@@ -599,6 +679,31 @@ def read_plain_file(name: str, dir_fd: int, limit: int) -> Optional[bytes]:
     return content
 
 
+def open_plain_dir(folder: Path) -> Optional[int]:
+    """
+    ディレクトリをリンクを辿らずに開く関数
+
+    Parameters
+    ----------
+    folder: Path
+        ディレクトリ
+
+    Returns
+    ----------
+    dir_fd: Optional[int]
+        開いたディレクトリ. dir_fd を使えない環境と開けない場合は None
+    """
+    dir_fd: Optional[int] = None
+    if os.open not in os.supports_dir_fd:
+        return dir_fd
+    try:
+        dir_fd = os.open(folder, DIR_FLAGS)
+    except (OSError, NotImplementedError):
+        dir_fd = None
+
+    return dir_fd
+
+
 def load_plain_evaluations(
     run_dir: Path, files: list[Path]
 ) -> list[tuple[str, dict[str, Any]]]:
@@ -608,7 +713,8 @@ def load_plain_evaluations(
     ML-Found の load_evaluations はリンクと普通でないファイル (FIFO など) も
     辿って読むので, 実験のディレクトリの外を読まないようにここで読む.
     読み方 (JSON の辞書だけ, 読めないファイルは飛ばす) は load_evaluations と
-    同じ
+    同じ. 実験のディレクトリより上の入れ替わりは確かめない (他のファイルの
+    読み方と同じ)
 
     Parameters
     ----------
@@ -622,20 +728,18 @@ def load_plain_evaluations(
     loaded: list[tuple[str, dict[str, Any]]]
         ファイルの名前の順の, ファイルの名前 (.json を除く) と中身
     """
-    # evaluations/ もリンクを辿らずに開き, 中のファイルはその dir_fd から
+    # evaluations/ もリンクを辿らずに開き, 中のファイルはその dir_fd から.
+    # dir_fd を使えない環境では, リンクでないディレクトリだけ
     loaded: list[tuple[str, dict[str, Any]]] = []
-    try:
-        dir_fd = os.open(
-            run_dir / EVALUATIONS_DIR,
-            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-        )
-    except OSError:
+    folder = run_dir / EVALUATIONS_DIR
+    dir_fd = open_plain_dir(folder)
+    if dir_fd is None and (
+        os.open in os.supports_dir_fd or not is_plain_dir(folder)
+    ):
         return loaded
     try:
         for path in files:
-            content = read_plain_file(
-                path.name, dir_fd, MAX_EVALUATION_BYTES
-            )
+            content = read_plain_file(path, dir_fd, MAX_EVALUATION_BYTES)
             if content is None:
                 continue
             try:
@@ -645,7 +749,8 @@ def load_plain_evaluations(
             if isinstance(data, dict):
                 loaded.append((path.stem, data))
     finally:
-        os.close(dir_fd)
+        if dir_fd is not None:
+            os.close(dir_fd)
 
     return loaded
 
@@ -668,16 +773,15 @@ def read_evaluations(run_dir: Path, notices: list[str]) -> list[Evaluation]:
     """
     evaluations: list[Evaluation] = []
     files = evaluation_files(run_dir)
-    for _, data in load_plain_evaluations(run_dir, files):
-        evaluation = to_evaluation(data)
+    for stem, data in load_plain_evaluations(run_dir, files):
+        evaluation = (
+            to_evaluation(data) if check_evaluation(stem, data) else None
+        )
         if evaluation is not None:
             evaluations.append(evaluation)
     skipped = len(files) - len(evaluations)
     if skipped > 0:
-        notices.append(
-            f"evaluations/ の {skipped} 個のファイルは形が違うか, 読めない "
-            "(シンボリックリンク, 大きすぎるなど) ので出していません"
-        )
+        notices.append(skipped_notice(skipped))
     evaluations.sort(key=evaluation_order)
 
     return evaluations
@@ -877,9 +981,10 @@ class DigestCache:
         from ml_found.rl.bundle import file_sha256
 
         # 同じファイルなら, 大きな重みの読み直しは省略
-        stat = path.stat()
+        file_stat = path.stat()
         identity = (
-            stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino
+            file_stat.st_size, file_stat.st_mtime_ns, file_stat.st_ctime_ns,
+            file_stat.st_ino
         )
         key = str(path)
         with self.lock:
