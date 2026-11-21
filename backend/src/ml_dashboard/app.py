@@ -11,11 +11,13 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
 
+from ml_dashboard.api.batches import router as batches_router
 from ml_dashboard.api.environment import router as environment_router
 from ml_dashboard.api.jobs import router as jobs_router
 from ml_dashboard.api.notes import router as notes_router
 from ml_dashboard.api.requirements import router as requirements_router
 from ml_dashboard.api.routes import router
+from ml_dashboard.core.batches import BatchManager
 from ml_dashboard.core.environment import EnvironmentJobs
 from ml_dashboard.core.jobs import JobManager
 from ml_dashboard.core.model_spec import COPY_REFUSED_CODE, CopyRefusedError
@@ -316,6 +318,7 @@ def create_app(
     home = data_dir or get_data_dir()
     app.state.store = ProjectStore(home)
     app.state.jobs = JobManager(home)
+    app.state.batches = BatchManager(home)
     app.state.environments = EnvironmentJobs(home, app.state.store)
     app.state.notes = NoteStore(home)
 
@@ -365,6 +368,7 @@ def create_app(
     # API と画面の登録
     app.include_router(router)
     app.include_router(jobs_router)
+    app.include_router(batches_router)
     app.include_router(notes_router)
     app.include_router(requirements_router)
     app.include_router(environment_router)

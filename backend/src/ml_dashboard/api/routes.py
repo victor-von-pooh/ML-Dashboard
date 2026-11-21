@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from ml_dashboard.core.evaluation_summary import forget_missing_summaries
+from ml_dashboard.core.model_candidates import describe_models, run_key
 from ml_dashboard.core.models import (
     History,
     LogEntry,
@@ -44,6 +45,7 @@ from ml_dashboard.core.runs import (
     find_run_dirs,
     is_withheld_weights,
     make_run_id,
+    read_source,
     resolve_run_dir,
     resolve_run_file,
     summarize_run,
@@ -412,11 +414,23 @@ def list_runs(request: Request, project_id: str) -> list[RunSummary]:
     runs: list[RunSummary]
         実験の概要, 新しい順
     """
-    output_dirs = get_project_output_dirs(get_project(request, project_id))
+    project = get_project(request, project_id)
+    output_dirs = get_project_output_dirs(project)
+    pairs = find_run_dirs(output_dirs)
     runs = [
-        summarize_run(output_dir, run_dir)
-        for output_dir, run_dir in find_run_dirs(output_dirs)
+        summarize_run(output_dir, run_dir) for output_dir, run_dir in pairs
     ]
+
+    # 全ての実験の起動のしかたから, 使ったモデルの定義の名前
+    models = describe_models(
+        Path(project.path),
+        {
+            run_key(run_dir): run.source
+            for (_, run_dir), run in zip(pairs, runs, strict=True)
+        }
+    )
+    for (_, run_dir), run in zip(pairs, runs, strict=True):
+        run.model = models.get(run_key(run_dir))
 
     # 消した実験の評価の覚えの破棄
     forget_missing_summaries()
@@ -449,7 +463,20 @@ def get_run(
     detail: RunDetail
         実験の詳細
     """
-    detail = get_run_data(request, project_id, name, date, time).detail()
+    data = get_run_data(request, project_id, name, date, time)
+    detail = data.detail()
+
+    # モデルの定義の名前は, プロジェクトの全ての実験の source.yaml だけを
+    # 読んで決定 (写しから起動し直した実験の元を辿るため)
+    project = get_project(request, project_id)
+    sources = {
+        run_key(run_dir): read_source(run_dir)
+        for _, run_dir in find_run_dirs(get_project_output_dirs(project))
+    }
+    sources[run_key(data.run_dir)] = detail.source
+    detail.model = describe_models(Path(project.path), sources).get(
+        run_key(data.run_dir)
+    )
 
     return detail
 

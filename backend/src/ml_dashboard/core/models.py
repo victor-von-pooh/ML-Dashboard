@@ -91,6 +91,78 @@ class RunModelSpec(BaseModel):
     sha256: Optional[str] = None
 
 
+class RunModel(BaseModel):
+    # 実験が使ったモデルの定義の名前 (DESIGN.md の「実験のモデルの定義」).
+    # path は元の定義の場所 (写しから起動し直した実験は辿った場所),
+    # origin_known は元の場所が分かったか
+    name: str
+    path: str
+    sha256: Optional[str] = None
+    origin_known: bool = True
+
+
+class ModelSpecInfo(BaseModel):
+    # プロジェクトの models/ のモデルの定義 (候補). reason は選べない理由
+    path: str
+    name: str
+    sha256: Optional[str] = None
+    size: Optional[int] = None
+    reason: Optional[str] = None
+
+
+class ModelSpecList(BaseModel):
+    # models/ の定義の一覧と, 一覧を作れない理由 (models/ が無いかリンク)
+    specs: list[ModelSpecInfo] = []
+    notice: Optional[str] = None
+
+
+# 候補のまとまりの候補の状態 (待つ, 学習中, 終わった, 取りやめた,
+# 起動できなかった)
+CandidateState = Literal[
+    "waiting", "running", "finished", "cancelled", "failed"
+]
+
+
+class BatchCandidate(BaseModel):
+    # 候補のまとまりの 1 つの候補. sha256 はまとまりを作ったときの定義の
+    # 中身, mismatch は学習を始めた実験の写しがそれと違うか
+    path: str
+    name: str
+    sha256: str
+    state: CandidateState = "waiting"
+    job_id: Optional[str] = None
+    reason: Optional[str] = None
+    mismatch: bool = False
+
+
+class BatchOwner(BaseModel):
+    # まとまりを進めるダッシュボードのプロセス
+    hostname: str
+    pid: int
+    started_at: str
+
+
+class Batch(BaseModel):
+    # 候補のまとまり (置き場の batches/<ID>/batch.json)
+    id: str
+    project_id: str
+    script: str
+    default_config: Optional[str] = None
+    created_at: str
+    owner: BatchOwner
+    candidates: list[BatchCandidate]
+    # 次の候補が待っているジョブ (学習中の他のジョブ) の ID
+    waiting_for: list[str] = []
+
+
+class BatchInfo(Batch):
+    # 画面に返すまとまり. 終わったか (待つ候補と学習中の候補が無い),
+    # 持ち主がこのプロセスか
+    project_name: Optional[str] = None
+    finished: bool
+    owned: bool
+
+
 class RunSource(BaseModel):
     # 実験の起動のしかた (ML-Found の source.yaml). 実行したスクリプト,
     # default と experiment の config のパス, 「項目=値」の上書き, モデルの
@@ -151,6 +223,8 @@ class RunSummary(BaseModel):
     source: Optional[RunSource] = None
     # テスト用の評価の値と守る指標の判定, evaluations/ の無い実験は None
     evaluations: Optional[RunEvaluations] = None
+    # 使ったモデルの定義の名前, 定義の場所の記録が無い実験は None
+    model: Optional[RunModel] = None
 
 
 class LogEntry(BaseModel):
