@@ -364,6 +364,12 @@ def check_readiness(
         spec = read_config_path(cfg, MODEL_SPEC_KEY, project_dir)
         model_spec = spec if spec.value is not None or spec.error else None
         placeholder = model_spec is not None and read_placeholder(cfg)
+
+        # 目印があれば, 空の場所も仮のモデルで学習する (無いのと同じ扱い)
+        if placeholder and spec.value is not None and not spec.value.strip():
+            model_spec = ConfigPath(
+                key=MODEL_SPEC_KEY, value=spec.value, exists=False
+            )
         requires, requires_error = read_requires(cfg)
 
     # 入れる先の Python があれば, その Python で登録簿を確かめる

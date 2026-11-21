@@ -348,6 +348,28 @@ def test_placeholder_model(client: TestClient, project_dir: Path) -> None:
         assert readiness["model_placeholder"] is expected
         assert readiness["ready"] is expected
 
+    # 読めない場所は, 目印があっても止める
+    config.write_text(
+        base.replace("  spec: models/model.yaml\n",
+                     "  spec: ${missing}\n  placeholder: true\n"),
+        encoding="utf-8"
+    )
+    readiness = client.get(f"/api/projects/{project_id}/readiness").json()
+    assert readiness["model_spec"]["error"]
+    assert readiness["model_placeholder"] is True
+    assert readiness["ready"] is False
+
+    # 目印があれば, 空の場所も無いのと同じく止めない
+    config.write_text(
+        base.replace("  spec: models/model.yaml\n",
+                     "  spec: ''\n  placeholder: true\n"),
+        encoding="utf-8"
+    )
+    readiness = client.get(f"/api/projects/{project_id}/readiness").json()
+    assert readiness["model_spec"]["exists"] is False
+    assert readiness["model_spec"]["error"] is None
+    assert readiness["ready"] is True
+
     # model.spec が無ければ目印も読まない
     config.write_text(
         base.replace("  spec: models/model.yaml\n", "  placeholder: true\n"),
