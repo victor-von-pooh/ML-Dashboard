@@ -9,7 +9,7 @@ import {
   TriangleAlert,
   type LucideIcon,
 } from 'lucide-react'
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react'
 
 import type { EvaluationValue, GuardCheck } from '../../api/client'
 import { useStableId } from '../../lib/a11y'
@@ -22,38 +22,74 @@ const GUARD_STYLE: Record<GuardCheck['state'], { icon: LucideIcon; className: st
   unknown: { icon: ShieldQuestionMark, className: 'text-ink-2 bg-surface-2' },
 }
 
+// 印の説明を開いたことを他の印に知らせる (開いている説明を 1 つにするため)
+const GUARD_OPEN_EVENT = 'guard-badge-open'
+
+// 説明の幅 (px. 画面の端からはみ出さない位置にするため)
+const DETAIL_WIDTH = 288
+
 /**
  * 守る指標の印. 色だけに頼らずアイコンと文字も付ける. 押すと (キーボードとタッチでも)
- * 落ちた指標と判断できなかった理由の説明が印の下に開く
+ * 落ちた指標と判断できなかった理由の説明が印の下に浮いて開く (表の形を変えないため)
  */
 export function GuardBadge({ guard }: { guard: GuardCheck | null | undefined }) {
-  const [open, setOpen] = useState(false)
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
+  const open = position !== null
   const wrapper = useRef<HTMLSpanElement>(null)
+  const button = useRef<HTMLButtonElement>(null)
   const detailId = useStableId('guard-detail')
-  // 外を押したときに閉じる
+  // 開いている間は, 外を押す, Esc, 他の印を開く, 流す, 窓の大きさを変えると閉じる
   useEffect(() => {
     if (!open) return
-    const close = (event: PointerEvent) => {
-      if (!wrapper.current?.contains(event.target as Node)) setOpen(false)
+    const close = () => setPosition(null)
+    const onPointerDown = (event: PointerEvent) => {
+      if (!wrapper.current?.contains(event.target as Node)) close()
     }
-    document.addEventListener('pointerdown', close)
-    return () => document.removeEventListener('pointerdown', close)
-  }, [open])
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') close()
+    }
+    const onOther = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== detailId) close()
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    document.addEventListener(GUARD_OPEN_EVENT, onOther)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener(GUARD_OPEN_EVENT, onOther)
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+    }
+  }, [open, detailId])
   if (!guard) return <span className="text-xs text-ink-3">—</span>
   const { icon: Icon, className } = GUARD_STYLE[guard.state]
-  const onKeyDown = (event: KeyboardEvent<HTMLSpanElement>) => {
-    if (event.key !== 'Escape' || !open) return
-    event.stopPropagation()
-    setOpen(false)
+  const toggle = () => {
+    if (open) {
+      setPosition(null)
+      return
+    }
+    // 印の下に, 画面の端からはみ出さないように置く
+    const rect = button.current?.getBoundingClientRect()
+    const left = Math.max(8, Math.min(rect?.left ?? 0, window.innerWidth - DETAIL_WIDTH - 8))
+    setPosition({ top: (rect?.bottom ?? 0) + 4, left })
+    document.dispatchEvent(new CustomEvent(GUARD_OPEN_EVENT, { detail: detailId }))
+  }
+  // Tab などで印から離れたら閉じる
+  const onBlur = (event: FocusEvent<HTMLSpanElement>) => {
+    if (!wrapper.current?.contains(event.relatedTarget as Node | null)) setPosition(null)
   }
   return (
-    <span ref={wrapper} className="inline-flex flex-col items-start" onKeyDown={onKeyDown}>
+    <span ref={wrapper} className="inline-block" onBlur={onBlur}>
       <button
+        ref={button}
         type="button"
         aria-label={`守る指標: ${GUARD_LABELS[guard.state]}`}
         aria-expanded={open}
         aria-controls={detailId}
-        onClick={() => setOpen((value) => !value)}
+        onClick={toggle}
         className={clsx(
           'inline-flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap',
           className,
@@ -64,8 +100,11 @@ export function GuardBadge({ guard }: { guard: GuardCheck | null | undefined }) 
       </button>
       {/* 開いたときだけ中身を入れ, 読み上げは開いた説明の 1 回だけにする */}
       <span id={detailId} role="status">
-        {open && (
-          <span className="mt-1 block max-w-72 rounded-md border border-line bg-surface px-2 py-1 text-[11px] whitespace-pre-line text-ink-2">
+        {position && (
+          <span
+            className="fixed z-30 block rounded-md border border-line bg-surface px-2 py-1 text-left text-[11px] whitespace-pre-line text-ink-2 shadow-lg"
+            style={{ top: position.top, left: position.left, width: DETAIL_WIDTH }}
+          >
             {guardDetail(guard)}
           </span>
         )}

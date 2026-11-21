@@ -42,6 +42,30 @@ describe('GuardBadge', () => {
     fireEvent.pointerDown(screen.getByText('外'))
     expect(badge).toHaveAttribute('aria-expanded', 'false')
   })
+  it('2 つ目を開くと 1 つ目が閉じ, Tab で離れると閉じる', () => {
+    render(
+      <>
+        <GuardBadge guard={{ state: 'dropped', dropped: ['a: acc (差 -0.1)'], unknown: [] }} />
+        <GuardBadge guard={{ state: 'unknown', dropped: [], unknown: ['b: 向きが分からない'] }} />
+        <button type="button">次</button>
+      </>,
+    )
+    const first = screen.getByRole('button', { name: '守る指標: 落ちた' })
+    const second = screen.getByRole('button', { name: '守る指標: 判断できない' })
+    fireEvent.click(first)
+    expect(first).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.click(second)
+    expect(first).toHaveAttribute('aria-expanded', 'false')
+    expect(second).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.queryByText(/a: acc/)).not.toBeInTheDocument()
+    // 印の外へフォーカスが移ると閉じる
+    fireEvent.blur(second, { relatedTarget: screen.getByRole('button', { name: '次' }) })
+    expect(second).toHaveAttribute('aria-expanded', 'false')
+    // Esc は印にフォーカスが無くても (Safari など) 効く
+    fireEvent.click(second)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(second).toHaveAttribute('aria-expanded', 'false')
+  })
   it('守る指標の表が無い実験には印を出さない', () => {
     render(<GuardBadge guard={null} />)
     expect(screen.getByText('—')).toBeInTheDocument()

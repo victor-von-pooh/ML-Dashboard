@@ -167,6 +167,12 @@ export function ComparePage() {
   const evaluationSort = readEvaluationSort(params)
   const setEvaluationSort = (sort: EvaluationSort) =>
     setParams(writeEvaluationSort(params, sort), { replace: true })
+  const clearEvaluationSort = () => {
+    const next = new URLSearchParams(params)
+    next.delete('sort')
+    next.delete('desc')
+    setParams(next, { replace: true })
+  }
   const setShownColumns = (keys: string[]) => {
     const next = new URLSearchParams(params)
     next.delete('ev')
@@ -305,6 +311,8 @@ export function ComparePage() {
           onChange={setShownColumns}
           sort={evaluationSort}
           onSortChange={setEvaluationSort}
+          onSortClear={clearEvaluationSort}
+          loading={loading}
         />
 
         {loading && <Spinner />}
@@ -450,6 +458,8 @@ function EvaluationCompare({
   onChange,
   sort,
   onSortChange,
+  onSortClear,
+  loading,
 }: {
   slots: (Slot & { run: RunDetail })[]
   label: (runId: string) => string
@@ -457,12 +467,20 @@ function EvaluationCompare({
   onChange: (keys: string[]) => void
   sort: EvaluationSort | null
   onSortChange: (sort: EvaluationSort) => void
+  onSortClear: () => void
+  /** 読み込み中の実験があるか (読み終わるまで並べ替えを捨てない) */
+  loading: boolean
 }) {
   const columns = useMemo(() => collectColumns(slots.map((slot) => slot.run.evaluations)), [slots])
+  const shown = chooseColumns(columns, requested, MAX_COMPARE_COLUMNS)
+  // 並べていない列での並べ替えは URL から捨てる (一覧とそろえる)
+  const stale = !loading && sort !== null && !shown.some((column) => column.key === sort.key)
+  useEffect(() => {
+    if (stale) onSortClear()
+  }, [stale, onSortClear])
   const hasGuard = slots.some((slot) => slot.run.evaluations?.guard)
   const noticed = slots.filter((slot) => slot.run.evaluations?.notice)
   if (columns.length === 0 && !hasGuard && noticed.length === 0) return null
-  const shown = chooseColumns(columns, requested, MAX_COMPARE_COLUMNS)
 
   // 値の無い実験は末尾. 並べ替えない場合は選んだ順
   const active = sort && shown.some((column) => column.key === sort.key) ? sort : null
