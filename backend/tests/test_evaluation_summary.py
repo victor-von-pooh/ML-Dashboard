@@ -17,7 +17,6 @@ from ml_dashboard.core.evaluation_summary import (
 from ml_dashboard.core.models import Evaluation
 from ml_dashboard.core.results import (
     EVALUATIONS_LINK_NOTICE,
-    check_evaluation,
     evaluation_files,
     evaluation_problem,
     load_checked_evaluations,
@@ -629,7 +628,7 @@ def test_load_plain_evaluations_dir(
     assert notices == [EVALUATIONS_LINK_NOTICE]
 
 
-def test_check_evaluation(tmp_path: Path) -> None:
+def test_evaluation_name_rules(tmp_path: Path) -> None:
     """
     名前がファイルの名前と同じで決まりに合う評価だけを, 評価のタブでも
     出すことを確かめる関数
@@ -644,12 +643,14 @@ def test_check_evaluation(tmp_path: Path) -> None:
     None
     """
     data = {"name": "metrics", "columns": [], "rows": []}
-    assert check_evaluation("metrics", data) == "metrics"
-    assert check_evaluation("other", data) is None
+    assert evaluation_problem(None, "metrics", data) is None
+    assert evaluation_problem(None, "other", data) is not None
     # 末尾の改行も決まりに合わない
     newline = {**data, "name": "metrics\n"}
-    assert check_evaluation("metrics\n", newline) is None
-    assert check_evaluation("metrics", {**data, "rows": [1]}) is None
+    assert evaluation_problem(None, "metrics\n", newline) is not None
+    assert evaluation_problem(
+        None, "metrics", {**data, "rows": [1]}
+    ) is not None
 
     # 評価のタブも, ファイルの名前と違う評価を出さない
     run_dir = tmp_path / "run"
@@ -790,7 +791,6 @@ def test_evaluation_problem_reasons(tmp_path: Path) -> None:
     if not (folder / "Metrics.json").exists():
         os.link(folder / "metrics.json", folder / "Metrics.json")
     assert evaluation_problem(folder, "metrics", upper) is None
-    assert check_evaluation("metrics", upper, folder) == "Metrics"
     # 区別する置き場で, 大文字と小文字の違うハードリンクが 2 つ並ぶ場合は
     # 同じ名前を 2 回出さない
     if (folder / "Metrics.json").exists() and len(
