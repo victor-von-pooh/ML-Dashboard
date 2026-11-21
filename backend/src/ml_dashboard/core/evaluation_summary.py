@@ -393,6 +393,7 @@ def summarize_evaluations(
         値と守る指標の判定. evaluations/ の無い実験は None, リンクの
         実験は注意だけ
     """
+    # evaluations/ がリンクの実験は注意だけ, 無い実験は None
     if (run_dir / EVALUATIONS_DIR).is_symlink():
         EVALUATION_SUMMARY_CACHE.pop(str(run_dir), None)
         return RunEvaluations(notice=EVALUATIONS_LINK_NOTICE)
@@ -400,17 +401,20 @@ def summarize_evaluations(
         EVALUATION_SUMMARY_CACHE.pop(str(run_dir), None)
         return None
 
-    # ファイル (リンクはリンクそのもの) の名前, i-node, 大きさ, 更新の時刻が
-    # 同じなら, 前に求めた結果
+    # ファイル (リンクはリンクそのもの) の名前, i-node, 大きさ, 更新の時刻,
+    # 種類と権限, 状態の変更の時刻 (chmod など) が同じなら, 前に求めた結果
     files = evaluation_files(run_dir)
-    stats: list[tuple[str, int, int, int]] = []
+    stats: list[tuple[str, int, int, int, int, int]] = []
     for path in files:
         try:
             stat = path.lstat()
         except OSError:
             continue
         stats.append(
-            (path.name, stat.st_ino, stat.st_size, stat.st_mtime_ns)
+            (
+                path.name, stat.st_ino, stat.st_size, stat.st_mtime_ns,
+                stat.st_mode, stat.st_ctime_ns
+            )
         )
     key = (tuple(stats), monitor, mode)
     cached = EVALUATION_SUMMARY_CACHE.get(str(run_dir))

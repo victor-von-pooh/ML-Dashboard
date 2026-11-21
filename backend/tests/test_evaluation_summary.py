@@ -19,9 +19,12 @@ from ml_dashboard.core.results import (
     EVALUATIONS_LINK_NOTICE,
     check_evaluation,
     evaluation_files,
+    evaluation_problem,
     load_plain_evaluations,
     read_evaluations,
     read_plain_file,
+    skip_entry,
+    skipped_notice,
 )
 
 from test_api import register
@@ -448,6 +451,25 @@ def test_read_plain_file_swapped(
     real_open = os.open
 
     def swapped(path: Any, flags: int, *args: Any, **kwargs: Any) -> int:
+        """
+        求めたパスの代わりに other.json を開く関数
+
+        Parameters
+        ----------
+        path: Any
+            求めたパス (使わない)
+        flags: int
+            開く旗
+        *args: Any
+            os.open の残りの引数
+        **kwargs: Any
+            os.open の名前付きの引数
+
+        Returns
+        ----------
+        fd: int
+            開いたファイル
+        """
         return real_open(tmp_path / "other.json", flags, *args, **kwargs)
 
     monkeypatch.setattr(os, "open", swapped)
@@ -590,7 +612,7 @@ def test_skip_fifo_and_renamed(
     assert "3 個" in summary.notice
     assert "deep.json (JSON の辞書でない)" in summary.notice
     assert "pipe.json (普通のファイルでない (FIFO など))" in summary.notice
-    assert "renamed.json (名前が決まりに合わない)" in summary.notice
+    assert "renamed.json (中の name がファイルの名前と違う)" in summary.notice
     assert "ファイルの名前と同じ" in summary.notice
 
 
@@ -630,3 +652,141 @@ def test_forget_removed_runs(
     shutil.rmtree(other / "evaluations")
     assert client.get(f"/api/projects/{project_id}/runs").status_code == 200
     assert str(other) not in EVALUATION_SUMMARY_CACHE
+
+
+def test_evaluation_problem_reasons(tmp_path: Path) -> None:
+    """
+    名前の問題の理由を分け, 大文字と小文字だけが違う同じファイルは出す
+    ことを確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    run_dir = tmp_path / "run"
+    write_evaluation(run_dir, "metrics", [{"score": 0.5}])
+    folder = run_dir / "evaluations"
+    data = json.loads((folder / "metrics.json").read_text(encoding="utf-8"))
+    assert evaluation_problem(folder, "metrics", data) is None
+    assert evaluation_problem(folder, "metrics", {"name": "x"}) == "形が違う"
+    assert evaluation_problem(folder, "bad:name", {
+        **data, "name": "bad:name"
+    }) == "名前が決まりに合わない"
+    assert evaluation_problem(folder, "other", data) == (
+        "中の name がファイルの名前と違う"
+    )
+
+    # 大文字と小文字を区別しない置き場で name="Metrics" で書き直した場合
+    # (区別する置き場では, 同じファイルを指すハードリンクで作る)
+    upper = {**data, "name": "Metrics"}
+    if not (folder / "Metrics.json").exists():
+        os.link(folder / "metrics.json", folder / "Metrics.json")
+    assert evaluation_problem(folder, "metrics", upper) is None
+    assert check_evaluation("metrics", upper, folder) == "Metrics"
+    # 別のファイルなら, 大文字と小文字だけの違いでも出さない (2 つの
+    # ファイルを置ける, 大文字と小文字を区別する置き場だけ)
+    other = tmp_path / "other"
+    write_evaluation(other, "metrics", [{"score": 0.1}])
+    other_folder = other / "evaluations"
+    if not (other_folder / "Metrics.json").exists():
+        (other_folder / "Metrics.json").write_text("{}", encoding="utf-8")
+        assert evaluation_problem(other_folder, "metrics", upper) == (
+            "中の name がファイルの名前と違う"
+        )
+
+
+def test_shown_names() -> None:
+    """
+    UTF-8 にできない名前, 制御文字, 向きの変わる文字, 長い名前を整えて
+    注意に出すことを確かめる関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    None
+    """
+    surrogate = os.fsdecode(b"\xff.json")
+    notice = skipped_notice([
+        skip_entry(surrogate, "形が違う"),
+        skip_entry("a\u202eb.json", "形が違う"),
+        skip_entry("x" * 200 + ".json", "形が違う"),
+    ])
+    assert notice is not None
+    notice.encode("utf-8")
+    assert "\\udcff.json" in notice and "a\\u202eb.json" in notice
+    assert "x" * 81 not in notice and "…" in notice
+
+
+def test_surrogate_file_in_list(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    UTF-8 にできない名前の評価のファイルがあっても, 一覧と結果が読める
+    ことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    run_dir = project_dir / "outputs" / EVALUATED_RUN
+    write_evaluation(run_dir, "metrics", [{"score": 0.5}])
+    try:
+        (run_dir / "evaluations" / os.fsdecode(b"\xff.json")).write_text(
+            "{}", encoding="utf-8"
+        )
+    except (OSError, UnicodeEncodeError):
+        pytest.skip("UTF-8 でない名前のファイルを作れない置き場")
+    project_id = register(client, project_dir)
+    response = client.get(f"/api/projects/{project_id}/runs")
+    assert response.status_code == 200
+    notices = [
+        run["evaluations"]["notice"] for run in response.json()
+        if run["evaluations"]
+    ]
+    assert any("\\udcff.json" in str(item) for item in notices)
+    results = client.get(
+        f"/api/projects/{project_id}/runs/{EVALUATED_RUN}/results"
+    )
+    assert results.status_code == 200
+
+
+def test_link_only_results(client: TestClient, project_dir: Path) -> None:
+    """
+    evaluations/ がリンクなだけの実験の結果に, 注意を出すことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    run_dir = project_dir / "outputs" / PLAIN_RUN
+    outside = project_dir / "outside"
+    write_evaluation(outside, "metrics", [{"score": 0.5}])
+    (run_dir / "evaluations").symlink_to(outside / "evaluations")
+    project_id = register(client, project_dir)
+    response = client.get(
+        f"/api/projects/{project_id}/runs/{PLAIN_RUN}/results"
+    )
+    assert response.status_code == 200
+    assert response.json()["notices"] == [EVALUATIONS_LINK_NOTICE]
