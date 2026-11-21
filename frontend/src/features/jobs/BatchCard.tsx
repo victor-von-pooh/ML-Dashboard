@@ -74,21 +74,40 @@ export function BatchCard({ batch, jobs }: { batch: BatchInfo; jobs: JobInfo[] }
           )}
           {!batch.finished && !batch.owned && (
             <p id={stopReasonId} className="max-w-64 text-xs text-ink-3">
-              取りやめは, 進めているプロセス ({batch.owner.hostname}) のダッシュボードで行います
+              取りやめは, 進めているプロセス ({batch.owner.hostname}) のダッシュボードで行います.
+              そのプロセスが応答しない場合は, 強制して取りやめられます
             </p>
           )}
-          {!batch.finished && (
+          {!batch.finished && !batch.owned && (
+            <Button
+              variant="danger"
+              icon={X}
+              disabled={stop.isPending}
+              aria-describedby={stopReasonId}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `持ち主のダッシュボード (${batch.owner.hostname}, pid ${batch.owner.pid}) が応答しない場合だけ使います. 動いている場合は, そのプロセスの記録と食い違います.\n待っている候補を取りやめ, 学習中の候補をエポックの区切りで止めますか?`,
+                  )
+                ) {
+                  stop.mutate({ batchId: batch.id, force: true })
+                }
+              }}
+            >
+              持ち主が応答しない場合の取りやめ
+            </Button>
+          )}
+          {!batch.finished && batch.owned && (
             <Button
               icon={X}
-              disabled={stop.isPending || !batch.owned}
-              aria-describedby={batch.owned ? undefined : stopReasonId}
+              disabled={stop.isPending}
               onClick={() => {
                 if (
                   window.confirm(
                     '待っている候補を取りやめ, 学習中の候補をエポックの区切りで止めますか?',
                   )
                 ) {
-                  stop.mutate(batch.id)
+                  stop.mutate({ batchId: batch.id, force: false })
                 }
               }}
             >
@@ -101,10 +120,13 @@ export function BatchCard({ batch, jobs }: { batch: BatchInfo; jobs: JobInfo[] }
         <p className="mt-2 flex flex-wrap items-center gap-1 text-xs text-ink-2">
           <Clock className="size-3.5" aria-hidden />
           次の候補は,{' '}
-          {waitingEnvironment
-            ? '学習の準備 (環境のジョブ) が終わるのを'
-            : '学習中のジョブが終わるのを'}{' '}
-          待っています
+          {[
+            waitingEnvironment ? '学習の準備 (環境のジョブ)' : null,
+            waitingJobs.length > 0 ? '学習中のジョブ' : null,
+          ]
+            .filter(Boolean)
+            .join(' と ')}
+          が終わるのを待っています
           {waitingJobs.map((id) => (
             <Link
               key={id}
@@ -120,6 +142,7 @@ export function BatchCard({ batch, jobs }: { batch: BatchInfo; jobs: JobInfo[] }
         {batch.candidates.map((candidate, index) => {
           const { icon: Icon, label, className } = STATES[candidate.state]
           const runId = candidate.job_id ? runOf.get(candidate.job_id) : null
+          const job = candidate.job_id ? jobOf.get(candidate.job_id) : undefined
           return (
             <li key={`${candidate.path}:${index}`} className="flex flex-wrap items-center gap-2">
               <span className="tabular w-6 text-right text-xs text-ink-3">{index + 1}.</span>
@@ -129,11 +152,7 @@ export function BatchCard({ batch, jobs }: { batch: BatchInfo; jobs: JobInfo[] }
               </span>
               <span className="font-mono text-xs">{candidate.name}</span>
               {/* 終わった候補は, 完了か失敗か中断かをジョブの状態で添える */}
-              {candidate.state === 'finished' &&
-                candidate.job_id &&
-                jobOf.get(candidate.job_id) && (
-                  <StatusBadge status={jobStatus(jobOf.get(candidate.job_id) as JobInfo)} />
-                )}
+              {candidate.state === 'finished' && job && <StatusBadge status={jobStatus(job)} />}
               {candidate.job_id && (
                 <Link
                   aria-label={`${candidate.name} のジョブ`}

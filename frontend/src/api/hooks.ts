@@ -435,9 +435,18 @@ export function useModelSpecs(projectId: string, script: string, defaultConfig?:
 
 /** 候補のまとまりの一覧. 進めている途中のまとまりがある間は一定の間隔で読み直す */
 export function useBatches() {
+  const client = useQueryClient()
   return useQuery({
     queryKey: keys.batches,
-    queryFn: api.listBatches,
+    // 読み終えたときに進めている途中のまとまりがあれば, ジョブの一覧も読み直す
+    // (ジョブの一覧の間隔は, ジョブの一覧を読み直したときにしか決め直さないため)
+    queryFn: async () => {
+      const batches = await api.listBatches()
+      if (batches.some((batch) => !batch.finished)) {
+        void client.invalidateQueries({ queryKey: keys.jobs })
+      }
+      return batches
+    },
     refetchInterval: (query) =>
       query.state.data?.some((batch) => !batch.finished) ? LIVE_INTERVAL : 30_000,
   })
@@ -457,7 +466,8 @@ export function useCreateBatch(projectId: string) {
 export function useStopBatch() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: api.stopBatch,
+    mutationFn: ({ batchId, force }: { batchId: string; force: boolean }) =>
+      api.stopBatch(batchId, force),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: keys.batches })
       void client.invalidateQueries({ queryKey: keys.jobs })

@@ -276,6 +276,10 @@ export const api = {
       body: JSON.stringify(body),
     }),
   listBatches: () => request<BatchInfo[]>('/api/batches'),
-  stopBatch: (batchId: string) =>
-    request<BatchInfo>(`/api/batches/${encodeURIComponent(batchId)}/stop`, { method: 'POST' }),
+  // force は, 別のプロセスが持ち主で応答しないまとまりも取りやめる
+  stopBatch: (batchId: string, force = false) =>
+    request<BatchInfo>(
+      `/api/batches/${encodeURIComponent(batchId)}/stop${force ? '?force=true' : ''}`,
+      { method: 'POST' },
+    ),
 }
