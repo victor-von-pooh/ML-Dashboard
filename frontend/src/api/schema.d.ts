@@ -804,6 +804,137 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/model-specs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Model Specs
+         * @description プロジェクトの models/ のモデルの定義の一覧を返す関数
+         *
+         *     Parameters
+         *     ----------
+         *     request: Request
+         *         リクエスト
+         *     project_id: str
+         *         プロジェクトの ID
+         *
+         *     Returns
+         *     ----------
+         *     specs: ModelSpecList
+         *         定義の一覧と, 一覧を作れない理由
+         */
+        get: operations["read_model_specs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Batch
+         * @description モデルの定義の候補を, 同じスクリプトと config で順に学習する関数
+         *
+         *     Parameters
+         *     ----------
+         *     request: Request
+         *         リクエスト
+         *     project_id: str
+         *         プロジェクトの ID
+         *     body: BatchCreate
+         *         スクリプト, config, default, 候補の定義の場所
+         *
+         *     Returns
+         *     ----------
+         *     info: BatchInfo
+         *         作ったまとまり
+         */
+        post: operations["create_batch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Batches
+         * @description 候補のまとまりの一覧を返す関数
+         *
+         *     Parameters
+         *     ----------
+         *     request: Request
+         *         リクエスト
+         *
+         *     Returns
+         *     ----------
+         *     batches: list[BatchInfo]
+         *         まとまり (新しい順)
+         */
+        get: operations["list_batches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/batches/{batch_id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop Batch
+         * @description 候補のまとまりの残りを取りやめ, 学習中の候補を止める関数
+         *
+         *     Parameters
+         *     ----------
+         *     request: Request
+         *         リクエスト
+         *     batch_id: str
+         *         まとまりの ID
+         *     force: bool = False
+         *         別のプロセスが持ち主のまとまりも取りやめるか (持ち主が応答しない
+         *         と利用者が確かめた場合)
+         *
+         *     Returns
+         *     ----------
+         *     info: BatchInfo
+         *         更新したまとまり
+         */
+        post: operations["stop_batch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}/notes": {
         parameters: {
             query?: never;
@@ -1038,6 +1169,79 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** BatchCandidate */
+        BatchCandidate: {
+            /** Path */
+            path: string;
+            /** Name */
+            name: string;
+            /** Sha256 */
+            sha256: string;
+            /**
+             * State
+             * @default waiting
+             * @enum {string}
+             */
+            state: "waiting" | "running" | "finished" | "cancelled" | "failed";
+            /** Job Id */
+            job_id?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Mismatch
+             * @default false
+             */
+            mismatch: boolean;
+        };
+        /** BatchCreate */
+        BatchCreate: {
+            /** Script */
+            script: string;
+            /** Config Path */
+            config_path?: string | null;
+            /** Config Text */
+            config_text?: string | null;
+            /** Default Config */
+            default_config?: string | null;
+            /** Specs */
+            specs: string[];
+        };
+        /** BatchInfo */
+        BatchInfo: {
+            /** Id */
+            id: string;
+            /** Project Id */
+            project_id: string;
+            /** Script */
+            script: string;
+            /** Default Config */
+            default_config?: string | null;
+            /** Created At */
+            created_at: string;
+            owner: components["schemas"]["BatchOwner"];
+            /** Candidates */
+            candidates: components["schemas"]["BatchCandidate"][];
+            /**
+             * Waiting For
+             * @default []
+             */
+            waiting_for: string[];
+            /** Project Name */
+            project_name?: string | null;
+            /** Finished */
+            finished: boolean;
+            /** Owned */
+            owned: boolean;
+        };
+        /** BatchOwner */
+        BatchOwner: {
+            /** Hostname */
+            hostname: string;
+            /** Pid */
+            pid: number;
+            /** Started At */
+            started_at: string;
+        };
         /** BestValue */
         BestValue: {
             /** Monitor */
@@ -1322,6 +1526,29 @@ export interface components {
              * @default
              */
             same_as: string;
+        };
+        /** ModelSpecInfo */
+        ModelSpecInfo: {
+            /** Path */
+            path: string;
+            /** Name */
+            name: string;
+            /** Sha256 */
+            sha256?: string | null;
+            /** Size */
+            size?: number | null;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** ModelSpecList */
+        ModelSpecList: {
+            /**
+             * Specs
+             * @default []
+             */
+            specs: components["schemas"]["ModelSpecInfo"][];
+            /** Notice */
+            notice?: string | null;
         };
         /** OptimizerInfo */
         OptimizerInfo: {
@@ -1749,6 +1976,7 @@ export interface components {
             error: string | null;
             source?: components["schemas"]["RunSource"] | null;
             evaluations?: components["schemas"]["RunEvaluations"] | null;
+            model?: components["schemas"]["RunModel"] | null;
             /** Config */
             config: {
                 [key: string]: unknown;
@@ -1825,6 +2053,20 @@ export interface components {
             project_id: string;
             /** Run Id */
             run_id: string;
+        };
+        /** RunModel */
+        RunModel: {
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
+            /** Sha256 */
+            sha256?: string | null;
+            /**
+             * Origin Known
+             * @default true
+             */
+            origin_known: boolean;
         };
         /** RunModelSpec */
         RunModelSpec: {
@@ -1973,6 +2215,7 @@ export interface components {
             error: string | null;
             source?: components["schemas"]["RunSource"] | null;
             evaluations?: components["schemas"]["RunEvaluations"] | null;
+            model?: components["schemas"]["RunModel"] | null;
         };
         /** RunTask */
         RunTask: {
@@ -3071,6 +3314,167 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Registry"];
+                };
+            };
+        };
+    };
+    read_model_specs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelSpecList"];
+                };
+            };
+            /** @description プロジェクトか実験が見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_batch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchInfo"];
+                };
+            };
+            /** @description 受け付けられないリクエスト */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description プロジェクトか実験が見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 進めている途中のまとまりか, 環境のジョブがある */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_batches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchInfo"][];
+                };
+            };
+        };
+    };
+    stop_batch: {
+        parameters: {
+            query?: {
+                force?: boolean;
+            };
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchInfo"];
+                };
+            };
+            /** @description プロジェクトか実験が見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 進めている途中のまとまりか, 環境のジョブがある */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

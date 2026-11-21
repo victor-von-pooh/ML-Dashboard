@@ -1241,6 +1241,187 @@
         }
       }
     },
+    "/api/projects/{project_id}/model-specs": {
+      "get": {
+        "summary": "Read Model Specs",
+        "description": "プロジェクトの models/ のモデルの定義の一覧を返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\n\nReturns\n----------\nspecs: ModelSpecList\n    定義の一覧と, 一覧を作れない理由",
+        "operationId": "read_model_specs",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelSpecList"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "プロジェクトか実験が見つからない"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{project_id}/batches": {
+      "post": {
+        "summary": "Create Batch",
+        "description": "モデルの定義の候補を, 同じスクリプトと config で順に学習する関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\nbody: BatchCreate\n    スクリプト, config, default, 候補の定義の場所\n\nReturns\n----------\ninfo: BatchInfo\n    作ったまとまり",
+        "operationId": "create_batch",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchInfo"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "プロジェクトか実験が見つからない"
+          },
+          "400": {
+            "description": "受け付けられないリクエスト"
+          },
+          "409": {
+            "description": "進めている途中のまとまりか, 環境のジョブがある"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/batches": {
+      "get": {
+        "summary": "List Batches",
+        "description": "候補のまとまりの一覧を返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\n\nReturns\n----------\nbatches: list[BatchInfo]\n    まとまり (新しい順)",
+        "operationId": "list_batches",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BatchInfo"
+                  },
+                  "type": "array",
+                  "title": "Response List Batches"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/batches/{batch_id}/stop": {
+      "post": {
+        "summary": "Stop Batch",
+        "description": "候補のまとまりの残りを取りやめ, 学習中の候補を止める関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nbatch_id: str\n    まとまりの ID\nforce: bool = False\n    別のプロセスが持ち主のまとまりも取りやめるか (持ち主が応答しない\n    と利用者が確かめた場合)\n\nReturns\n----------\ninfo: BatchInfo\n    更新したまとまり",
+        "operationId": "stop_batch",
+        "parameters": [
+          {
+            "name": "batch_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Batch Id"
+            }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Force"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchInfo"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "プロジェクトか実験が見つからない"
+          },
+          "409": {
+            "description": "進めている途中のまとまりか, 環境のジョブがある"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects/{project_id}/notes": {
       "get": {
         "summary": "List Notes",
@@ -1641,6 +1822,225 @@
   },
   "components": {
     "schemas": {
+      "BatchCandidate": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "sha256": {
+            "type": "string",
+            "title": "Sha256"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "waiting",
+              "running",
+              "finished",
+              "cancelled",
+              "failed"
+            ],
+            "title": "State",
+            "default": "waiting"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "mismatch": {
+            "type": "boolean",
+            "title": "Mismatch",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "name",
+          "sha256"
+        ],
+        "title": "BatchCandidate"
+      },
+      "BatchCreate": {
+        "properties": {
+          "script": {
+            "type": "string",
+            "title": "Script"
+          },
+          "config_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config Path"
+          },
+          "config_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config Text"
+          },
+          "default_config": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Config"
+          },
+          "specs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Specs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "script",
+          "specs"
+        ],
+        "title": "BatchCreate"
+      },
+      "BatchInfo": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "script": {
+            "type": "string",
+            "title": "Script"
+          },
+          "default_config": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Config"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/BatchOwner"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/BatchCandidate"
+            },
+            "type": "array",
+            "title": "Candidates"
+          },
+          "waiting_for": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Waiting For",
+            "default": []
+          },
+          "project_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Name"
+          },
+          "finished": {
+            "type": "boolean",
+            "title": "Finished"
+          },
+          "owned": {
+            "type": "boolean",
+            "title": "Owned"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "project_id",
+          "script",
+          "created_at",
+          "owner",
+          "candidates",
+          "finished",
+          "owned"
+        ],
+        "title": "BatchInfo"
+      },
+      "BatchOwner": {
+        "properties": {
+          "hostname": {
+            "type": "string",
+            "title": "Hostname"
+          },
+          "pid": {
+            "type": "integer",
+            "title": "Pid"
+          },
+          "started_at": {
+            "type": "string",
+            "title": "Started At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "hostname",
+          "pid",
+          "started_at"
+        ],
+        "title": "BatchOwner"
+      },
       "BestValue": {
         "properties": {
           "monitor": {
@@ -2516,6 +2916,82 @@
           "requires_grad"
         ],
         "title": "ModelParam"
+      },
+      "ModelSpecInfo": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "name"
+        ],
+        "title": "ModelSpecInfo"
+      },
+      "ModelSpecList": {
+        "properties": {
+          "specs": {
+            "items": {
+              "$ref": "#/components/schemas/ModelSpecInfo"
+            },
+            "type": "array",
+            "title": "Specs",
+            "default": []
+          },
+          "notice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice"
+          }
+        },
+        "type": "object",
+        "title": "ModelSpecList"
       },
       "OptimizerInfo": {
         "properties": {
@@ -3958,6 +4434,16 @@
               }
             ]
           },
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "config": {
             "additionalProperties": true,
             "type": "object",
@@ -4244,6 +4730,40 @@
           "run_id"
         ],
         "title": "RunLink"
+      },
+      "RunModel": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "origin_known": {
+            "type": "boolean",
+            "title": "Origin Known",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "path"
+        ],
+        "title": "RunModel"
       },
       "RunModelSpec": {
         "properties": {
@@ -4783,6 +5303,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/RunEvaluations"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunModel"
               },
               {
                 "type": "null"

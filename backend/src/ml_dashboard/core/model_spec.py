@@ -339,7 +339,9 @@ def run_of_copy(project_dir: Path, value: Any) -> Optional[Path]:
     return run_dir
 
 
-def in_run_shape(project_dir: Path, path: Path) -> bool:
+def in_run_shape(
+    project_dir: Path, path: Path, output_dirs: Optional[list[Path]] = None
+) -> bool:
     """
     パスが, 出力先の下の実験のディレクトリの形 (<名前>/<日付>/<時刻>/
     model_spec.yaml) にあるかを判定する関数
@@ -350,6 +352,8 @@ def in_run_shape(project_dir: Path, path: Path) -> bool:
         プロジェクトのディレクトリ
     path: Path
         判定するパス
+    output_dirs: Optional[list[Path]] = None
+        プロジェクトの出力先 (読んだもの), None の場合は読む
 
     Returns
     ----------
@@ -358,7 +362,8 @@ def in_run_shape(project_dir: Path, path: Path) -> bool:
         False
     """
     try:
-        output_dirs = get_output_dirs(project_dir)
+        if output_dirs is None:
+            output_dirs = get_output_dirs(project_dir)
         target = path.resolve()
     except (ProjectError, OSError, RuntimeError):
         return False
