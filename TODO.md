@@ -1,7 +1,7 @@
 # TODO
 
 このリポジトリでまだやっていないことを, 優先度の順に並べる. 終えたら消す.
-優先度: 高 = 「点群と領域を画面で通す」に要るものか, リポジトリの間の食い違い. 中 = 「画像と文の分類を画面で通す」に要るもの. 低 = その先. 条件待ち = 実例か利用者の判断が要る.
+優先度: 高 = 「画像と文の分類を画面で通す」に要るものか, リポジトリの間の食い違い. 中 = 「候補のモデルを比べて選ぶ」に要るもの. 低 = その先. 条件待ち = 実例か利用者の判断が要る.
 
 ## 優先度 高
 
@@ -9,9 +9,11 @@
 
 ## 優先度 中
 
-無し
-
-## 優先度 低
+### データ全体の評価を一覧と比較に出す
+- 何を: データ全体の評価 (`evaluations/`) のテスト用の値を, 実験の一覧と比較の列に出す. 守る指標 (`guard`) が比べる相手より落ちた実験に印を付ける. 比べる相手との差の列 (`<指標>_diff`) を差として色分けする
+- なぜ: 今は実験の詳細の評価のタブを 1 つずつ開かないと, テストの値と守る指標が落ちたかが分からない
+- 終わりの条件: 一覧と比較で評価の値を並べ替えと絞り込みに使え, 守る指標の落ちが印 (色, アイコン, 文字) で分かる
+- つながり: 無し
 
 ### 候補のモデルを並べて起動し比べる
 - 何を: 1 つのプロジェクトで, モデルの定義の候補 (`models/` の複数の定義) を選んで同じ設定でまとめて起動し, 比較の画面で定義ごとに並べて選ぶ
@@ -19,11 +21,7 @@
 - 終わりの条件: 候補を選んでまとめて起動でき, 比較の画面で実験を定義の名前で分けて並べられる
 - つながり: ML-Found の「モデルの定義を実験に写す」(実験が使った定義を残すこと), ML-Dashboard の「データ全体の評価を一覧と比較に出す」
 
-### データ全体の評価を一覧と比較に出す
-- 何を: データ全体の評価 (`evaluations/`) のテスト用の値を, 実験の一覧と比較の列に出す. 守る指標 (`guard`) が比べる相手より落ちた実験に印を付ける. 比べる相手との差の列 (`<指標>_diff`) を差として色分けする
-- なぜ: 今は実験の詳細の評価のタブを 1 つずつ開かないと, テストの値と守る指標が落ちたかが分からない
-- 終わりの条件: 一覧と比較で評価の値を並べ替えと絞り込みに使え, 守る指標の落ちが印 (色, アイコン, 文字) で分かる
-- つながり: 無し
+## 優先度 低
 
 ### ML-Found の内部のモジュールを使わない
 - 何を: `backend/src/ml_dashboard/api/jobs.py` と `backend/src/ml_dashboard/core/results.py` が読み込む ML-Found の内部のモジュールをやめ, ML-Found の公開の関数 (`ml_found` と下のパッケージの `__all__` にある名前) だけを使う. 今使っている公開でない名前は, `ml_found.training.optim` の `named_views`, `uses_named_optimizers`, `resolve_optimizer_class`, `resolve_scheduler_class`, `check_optim_config`, `missing_data_size_params`, `try_build_optim`, `ml_found.training.registry` の `check_optim_params`, `check_param_values`, `ml_found.experiment.setup` の `check_name`, `check_resume_path`, `check_trainer_config`, `ml_found.config.loader` の `params_sections`, `parse_overrides`, `ml_found.experiment.results` の `read_samples_index`, `ml_found.rl.bundle` の `file_sha256`. 公開の名前を内部のモジュールから読んでいる所 (`load_config`, `get_device`, `describe_optimizers`, `load_task`, `load_samples`, `read_policy_spec` など) も公開の場所から読む
