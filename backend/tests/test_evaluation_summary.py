@@ -228,6 +228,8 @@ def test_metric_better() -> None:
     assert metric_better("top1_error", None, None) == "lower"
     assert metric_better("top5_acc", None, None) == "higher"
     assert metric_better("top1", None, None) is None
+    # 普通の名前に使う語 (変化検出の change) は打ち消しの語にしない
+    assert metric_better("change_detection_f1", None, None) == "higher"
 
 
 def test_is_worse_tolerance() -> None:

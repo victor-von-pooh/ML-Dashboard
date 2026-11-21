@@ -87,6 +87,11 @@ describe('diffTone', () => {
     expect(diffTone(value({ diff: true, value: 0.1, better: 'higher' }))).toBe('good')
     expect(diffTone(value({ diff: true, value: 0 }))).toBe('same')
   })
+  it('計算の誤差の幅の差は同じとする', () => {
+    expect(diffTone(value({ diff: true, value: 1e-17 }))).toBe('same')
+    expect(diffTone(value({ diff: true, value: -1e-17 }))).toBe('same')
+    expect(diffTone(value({ diff: true, value: 1e-6 }))).toBe('bad')
+  })
   it('向きの分からない差, 差でない値, 値の無い差は色を付けない', () => {
     expect(diffTone(value({ diff: true, value: 0.1, better: null }))).toBeNull()
     expect(diffTone(value({ value: 0.1 }))).toBeNull()

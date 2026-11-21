@@ -51,7 +51,7 @@ HIGHER_BETTER = frozenset({
 # 向きを打ち消すか変える語 (neg_log_loss は大きいほど良く, accuracy_gap は
 # 小さいほど良い). 含む名前は名前の語では向きを決めない
 MODIFIER_WORDS = frozenset({
-    "neg", "negative", "inv", "inverse", "gap", "drop", "delta", "change",
+    "neg", "negative", "inv", "inverse", "gap", "drop", "delta",
     "std", "var", "variance", "reduction", "improvement", "increase",
     "decrease", "gain",
 })

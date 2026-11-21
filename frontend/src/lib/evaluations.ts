@@ -91,10 +91,10 @@ export function chooseColumns(
   return (unique.length > 0 ? unique : columns).slice(0, limit)
 }
 
-/** 差の値の良し悪し. 向きが分からない値と差でない値は null */
 /** 差を 0 とみなす幅 (計算の誤差で悪いとしないため) */
 export const DIFF_TOLERANCE = 1e-12
 
+/** 差の値の良し悪し. 向きが分からない値と差でない値は null */
 export function diffTone(value: EvaluationValue | undefined): 'good' | 'bad' | 'same' | null {
   if (!value?.diff || value.value == null || !value.better) return null
   // 計算の誤差の幅は同じとする (バックエンドの DIFF_TOLERANCE と同じ)
