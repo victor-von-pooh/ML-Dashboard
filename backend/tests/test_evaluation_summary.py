@@ -1,15 +1,21 @@
 import json
+import os
+import shutil
 from pathlib import Path
 from typing import Any, Optional
 
+import pytest
 from fastapi.testclient import TestClient
 
 from ml_dashboard.core import evaluation_summary as summary_module
 from ml_dashboard.core.evaluation_summary import (
+    EVALUATION_SUMMARY_CACHE,
     is_worse,
     metric_better,
     summarize_evaluations,
 )
+from ml_dashboard.core.models import Evaluation
+from ml_dashboard.core.results import read_plain_file
 
 from test_api import register
 
@@ -365,3 +371,106 @@ def test_detail_has_evaluations(
         f"/api/projects/{project_id}/runs/{EVALUATED_RUN}"
     ).json()
     assert detail["evaluations"]["guard"]["state"] == "dropped"
+
+
+def test_read_plain_file(tmp_path: Path) -> None:
+    """
+    評価のファイルを開くときに, リンク, FIFO, 上限を超えるファイルを
+    読まないことを確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    (tmp_path / "plain.json").write_bytes(b"12345")
+    (tmp_path / "link.json").symlink_to(tmp_path / "plain.json")
+    os.mkfifo(tmp_path / "fifo.json")
+    dir_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        assert read_plain_file("plain.json", dir_fd, 5) == b"12345"
+        # 上限 + 1 バイトまでで止め, 超えれば読まない
+        assert read_plain_file("plain.json", dir_fd, 4) is None
+        assert read_plain_file("link.json", dir_fd, 5) is None
+        # FIFO は書く側を待たずに, 普通のファイルでないとして読まない
+        assert read_plain_file("fifo.json", dir_fd, 5) is None
+        assert read_plain_file("missing.json", dir_fd, 5) is None
+    finally:
+        os.close(dir_fd)
+
+
+def test_skip_fifo_and_renamed(
+    project_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    FIFO と, 中の名前がファイルの名前と違う評価を出さず, テスト用でない
+    評価の行を作らないことを確かめる関数
+
+    Parameters
+    ----------
+    project_dir: Path
+        プロジェクトのディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        pytest が用意する差し替えの道具
+
+    Returns
+    ----------
+    None
+    """
+    run_dir = project_dir / "outputs" / EVALUATED_RUN
+    write_evaluation(run_dir, "metrics", [{"score": 0.5}])
+    write_evaluation(run_dir, "by_class", [{"acc": 0.5}], split="valid")
+    os.mkfifo(run_dir / "evaluations" / "pipe.json")
+    write_evaluation(run_dir, "other", [{"acc": 0.9}])
+    (run_dir / "evaluations" / "other.json").rename(
+        run_dir / "evaluations" / "renamed.json"
+    )
+    # 行を作る評価を記録 (テスト用でない評価は形だけを確かめる)
+    built: list[str] = []
+    original = summary_module.to_evaluation
+
+    def record(data: dict[str, Any]) -> Optional[Evaluation]:
+        built.append(str(data.get("name")))
+        return original(data)
+
+    monkeypatch.setattr(summary_module, "to_evaluation", record)
+    summary = summarize_evaluations(run_dir, None, None)
+    assert summary is not None
+    assert [item.evaluation for item in summary.values] == ["metrics"]
+    assert built == ["metrics"]
+    assert summary.notice is not None
+    assert "2 個" in summary.notice
+    assert "ファイルの名前と同じ" in summary.notice
+
+
+def test_forget_removed_runs(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    一覧を読むと, 消した実験の評価の覚えを捨てることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    run_dir = project_dir / "outputs" / EVALUATED_RUN
+    write_evaluation(run_dir, "metrics", [{"score": 0.5}])
+    project_id = register(client, project_dir)
+    assert client.get(f"/api/projects/{project_id}/runs").status_code == 200
+    assert str(run_dir) in EVALUATION_SUMMARY_CACHE
+
+    # 実験を消してから一覧を読み直すと, 覚えからも消える
+    shutil.rmtree(run_dir)
+    assert client.get(f"/api/projects/{project_id}/runs").status_code == 200
+    assert str(run_dir) not in EVALUATION_SUMMARY_CACHE

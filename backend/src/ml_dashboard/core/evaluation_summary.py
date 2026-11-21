@@ -15,6 +15,7 @@ from ml_dashboard.core.models import (
 from ml_dashboard.core.results import (
     EVALUATIONS_DIR,
     evaluation_files,
+    evaluation_name,
     evaluation_order,
     is_plain_dir,
     load_plain_evaluations,
@@ -313,13 +314,16 @@ def guard_state(dropped: list[str], unknown: list[str]) -> GuardState:
 
 
 def build_summary(
-    files: list[Path], monitor: Optional[str], mode: Optional[Mode]
+    run_dir: Path, files: list[Path], monitor: Optional[str],
+    mode: Optional[Mode]
 ) -> RunEvaluations:
     """
     テスト用の評価の値と守る指標の判定を求める関数
 
     Parameters
     ----------
+    run_dir: Path
+        実験のディレクトリ
     files: list[Path]
         evaluations/ の評価のファイル
     monitor: Optional[str]
@@ -332,19 +336,26 @@ def build_summary(
     summary: RunEvaluations
         値 (守る指標の表を先に), 守る指標の判定, 出せなかったファイルの理由
     """
-    # 形の合う評価を読み, テスト用だけを守る指標の表を先に名前の順で
-    loaded = load_plain_evaluations(files)
-    parsed = [
-        (evaluation, data) for data in loaded
-        if (evaluation := to_evaluation(data)) is not None
-        and EVALUATION_NAME.match(evaluation.name) is not None
-    ]
-    tests = [item for item in parsed if item[0].split == LIST_SPLIT]
+    # 形と名前の合う評価を数え, テスト用だけを (行を作るのはテスト用だけ)
+    # 守る指標の表を先に名前の順で
+    tests: list[tuple[Evaluation, dict[str, Any]]] = []
+    valid = 0
+    for stem, data in load_plain_evaluations(run_dir, files):
+        name = evaluation_name(data)
+        if name != stem or EVALUATION_NAME.match(stem) is None:
+            continue
+        valid += 1
+        if data.get("split") != LIST_SPLIT:
+            continue
+        evaluation = to_evaluation(data)
+        if evaluation is not None:
+            tests.append((evaluation, data))
     tests.sort(key=lambda item: evaluation_order(item[0]))
-    skipped = len(files) - len(parsed)
+    skipped = len(files) - valid
     notice = (
-        f"evaluations/ の {skipped} 個のファイルは形が違うか, 読めない "
-        "(シンボリックリンク, 大きすぎるなど) ので出していません"
+        f"evaluations/ の {skipped} 個のファイルは, 形が違うか, 名前が決まり "
+        "(ファイルの名前と同じで, 英数字と _ . @ - だけ) に合わないか, "
+        "読めない (シンボリックリンク, 大きすぎるなど) ので出していません"
         if skipped > 0 else None
     )
 
@@ -395,6 +406,7 @@ def summarize_evaluations(
         値と守る指標の判定. evaluations/ の無い実験は None
     """
     if not is_plain_dir(run_dir / EVALUATIONS_DIR):
+        EVALUATION_SUMMARY_CACHE.pop(str(run_dir), None)
         return None
 
     # ファイル (リンクはリンクそのもの) の名前, i-node, 大きさ, 更新の時刻が
@@ -416,7 +428,7 @@ def summarize_evaluations(
 
     # 壊れた評価 1 つで実験の行が読めなくならないように, 理由を残して返却
     try:
-        summary = build_summary(files, monitor, mode)
+        summary = build_summary(run_dir, files, monitor, mode)
     except Exception as error:
         summary = RunEvaluations(
             notice=(
@@ -427,3 +439,24 @@ def summarize_evaluations(
     EVALUATION_SUMMARY_CACHE[str(run_dir)] = (key, summary)
 
     return summary
+
+
+def forget_missing_summaries() -> None:
+    """
+    覚えた結果から, 実験のディレクトリか evaluations/ が無くなった実験の分を
+    捨てる関数
+
+    消した実験の分が残り続けないように, 一覧を読むたびに呼ぶ
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    None
+    """
+    # 他の要求が書き足しても止まらないように, 名前の写しを回す
+    for key in list(EVALUATION_SUMMARY_CACHE):
+        if not is_plain_dir(Path(key) / EVALUATIONS_DIR):
+            EVALUATION_SUMMARY_CACHE.pop(key, None)

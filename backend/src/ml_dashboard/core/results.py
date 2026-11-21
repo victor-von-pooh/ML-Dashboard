@@ -1,5 +1,7 @@
 import json
 import math
+import os
+import stat
 import threading
 from pathlib import Path
 from typing import Any, Literal, Optional
@@ -418,6 +420,37 @@ def to_cell(value: Any) -> CellValue:
     return cell
 
 
+def evaluation_name(data: dict[str, Any]) -> Optional[str]:
+    """
+    評価のファイルの中身の形 (名前, 列, 行) を確かめる関数
+
+    行は作らないので, 出さない評価の形を軽く確かめるのにも使う
+
+    Parameters
+    ----------
+    data: dict[str, Any]
+        evaluations/<名前>.json の中身
+
+    Returns
+    ----------
+    name: Optional[str]
+        評価の名前. 名前, 列 (文字のリスト), 行 (辞書のリスト) の形が
+        違う場合は None
+    """
+    name = text_or_none(data.get("name"))
+    columns = data.get("columns")
+    rows = data.get("rows")
+    if (
+        not isinstance(columns, list)
+        or not all(isinstance(column, str) for column in columns)
+        or not isinstance(rows, list)
+        or not all(isinstance(row, dict) for row in rows)
+    ):
+        name = None
+
+    return name
+
+
 def to_evaluation(data: dict[str, Any]) -> Optional[Evaluation]:
     """
     評価のファイルの中身を, 画面に返す形にする関数
@@ -433,16 +466,11 @@ def to_evaluation(data: dict[str, Any]) -> Optional[Evaluation]:
         評価, 名前, 列, 行の形が違う場合は None
     """
     # 名前, 列 (文字のリスト), 行 (辞書のリスト) を持つものだけ
-    name = text_or_none(data.get("name"))
-    columns = data.get("columns")
-    rows = data.get("rows")
-    if (
-        name is None or not isinstance(columns, list)
-        or not all(isinstance(column, str) for column in columns)
-        or not isinstance(rows, list)
-        or not all(isinstance(row, dict) for row in rows)
-    ):
+    name = evaluation_name(data)
+    if name is None:
         return None
+    columns: list[str] = data["columns"]
+    rows: list[dict[str, Any]] = data["rows"]
 
     # 曲線は横軸の列がある場合だけ, それ以外は表として出す
     x = text_or_none(data.get("x"))
@@ -503,8 +531,9 @@ def evaluation_files(run_dir: Path) -> list[Path]:
     Returns
     ----------
     files: list[Path]
-        一時ファイル (. で始まる) を除いた *.json. シンボリックリンクの
-        ファイルも含む (数えるため). evaluations/ が無いか, リンクなら空
+        一時ファイル (. で始まる) とディレクトリを除いた *.json.
+        シンボリックリンクと普通でないファイル (FIFO など) も含む (読まずに
+        数えるため). evaluations/ が無いか, リンクなら空
     """
     folder = run_dir / EVALUATIONS_DIR
     files: list[Path] = []
@@ -513,13 +542,66 @@ def evaluation_files(run_dir: Path) -> list[Path]:
     files = sorted(
         path for path in folder.glob("*.json")
         if not path.name.startswith(".")
-        and (path.is_symlink() or path.is_file())
+        and (path.is_symlink() or not path.is_dir())
     )
 
     return files
 
 
-def load_plain_evaluations(files: list[Path]) -> list[dict[str, Any]]:
+def read_plain_file(name: str, dir_fd: int, limit: int) -> Optional[bytes]:
+    """
+    ディレクトリの中の普通のファイルを, 上限の大きさまで読む関数
+
+    確かめてから読むまでの間にリンクや FIFO に置き換えられても外を読まず
+    止まらないように, リンクを辿らず (O_NOFOLLOW), 待たずに (O_NONBLOCK)
+    開き, 開いたものが普通のファイルかを確かめてから読む
+
+    Parameters
+    ----------
+    name: str
+        ファイルの名前 (dir_fd のディレクトリの中)
+    dir_fd: int
+        開いたディレクトリ
+    limit: int
+        読む大きさの上限 (バイト)
+
+    Returns
+    ----------
+    content: Optional[bytes]
+        中身. リンク, 普通でないファイル, 上限を超えるファイル, 読めない
+        ファイルは None
+    """
+    try:
+        fd = os.open(
+            name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dir_fd
+        )
+    except OSError:
+        return None
+
+    # 上限 + 1 バイトまでだけ読み, 超えたら読まない
+    chunks: list[bytes] = []
+    total = 0
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            return None
+        while total <= limit:
+            chunk = os.read(fd, min(1024 * 1024, limit + 1 - total))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+    except OSError:
+        return None
+    finally:
+        os.close(fd)
+    content = b"".join(chunks) if total <= limit else None
+
+    return content
+
+
+def load_plain_evaluations(
+    run_dir: Path, files: list[Path]
+) -> list[tuple[str, dict[str, Any]]]:
     """
     評価のファイルのうち, シンボリックリンクでない普通のファイルだけを読む関数
 
@@ -530,27 +612,40 @@ def load_plain_evaluations(files: list[Path]) -> list[dict[str, Any]]:
 
     Parameters
     ----------
+    run_dir: Path
+        実験のディレクトリ
     files: list[Path]
         evaluation_files が集めたファイル
 
     Returns
     ----------
-    loaded: list[dict[str, Any]]
-        ファイルの名前の順の評価のファイルの中身
+    loaded: list[tuple[str, dict[str, Any]]]
+        ファイルの名前の順の, ファイルの名前 (.json を除く) と中身
     """
-    loaded: list[dict[str, Any]] = []
-    for path in files:
-        # リンク, 普通でないファイル, 大きすぎるファイルは除外
-        try:
-            if not is_plain_file(path) or (
-                path.stat().st_size > MAX_EVALUATION_BYTES
-            ):
+    # evaluations/ もリンクを辿らずに開き, 中のファイルはそこから開く
+    loaded: list[tuple[str, dict[str, Any]]] = []
+    try:
+        dir_fd = os.open(
+            run_dir / EVALUATIONS_DIR,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        )
+    except OSError:
+        return loaded
+    try:
+        for path in files:
+            content = read_plain_file(
+                path.name, dir_fd, MAX_EVALUATION_BYTES
+            )
+            if content is None:
                 continue
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if isinstance(data, dict):
-            loaded.append(data)
+            try:
+                data = json.loads(content.decode("utf-8"))
+            except ValueError:
+                continue
+            if isinstance(data, dict):
+                loaded.append((path.stem, data))
+    finally:
+        os.close(dir_fd)
 
     return loaded
 
@@ -573,7 +668,7 @@ def read_evaluations(run_dir: Path, notices: list[str]) -> list[Evaluation]:
     """
     evaluations: list[Evaluation] = []
     files = evaluation_files(run_dir)
-    for data in load_plain_evaluations(files):
+    for _, data in load_plain_evaluations(run_dir, files):
         evaluation = to_evaluation(data)
         if evaluation is not None:
             evaluations.append(evaluation)
