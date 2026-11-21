@@ -615,7 +615,7 @@ def list_batches(request: Request) -> list[BatchInfo]:
     return batches
 
 
-@router.post("/batches/{batch_id}/stop", responses=NOT_FOUND)
+@router.post("/batches/{batch_id}/stop", responses=NOT_FOUND | CONFLICT)
 def stop_batch(request: Request, batch_id: str) -> BatchInfo:
     """
     候補のまとまりの残りを取りやめ, 学習中の候補を止める関数
@@ -636,9 +636,22 @@ def stop_batch(request: Request, batch_id: str) -> BatchInfo:
         raise HTTPException(
             404, f"候補のまとまりが見つかりません: {batch_id}"
         )
+    # 他のプロセスが進めているまとまりは, そのプロセスのロックの外から
+    # 書き換えないので断る (持ち主が居なければ取りやめられる)
+    manager = get_batches(request)
+    found = manager.load(batch_id)
+    if (
+        found is not None and not manager.owned(found)
+        and not manager.orphaned(found)
+    ):
+        raise HTTPException(
+            409,
+            "別のダッシュボードのプロセス (" + found.owner.hostname
+            + ") が進めているまとまりなので, そのプロセスで取りやめてください"
+        )
     projects = project_map(request)
     jobs = get_jobs(request)
-    batch = get_batches(request).stop(
+    batch = manager.stop(
         batch_id, lambda job_id: stop_job(jobs, projects, job_id)
     )
     if batch is None:

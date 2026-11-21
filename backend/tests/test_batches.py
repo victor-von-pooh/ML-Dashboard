@@ -342,6 +342,7 @@ def test_batch_conflict_and_stop(
     # 取りやめで待つ候補を取りやめ, 学習中の候補は中断の要求
     stopped = client.post(f"/api/batches/{batch_id}/stop").json()
     assert stopped["candidates"][1]["state"] == "cancelled"
+    assert stopped["waiting_for"] == []
     job_id = stopped["candidates"][0]["job_id"]
     assert client.get(f"/api/jobs/{job_id}").json()["stop_requested"]
 
@@ -730,6 +731,8 @@ def test_orphan_batches(tmp_path: Path) -> None:
     foreign.candidates[0].job_id = "0123456789ab"
     manager.save(foreign)
     assert manager.active_for("r", lambda job_id: True) is not None
+    # 別のプロセスが進めているまとまりは, このプロセスから取りやめない
+    assert not manager.owned(foreign) and not manager.orphaned(foreign)
     assert manager.active_for("r", lambda job_id: False) is None
     refreshed = manager.load(foreign.id)
     assert refreshed is not None
@@ -819,3 +822,35 @@ def test_runs_have_model(client: TestClient, project_dir: Path) -> None:
         f"/api/projects/{project_id}/runs/demo/2026-11-08/11-00-00"
     ).json()
     assert detail["model"] == expected
+
+
+def test_stop_foreign_batch(client: TestClient, tmp_path: Path) -> None:
+    """
+    別のプロセスが進めているまとまりの取りやめを 409 で断ることを確かめる
+    関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ (アプリの置き場は home)
+
+    Returns
+    ----------
+    None
+    """
+    manager = BatchManager(tmp_path / "home")
+    candidate = BatchCandidate(path="models/a.yaml", name="a", sha256="0" * 64)
+    batch = manager.create("p", "train.py", None, [(candidate, "{}\n")])
+    batch.owner = BatchOwner(
+        hostname=manager.owner.hostname, pid=os.getppid(),
+        started_at="2026-11-01T00:00:00+09:00"
+    )
+    manager.save(batch)
+    response = client.post(f"/api/batches/{batch.id}/stop")
+    assert response.status_code == 409
+    assert "別のダッシュボード" in response.json()["detail"]
+    reloaded = manager.load(batch.id)
+    assert reloaded is not None
+    assert reloaded.candidates[0].state == "waiting"

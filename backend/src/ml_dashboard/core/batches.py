@@ -468,6 +468,8 @@ class BatchManager:
                     candidate.reason = "取りやめたため"
                 elif candidate.state == "running" and candidate.job_id:
                     stop_job(candidate.job_id)
+            # 次の候補はもう起動しないので, 待っているものも消去
+            batch.waiting_for = []
             self.save(batch)
 
         return batch
@@ -570,9 +572,11 @@ class BatchManager:
         try:
             with self.lock(batch_id):
                 batch = self.load(batch_id)
-                if batch is not None and self.cancel_waiting(
-                    batch, "進め方が止まったため"
+                if batch is not None and (
+                    self.cancel_waiting(batch, "進め方が止まったため")
+                    or batch.waiting_for
                 ):
+                    batch.waiting_for = []
                     self.save(batch)
         except Exception:
             pass
