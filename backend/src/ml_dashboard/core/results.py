@@ -488,6 +488,67 @@ def evaluation_order(evaluation: Evaluation) -> tuple[bool, str]:
     return order
 
 
+def evaluation_files(run_dir: Path) -> list[Path]:
+    """
+    evaluations/ の評価のファイルを集める関数
+
+    Parameters
+    ----------
+    run_dir: Path
+        実験のディレクトリ
+
+    Returns
+    ----------
+    files: list[Path]
+        一時ファイル (. で始まる) を除いた *.json. シンボリックリンクの
+        ファイルも含む (数えるため). evaluations/ が無いか, リンクなら空
+    """
+    folder = run_dir / EVALUATIONS_DIR
+    files: list[Path] = []
+    if not is_plain_dir(folder):
+        return files
+    files = sorted(
+        path for path in folder.glob("*.json")
+        if not path.name.startswith(".")
+        and (path.is_symlink() or path.is_file())
+    )
+
+    return files
+
+
+def load_plain_evaluations(
+    run_dir: Path, files: list[Path]
+) -> list[dict[str, Any]]:
+    """
+    evaluations/ を ML-Found の load_evaluations で読み, シンボリックリンクの
+    ファイルの評価を除く関数
+
+    Parameters
+    ----------
+    run_dir: Path
+        実験のディレクトリ
+    files: list[Path]
+        evaluation_files が集めたファイル
+
+    Returns
+    ----------
+    loaded: list[dict[str, Any]]
+        名前の順の評価のファイルの中身. 読めない場合は ML-Found の例外を
+        そのまま投げる
+    """
+    from ml_found.experiment.results import load_evaluations
+
+    # シンボリックリンクのファイル (実験のディレクトリの外を指しうる) の
+    # 評価は出さない
+    linked = {path.stem for path in files if path.is_symlink()}
+    loaded = [
+        data for data in load_evaluations(run_dir)
+        if text_or_none(data.get("name")) not in linked
+    ]
+
+    return loaded
+
+
 def read_evaluations(run_dir: Path, notices: list[str]) -> list[Evaluation]:
     """
     evaluations/ を ML-Found の load_evaluations で読む関数
@@ -504,29 +565,18 @@ def read_evaluations(run_dir: Path, notices: list[str]) -> list[Evaluation]:
     evaluations: list[Evaluation]
         守る指標を先にした評価
     """
-    from ml_found.experiment.results import load_evaluations
-
     evaluations: list[Evaluation] = []
-    folder = run_dir / EVALUATIONS_DIR
-    if not is_plain_dir(folder):
+    files = evaluation_files(run_dir)
+    if not is_plain_dir(run_dir / EVALUATIONS_DIR):
         return evaluations
-
-    # 一時ファイル (. で始まる) を除いたファイル. シンボリックリンクの
-    # ファイル (実験のディレクトリの外を指しうる) の名前は出さない
-    files = [
-        path for path in folder.glob("*.json")
-        if not path.name.startswith(".")
-        and (path.is_symlink() or path.is_file())
-    ]
-    linked = {path.stem for path in files if path.is_symlink()}
     try:
-        loaded = load_evaluations(run_dir)
+        loaded = load_plain_evaluations(run_dir, files)
     except Exception as error:
         notices.append(f"evaluations/ を読めませんでした: {error}")
         return evaluations
     for data in loaded:
         evaluation = to_evaluation(data)
-        if evaluation is not None and evaluation.name not in linked:
+        if evaluation is not None:
             evaluations.append(evaluation)
     skipped = len(files) - len(evaluations)
     if skipped > 0:

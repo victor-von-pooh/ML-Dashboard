@@ -20,6 +20,11 @@ EXTENT = 1.3
 # クラスごとの色 (RGB), 背景は白と混ぜて薄く表示
 CLASS_COLORS = ((37, 99, 235), (234, 88, 12))
 
+# テスト用の評価で比べる相手 (学習用の先頭の点だけを覚え, 一番近い点の
+# クラスを答える簡単な規則. 今の処理の代わり)
+BASELINE_POINTS = 20
+BASELINE_NAME = f"先頭 {BASELINE_POINTS} 点の最近傍の規則"
+
 
 def make_spiral(
     n: int, noise: float, generator: torch.Generator
@@ -89,6 +94,29 @@ def make_loaders(cfg: DictConfig) -> tuple[DataLoader, DataLoader]:
     )
 
     return train_loader, valid_loader
+
+
+def make_test(cfg: DictConfig) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    学習用と検証用とは別の乱数でテスト用の点を作る関数
+
+    Parameters
+    ----------
+    cfg: DictConfig
+        学習に使う config
+
+    Returns
+    ----------
+    x: torch.Tensor
+        点の座標, 形は (検証用の点の数, 2)
+    y: torch.Tensor
+        クラスのラベル
+    """
+    # 学習用と検証用の点を変えないように, 別のシードの生成器
+    generator = torch.Generator().manual_seed(cfg.experiment.seed + 1)
+    x, y = make_spiral(cfg.data.valid_size, cfg.data.noise, generator)
+
+    return x, y
 
 
 class SpiralClassifier(nn.Module):
@@ -267,6 +295,123 @@ class SpiralTrainer(Trainer):
         return {}
 
 
+def nearest_labels(
+    train_x: torch.Tensor, train_y: torch.Tensor, x: torch.Tensor
+) -> torch.Tensor:
+    """
+    覚えた点で一番近い点のクラスを答える関数 (比べる相手の規則)
+
+    Parameters
+    ----------
+    train_x: torch.Tensor
+        覚えた点の座標
+    train_y: torch.Tensor
+        覚えた点のクラスのラベル
+    x: torch.Tensor
+        答える点の座標
+
+    Returns
+    ----------
+    labels: torch.Tensor
+        一番近い覚えた点のクラス
+    """
+    labels = train_y[torch.cdist(x, train_x).argmin(dim=1)]
+
+    return labels
+
+
+def class_accuracy(
+    predicted: torch.Tensor, y: torch.Tensor, label: int
+) -> float:
+    """
+    1 つのクラスの点の正解率を求める関数
+
+    Parameters
+    ----------
+    predicted: torch.Tensor
+        予測したクラス
+    y: torch.Tensor
+        正解のクラス
+    label: int
+        クラス
+
+    Returns
+    ----------
+    accuracy: float
+        そのクラスの点のうち正しく答えた割合 (点が無ければ 0)
+    """
+    mask = y == label
+    count = int(mask.sum())
+    accuracy = int((predicted[mask] == label).sum()) / count if count else 0.0
+
+    return accuracy
+
+
+def write_test_results(
+    experiment: Experiment, model: nn.Module, cfg: DictConfig,
+    train_x: torch.Tensor, train_y: torch.Tensor
+) -> None:
+    """
+    テスト用の点で, 学習したモデルと比べる相手の規則を比べた評価を書く関数
+
+    Parameters
+    ----------
+    experiment: Experiment
+        start_experiment が返した実験
+    model: nn.Module
+        学習したモデル
+    cfg: DictConfig
+        学習に使った config
+    train_x: torch.Tensor
+        学習用の点の座標 (比べる相手の規則が使う)
+    train_y: torch.Tensor
+        学習用の点のクラスのラベル
+
+    Returns
+    ----------
+    None
+    """
+    # テスト用の点のモデルと規則の答え
+    test_x, test_y = make_test(cfg)
+    model.eval()
+    with torch.no_grad():
+        device = next(model.parameters()).device
+        predicted = model(test_x.to(device)).argmax(dim=1).cpu()
+    base = nearest_labels(
+        train_x[:BASELINE_POINTS], train_y[:BASELINE_POINTS], test_x
+    )
+
+    # 全体の正解率 (この実験, 比べる相手, 差の 3 列)
+    accuracy = float((predicted == test_y).float().mean())
+    base_accuracy = float((base == test_y).float().mean())
+    save_evaluation(
+        experiment, "baseline_test", {
+            "rows": len(test_y), "accuracy": accuracy,
+            "accuracy_baseline": base_accuracy,
+            "accuracy_diff": accuracy - base_accuracy
+        }, split="test", baseline=BASELINE_NAME,
+        description=f"テスト用の点で, {BASELINE_NAME}と比べた正解率"
+    )
+
+    # クラスごとの正解率 (どちらのクラスも規則より落とさない守る指標)
+    rows = []
+    for label in (0, 1):
+        acc = class_accuracy(predicted, test_y, label)
+        base_acc = class_accuracy(base, test_y, label)
+        rows.append({
+            "class": label, "acc": acc, "acc_baseline": base_acc,
+            "acc_diff": acc - base_acc
+        })
+    save_evaluation(
+        experiment, "by_class_test", rows, split="test", guard=True,
+        baseline=BASELINE_NAME,
+        description=(
+            "テスト用の点のクラスごとの正解率. どちらのクラスも"
+            f"{BASELINE_NAME}より落とさない"
+        )
+    )
+
+
 def write_results(
     experiment: Experiment, model: nn.Module, cfg: DictConfig,
     valid_x: torch.Tensor, valid_y: torch.Tensor
@@ -373,4 +518,6 @@ model = SpiralClassifier(cfg.model.hidden_dim, cfg.model.dropout)
 trainer = SpiralTrainer(model, experiment, valid_x, valid_y)
 trainer.fit(train_loader, valid_loader)
 write_results(experiment, model, cfg, valid_x, valid_y)
+train_x, train_y = train_loader.dataset.tensors
+write_test_results(experiment, model, cfg, train_x, train_y)
 print(f"保存先: {experiment.run_dir}")

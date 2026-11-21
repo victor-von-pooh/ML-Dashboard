@@ -10,10 +10,16 @@ import {
   Search,
   Trophy,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 
-import { encodeRunId, type RunNote, type RunStatus, type RunSummary } from '../../api/client'
+import {
+  encodeRunId,
+  type GuardCheck,
+  type RunNote,
+  type RunStatus,
+  type RunSummary,
+} from '../../api/client'
 import { useNotes, useProject, useRuns, useSaveNote } from '../../api/hooks'
 import {
   Button,
@@ -24,13 +30,34 @@ import {
   StatTile,
   StatusBadge,
 } from '../../components/ui'
+import {
+  EVALUATION_SORT_PREFIX,
+  GUARD_LABELS,
+  MAX_LIST_COLUMNS,
+  chooseColumns,
+  collectColumns,
+  findValue,
+  initialDesc,
+  matchesValueFilters,
+  parseValueFilters,
+  type EvaluationColumn,
+} from '../../lib/evaluations'
 import { formatDateTime, formatDuration, formatMetric, formatRelative } from '../../lib/format'
 import { MAX_COMPARE, summarizeDiff } from '../../lib/metrics'
 import { ReadinessCard } from '../projects/ReadinessCard'
 import { StarButton } from '../run/NotePanel'
+import {
+  ColumnLabel,
+  EvaluationCell,
+  EvaluationColumnPicker,
+  GuardBadge,
+} from './EvaluationColumns'
 
-type SortKey = 'started' | 'best' | 'duration' | 'epochs'
+// 並べ替えの名前. 評価の列は ev:<評価の名前>:<列>
+type SortKey = string
 const SORT_KEYS: SortKey[] = ['started', 'best', 'duration', 'epochs']
+
+const GUARD_FILTERS: GuardCheck['state'][] = ['dropped', 'kept', 'unknown']
 
 const STATUS_FILTERS: { id: RunStatus | 'all'; label: string }[] = [
   { id: 'all', label: 'すべて' },
@@ -54,6 +81,11 @@ function sortValue(run: RunSummary, key: SortKey): number {
     case 'epochs':
       return run.epochs
   }
+  if (key.startsWith(EVALUATION_SORT_PREFIX)) {
+    const value = findValue(run.evaluations, key.slice(EVALUATION_SORT_PREFIX.length))
+    return value?.value ?? Number.NaN
+  }
+  return Number.NaN
 }
 
 /** 欠けた値を常に末尾に置く比較 */
@@ -84,7 +116,7 @@ function SortHeader({
   onSort,
   className,
 }: {
-  label: string
+  label: ReactNode
   id: SortKey
   sort: { key: SortKey; desc: boolean }
   onSort: (key: SortKey) => void
@@ -100,7 +132,10 @@ function SortHeader({
       <button
         type="button"
         onClick={() => onSort(id)}
-        className={clsx('inline-flex items-center gap-1 hover:text-ink', active && 'text-ink')}
+        className={clsx(
+          'inline-flex items-center gap-1 text-left hover:text-ink',
+          active && 'text-ink',
+        )}
       >
         {label}
         {active && <Icon className="size-3" aria-hidden />}
@@ -166,18 +201,9 @@ function RunsPage({ projectId }: { projectId: string }) {
     update({ star: change(starredOnly) ? '1' : null })
   const tag = params.get('tag')
   const setTag = (change: (value: string | null) => string | null) => update({ tag: change(tag) })
-  const sortParam = params.get('sort')
-  const sortKey: SortKey = SORT_KEYS.includes(sortParam as SortKey)
-    ? (sortParam as SortKey)
-    : 'started'
-  const sortDesc = params.get('desc') !== '0'
-  const sort = { key: sortKey, desc: sortDesc }
-  const setSort = (
-    change: (previous: { key: SortKey; desc: boolean }) => { key: SortKey; desc: boolean },
-  ) => {
-    const next = change(sort)
-    update({ sort: next.key === 'started' ? null : next.key, desc: next.desc ? null : '0' })
-  }
+  const guardParam = params.get('guard')
+  const guardFilter = GUARD_FILTERS.find((item) => item === guardParam) ?? null
+  const setGuardFilter = (value: GuardCheck['state'] | null) => update({ guard: value })
 
   // 比較に選んだ実験は URL に残し, 比較から戻っても選んだままにする
   // 読み込んだ後は, 一覧に無い ID と重複を除外
@@ -192,6 +218,34 @@ function RunsPage({ projectId }: { projectId: string }) {
   }
 
   const all = useMemo(() => runs.data ?? [], [runs.data])
+  // テスト用の評価の列と, 並べる列 (URL の ev. 選んでいなければ先頭の列)
+  const evaluationColumns = useMemo(() => collectColumns(all.map((run) => run.evaluations)), [all])
+  const requestedColumns = params.getAll('ev')
+  const shownColumns = chooseColumns(evaluationColumns, requestedColumns, MAX_LIST_COLUMNS)
+  const setShownColumns = (keys: string[]) => {
+    const next = new URLSearchParams(params)
+    next.delete('ev')
+    for (const key of keys) next.append('ev', key)
+    setParams(next, { replace: true })
+  }
+  const findColumn = (key: string): EvaluationColumn | undefined =>
+    key.startsWith(EVALUATION_SORT_PREFIX)
+      ? evaluationColumns.find((column) => column.key === key.slice(EVALUATION_SORT_PREFIX.length))
+      : undefined
+  const hasGuard = all.some((run) => run.evaluations?.guard)
+  const notice = all.find((run) => run.evaluations?.notice)?.evaluations?.notice
+
+  const sortParam = params.get('sort') ?? ''
+  const sortKey: SortKey =
+    SORT_KEYS.includes(sortParam) || findColumn(sortParam) ? sortParam : 'started'
+  const sortDesc = params.get('desc') !== '0'
+  const sort = { key: sortKey, desc: sortDesc }
+  const setSort = (
+    change: (previous: { key: SortKey; desc: boolean }) => { key: SortKey; desc: boolean },
+  ) => {
+    const next = change(sort)
+    update({ sort: next.key === 'started' ? null : next.key, desc: next.desc ? null : '0' })
+  }
   // 実験の元にした default のうち一番多いもの (違う default が 2 種類以上の
   // 場合だけ. 違うものに印を付ける)
   const commonDefault = useMemo(() => mostCommonDefault(all), [all])
@@ -208,9 +262,12 @@ function RunsPage({ projectId }: { projectId: string }) {
 
   // 絞り込みと並べ替え (URL の値から求めるので, 毎回計算する. 軽い計算)
   const visible = (() => {
-    const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+    // <列><比べ方><数> の語は評価の値で, 他の語は文字で絞り込む
+    const { filters, words } = parseValueFilters(query, evaluationColumns)
     const filtered = all.filter((run) => {
       if (status !== 'all' && run.status !== status) return false
+      if (guardFilter && run.evaluations?.guard?.state !== guardFilter) return false
+      if (!matchesValueFilters(run.evaluations, filters)) return false
       const note = notes.data?.[run.id]
       if (starredOnly && !note?.starred) return false
       if (tag && !note?.tags.includes(tag)) return false
@@ -263,6 +320,14 @@ function RunsPage({ projectId }: { projectId: string }) {
     for (const run of all) result[run.status] = (result[run.status] ?? 0) + 1
     return result
   }, [all])
+  const guardCounts = useMemo(() => {
+    const result: Partial<Record<GuardCheck['state'], number>> = {}
+    for (const run of all) {
+      const state = run.evaluations?.guard?.state
+      if (state) result[state] = (result[state] ?? 0) + 1
+    }
+    return result
+  }, [all])
 
   if (project.error) {
     return (
@@ -283,8 +348,12 @@ function RunsPage({ projectId }: { projectId: string }) {
   const totalTime = all.reduce((sum, run) => sum + (run.duration_sec ?? 0), 0)
   const full = selected.length >= MAX_COMPARE
 
+  // 評価の列は, 初めに押したときに良い順
   const onSort = (key: SortKey) =>
-    setSort((previous) => ({ key, desc: previous.key === key ? !previous.desc : true }))
+    setSort((previous) => ({
+      key,
+      desc: previous.key === key ? !previous.desc : initialDesc(findColumn(key)),
+    }))
 
   const toggle = (id: string) =>
     setSelected(
@@ -296,8 +365,10 @@ function RunsPage({ projectId }: { projectId: string }) {
     )
 
   const compare = () => {
+    // 選んだ評価の列も比較に引き継ぐ
     const next = new URLSearchParams()
     for (const id of selected) next.append('run', id)
+    for (const key of requestedColumns) next.append('ev', key)
     navigate(`/projects/${projectId}/compare?${next.toString()}`)
   }
 
@@ -374,7 +445,11 @@ function RunsPage({ projectId }: { projectId: string }) {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             aria-label="実験を絞り込む"
-            placeholder="名前や config の差分で絞り込む (例: lr=0.001)"
+            placeholder={
+              evaluationColumns.length > 0
+                ? '名前, config の差分, 評価の値で絞り込む (例: lr=0.001, accuracy>=0.9)'
+                : '名前や config の差分で絞り込む (例: lr=0.001)'
+            }
             className="h-9 w-full rounded-lg border border-line bg-surface pr-3 pl-8 text-sm outline-none focus:border-accent"
           />
         </div>
@@ -400,6 +475,46 @@ function RunsPage({ projectId }: { projectId: string }) {
           ))}
         </div>
       </div>
+      {(hasGuard || guardFilter || evaluationColumns.length > 0) && (
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          {(hasGuard || guardFilter) && (
+            <div className="flex flex-wrap gap-1" role="group" aria-label="守る指標で絞り込む">
+              <span className="self-center text-xs text-ink-3">守る指標:</span>
+              {GUARD_FILTERS.filter((item) => guardCounts[item] || item === guardFilter).map(
+                (item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setGuardFilter(guardFilter === item ? null : item)}
+                    aria-pressed={guardFilter === item}
+                    className={clsx(
+                      'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                      guardFilter === item
+                        ? 'border-accent bg-accent-soft text-accent-text'
+                        : 'border-line text-ink-2 hover:bg-surface-2',
+                    )}
+                  >
+                    {GUARD_LABELS[item]} <span className="tabular">{guardCounts[item] ?? 0}</span>
+                  </button>
+                ),
+              )}
+            </div>
+          )}
+          {evaluationColumns.length > 0 && (
+            <div className="ml-auto">
+              <EvaluationColumnPicker
+                columns={evaluationColumns}
+                chosen={shownColumns}
+                limit={MAX_LIST_COLUMNS}
+                onChange={setShownColumns}
+              />
+            </div>
+          )}
+        </div>
+      )}
+      {notice && (
+        <p className="mb-2 text-xs text-ink-3">テスト用の評価を出せない実験があります: {notice}</p>
+      )}
       {(tagChips.length > 0 || starredCount > 0 || starredOnly) && (
         <div
           className="mb-3 flex flex-wrap items-center gap-1"
@@ -474,7 +589,10 @@ function RunsPage({ projectId }: { projectId: string }) {
 
       {visible.length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-line bg-surface">
-          <table className="w-full min-w-[860px] text-sm">
+          <table
+            className="w-full text-sm"
+            style={{ minWidth: 860 + shownColumns.length * 120 + (hasGuard ? 120 : 0) }}
+          >
             <thead className="border-b border-line bg-surface-2/50 text-left text-xs text-ink-3">
               <tr>
                 <th className="w-10 px-3 py-2">
@@ -507,6 +625,17 @@ function RunsPage({ projectId }: { projectId: string }) {
                   onSort={onSort}
                   className="text-right"
                 />
+                {hasGuard && <th className="px-3 py-2 font-medium">守る指標</th>}
+                {shownColumns.map((column) => (
+                  <SortHeader
+                    key={column.key}
+                    label={<ColumnLabel column={column} />}
+                    id={`${EVALUATION_SORT_PREFIX}${column.key}`}
+                    sort={sort}
+                    onSort={onSort}
+                    className="text-right"
+                  />
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -527,6 +656,8 @@ function RunsPage({ projectId }: { projectId: string }) {
                     run.best.value === bestRun.best.value
                   }
                   onToggle={() => toggle(run.id)}
+                  hasGuard={hasGuard}
+                  columns={shownColumns}
                 />
               ))}
             </tbody>
@@ -550,6 +681,8 @@ function RunRow({
   disabled,
   isBest,
   onToggle,
+  hasGuard,
+  columns,
 }: {
   run: RunSummary
   /** 一覧で一番多い default (印を付けない場合は null) */
@@ -561,6 +694,10 @@ function RunRow({
   disabled: boolean
   isBest: boolean
   onToggle: () => void
+  /** 守る指標の列を出すか */
+  hasGuard: boolean
+  /** 並べる評価の列 */
+  columns: EvaluationColumn[]
 }) {
   const diff = summarizeDiff(run.diff)
   // 一覧で一番多い default と違う default を元にした実験は, 差分の基準が
@@ -694,6 +831,16 @@ function RunRow({
       <td className="tabular px-3 py-2.5 text-right whitespace-nowrap text-ink-2">
         {formatDuration(run.duration_sec)}
       </td>
+      {hasGuard && (
+        <td className="px-3 py-2.5">
+          <GuardBadge guard={run.evaluations?.guard} />
+        </td>
+      )}
+      {columns.map((column) => (
+        <td key={column.key} className="tabular px-3 py-2.5 text-right whitespace-nowrap">
+          <EvaluationCell value={findValue(run.evaluations, column.key)} />
+        </td>
+      ))}
     </tr>
   )
 }

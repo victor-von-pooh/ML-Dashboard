@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { GitCompareArrows, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, GitCompareArrows, X } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
@@ -9,6 +9,14 @@ import { keys, useHistories, useProject, useRunDetails } from '../../api/hooks'
 import { LineChart, type ChartSeries } from '../../components/LineChart'
 import { Card, EmptyState, ErrorBox, PageHeader, Spinner, StatusBadge } from '../../components/ui'
 import { seriesVar } from '../../lib/colors'
+import {
+  MAX_COMPARE_COLUMNS,
+  chooseColumns,
+  collectColumns,
+  findValue,
+  initialDesc,
+  type EvaluationColumn,
+} from '../../lib/evaluations'
 import { formatDateTime, formatDuration, formatMetric, formatValue } from '../../lib/format'
 import { groupImageSeries, sharedImageSeries } from '../../lib/images'
 import {
@@ -22,6 +30,12 @@ import {
   toPoints,
   validInterval,
 } from '../../lib/metrics'
+import {
+  ColumnLabel,
+  EvaluationCell,
+  EvaluationColumnPicker,
+  GuardBadge,
+} from '../runs/EvaluationColumns'
 import { ImageCompare } from './ImageCompare'
 
 /** 実験の短い名前. 名前が全て同じなら月日と時刻だけ, 違うなら名前と時刻 */
@@ -58,9 +72,11 @@ export function ComparePage() {
   )
   const shortLabel = useMemo(() => makeLabel(runIds), [runIds])
 
-  // 一覧に戻るときに, 比較している実験を選んだままにする
+  // 一覧に戻るときに, 比較している実験と評価の列を選んだままにする
+  const requestedColumns = params.getAll('ev')
   const backParams = new URLSearchParams()
   for (const id of runIds) backParams.append('sel', id)
+  for (const key of requestedColumns) backParams.append('ev', key)
   const backUrl = `/projects/${projectId}?${backParams.toString()}`
   const details = useRunDetails(projectId, runIds)
   // 学習中の実験は, 曲線と画像を一定の間隔で読み直す
@@ -139,7 +155,14 @@ export function ComparePage() {
   const remove = (runId: string) => {
     const next = new URLSearchParams()
     for (const id of runIds.filter((item) => item !== runId)) next.append('run', id)
+    for (const key of requestedColumns) next.append('ev', key)
     setParams(next)
+  }
+  const setShownColumns = (keys: string[]) => {
+    const next = new URLSearchParams(params)
+    next.delete('ev')
+    for (const key of keys) next.append('ev', key)
+    setParams(next, { replace: true })
   }
 
   const header = (
@@ -264,6 +287,13 @@ export function ComparePage() {
             </table>
           </div>
         </Card>
+
+        <EvaluationCompare
+          slots={ready}
+          label={shortLabel}
+          requested={requestedColumns}
+          onChange={setShownColumns}
+        />
 
         {loading && <Spinner />}
 
@@ -397,5 +427,125 @@ export function ComparePage() {
         )}
       </div>
     </>
+  )
+}
+
+/** テスト用の評価の値と守る指標の印を実験ごとに並べる. 列の見出しで並べ替える */
+function EvaluationCompare({
+  slots,
+  label,
+  requested,
+  onChange,
+}: {
+  slots: (Slot & { run: RunDetail })[]
+  label: (runId: string) => string
+  requested: string[]
+  onChange: (keys: string[]) => void
+}) {
+  const [sort, setSort] = useState<{ key: string; desc: boolean } | null>(null)
+  const columns = useMemo(() => collectColumns(slots.map((slot) => slot.run.evaluations)), [slots])
+  const hasGuard = slots.some((slot) => slot.run.evaluations?.guard)
+  const notice = slots.find((slot) => slot.run.evaluations?.notice)?.run.evaluations?.notice
+  if (columns.length === 0 && !hasGuard && !notice) return null
+  const shown = chooseColumns(columns, requested, MAX_COMPARE_COLUMNS)
+
+  // 値の無い実験は末尾. 並べ替えない場合は選んだ順
+  const active = sort && shown.some((column) => column.key === sort.key) ? sort : null
+  const rows = active
+    ? [...slots].sort((a, b) => {
+        const x = findValue(a.run.evaluations, active.key)?.value
+        const y = findValue(b.run.evaluations, active.key)?.value
+        if (x == null && y == null) return 0
+        if (x == null) return 1
+        if (y == null) return -1
+        return active.desc ? y - x : x - y
+      })
+    : slots
+  const onSort = (column: EvaluationColumn) =>
+    setSort((previous) => ({
+      key: column.key,
+      desc: previous?.key === column.key ? !previous.desc : initialDesc(column),
+    }))
+
+  return (
+    <Card
+      title="テスト用の評価"
+      padded={false}
+      actions={
+        columns.length > 0 ? (
+          <EvaluationColumnPicker
+            columns={columns}
+            chosen={shown}
+            limit={MAX_COMPARE_COLUMNS}
+            onChange={onChange}
+          />
+        ) : undefined
+      }
+    >
+      {notice && (
+        <p className="px-4 pt-3 text-xs text-ink-3">
+          テスト用の評価を出せない実験があります: {notice}
+        </p>
+      )}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-left text-xs text-ink-3">
+            <tr className="border-b border-line">
+              <th className="px-4 py-2 font-medium">実験</th>
+              {hasGuard && <th className="px-4 py-2 font-medium">守る指標</th>}
+              {shown.map((column) => {
+                const sorted = active?.key === column.key
+                const Icon = active?.desc ? ArrowDown : ArrowUp
+                return (
+                  <th
+                    key={column.key}
+                    className="px-4 py-2 text-right font-medium"
+                    aria-sort={sorted ? (active.desc ? 'descending' : 'ascending') : 'none'}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => onSort(column)}
+                      className={clsx(
+                        'inline-flex items-center gap-1 hover:text-ink',
+                        sorted && 'text-ink',
+                      )}
+                    >
+                      <ColumnLabel column={column} />
+                      {sorted && <Icon className="size-3" aria-hidden />}
+                    </button>
+                  </th>
+                )
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((slot) => (
+              <tr key={slot.id} className="border-b border-line last:border-b-0">
+                <td className="px-4 py-2">
+                  <span className="flex items-center gap-2">
+                    <span
+                      className="h-1 w-4 shrink-0 rounded-full"
+                      style={{ background: `var(${slot.color})` }}
+                      aria-hidden
+                    />
+                    {label(slot.id)}
+                  </span>
+                </td>
+                {hasGuard && (
+                  <td className="px-4 py-2">
+                    <GuardBadge guard={slot.run.evaluations?.guard} />
+                  </td>
+                )}
+                {shown.map((column) => (
+                  <td key={column.key} className="tabular px-4 py-2 text-right whitespace-nowrap">
+                    <EvaluationCell value={findValue(slot.run.evaluations, column.key)} />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   )
 }

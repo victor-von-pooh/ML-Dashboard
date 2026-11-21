@@ -1157,6 +1157,47 @@ export interface components {
             /** Total Rows */
             total_rows: number;
         };
+        /** EvaluationValue */
+        EvaluationValue: {
+            /** Evaluation */
+            evaluation: string;
+            /** Column */
+            column: string;
+            /** Value */
+            value: number | null;
+            /**
+             * Guard
+             * @default false
+             */
+            guard: boolean;
+            /**
+             * Diff
+             * @default false
+             */
+            diff: boolean;
+            /** Better */
+            better?: ("lower" | "higher") | null;
+            /** Baseline */
+            baseline?: string | null;
+        };
+        /** GuardCheck */
+        GuardCheck: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "dropped" | "kept" | "unknown";
+            /**
+             * Dropped
+             * @default []
+             */
+            dropped: string[];
+            /**
+             * Unknown
+             * @default []
+             */
+            unknown: string[];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1694,6 +1735,7 @@ export interface components {
             /** Error */
             error: string | null;
             source?: components["schemas"]["RunSource"] | null;
+            evaluations?: components["schemas"]["RunEvaluations"] | null;
             /** Config */
             config: {
                 [key: string]: unknown;
@@ -1735,6 +1777,17 @@ export interface components {
              * @default []
              */
             notices: string[];
+        };
+        /** RunEvaluations */
+        RunEvaluations: {
+            /**
+             * Values
+             * @default []
+             */
+            values: components["schemas"]["EvaluationValue"][];
+            guard?: components["schemas"]["GuardCheck"] | null;
+            /** Notice */
+            notice?: string | null;
         };
         /** RunFile */
         RunFile: {
@@ -1896,6 +1949,7 @@ export interface components {
             /** Error */
             error: string | null;
             source?: components["schemas"]["RunSource"] | null;
+            evaluations?: components["schemas"]["RunEvaluations"] | null;
         };
         /** RunTask */
         RunTask: {
