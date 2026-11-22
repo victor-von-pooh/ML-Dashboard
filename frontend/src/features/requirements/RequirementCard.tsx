@@ -1,9 +1,17 @@
 import clsx from 'clsx'
-import { Check, CheckCircle2, CircleHelp, Copy, ExternalLink, XCircle } from 'lucide-react'
+import {
+  Check,
+  CheckCircle2,
+  CircleArrowUp,
+  CircleHelp,
+  Copy,
+  ExternalLink,
+  XCircle,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import type { Requirement } from '../../api/client'
-import { availability, safeUrl } from '../../lib/requirements'
+import { availability, isOldCheck, isOldVersion, safeUrl } from '../../lib/requirements'
 
 /** 確かめ方の種類の表示 */
 const CHECK_KINDS: Record<string, string> = {
@@ -69,7 +77,7 @@ function CommandLine({ command, label }: { command: string; label: string }) {
 
 /** 1 つの機能の要るもの, 入っているか, 入れ方のカード (ML-Found の describe_requirements) */
 export function RequirementCard({ requirement }: { requirement: Requirement }) {
-  const status = availability(requirement.available)
+  const status = availability(requirement.available, isOldVersion(requirement))
   const StatusIcon = status.icon
   const install = requirement.install
   const url = safeUrl(install.url)
@@ -101,6 +109,8 @@ export function RequirementCard({ requirement }: { requirement: Requirement }) {
             <li key={`${check.kind}:${check.name}`} className="flex items-center gap-1.5">
               {check.ok === true ? (
                 <CheckCircle2 className="size-3.5 text-good-text" aria-hidden />
+              ) : isOldCheck(check) ? (
+                <CircleArrowUp className="size-3.5 text-critical-text" aria-hidden />
               ) : check.ok === false ? (
                 <XCircle className="size-3.5 text-critical-text" aria-hidden />
               ) : (
@@ -108,10 +118,19 @@ export function RequirementCard({ requirement }: { requirement: Requirement }) {
               )}
               <span className="text-ink-3">{CHECK_KINDS[check.kind] ?? check.kind}</span>
               <span className="font-mono">{check.name}</span>
-              <span className="text-ink-3">
-                {check.ok === true ? 'ある' : check.ok === false ? '無い' : '確かめていない'}
-              </span>
-              {check.error && <span className="text-warning-text">({check.error})</span>}
+              {isOldCheck(check) ? (
+                // 版が古い時は, 入っている版と下限を出す (説明の文と重ねない)
+                <span className="text-critical-text">
+                  版が古い ({check.name} {check.version}, {check.min_version} 以上が要る)
+                </span>
+              ) : (
+                <>
+                  <span className="text-ink-3">
+                    {check.ok === true ? 'ある' : check.ok === false ? '無い' : '確かめていない'}
+                  </span>
+                  {check.error && <span className="text-warning-text">({check.error})</span>}
+                </>
+              )}
             </li>
           ))}
         </ul>
