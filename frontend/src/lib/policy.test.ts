@@ -87,6 +87,7 @@ describe('評価の割合と学習の成功の割合', () => {
       rows: [{ 'valid/success': 0.5 }, { 'valid/success': 0.75 }, { 'valid/success': null }],
       lr_steps: [],
       named_lr_steps: {},
+      x_columns: [],
     }
     expect(
       trainingSuccess(history, { monitor: 'valid/reward', mode: 'max', epoch: 1, value: 1 }),

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { History } from '../api/client'
-import { compareCharts, type CompareEntry } from './compareCharts'
+import { compareCharts, withoutAxis, type CompareEntry } from './compareCharts'
 
 /** 何エポックかおきに検証する実験の推移 (検証しないエポックの valid/ は空) */
 function history(epochs: number, every: number): History {
@@ -19,6 +19,7 @@ function history(epochs: number, every: number): History {
     }),
     lr_steps: [],
     named_lr_steps: {},
+    x_columns: ['epoch'],
   }
 }
 
@@ -58,5 +59,33 @@ describe('compareCharts', () => {
     const charts = compareCharts([entry('a', 5, null), other], true)
     expect(charts.map((chart) => chart.column)).toEqual(['train/loss', 'valid/loss', 'valid/fid'])
     expect(charts.find((chart) => chart.column === 'valid/fid')!.missing).toEqual(['c'])
+  })
+
+  it('横軸に選んだ列を使える実験だけを描き, 使えない実験を分ける', () => {
+    // a は環境のステップ数を記録した強化学習, c は記録していない実験
+    const base = history(3, 1)
+    const steps: CompareEntry = {
+      ...entry('a', 1, null),
+      history: {
+        ...base,
+        columns: [...base.columns, 'env_steps'],
+        rows: base.rows.map((row) => ({ ...row, env_steps: Number(row.epoch) * 100 })),
+        x_columns: ['epoch', 'env_steps'],
+      },
+    }
+    const other = entry('c', 1, null)
+    const charts = compareCharts([steps, other], false, 'env_steps')
+    // 横軸の列そのもののグラフは出さない
+    expect(charts.map((chart) => chart.column)).toEqual(['valid/loss', 'valid/fid'])
+    const loss = charts.find((chart) => chart.column === 'valid/loss')!
+    expect(loss.series.map((item) => item.name)).toEqual(['a'])
+    expect(loss.series[0]!.points.map(([x]) => x)).toEqual([100, 200, 300])
+    expect(loss.missing).toEqual([])
+    expect(withoutAxis([steps, other], 'env_steps')).toEqual(['c'])
+    expect(withoutAxis([steps, other], 'epoch')).toEqual([])
+
+    // エポックの横軸では, 記録した列もグラフにする
+    const byEpoch = compareCharts([steps, other], false)
+    expect(byEpoch.map((chart) => chart.column)).toContain('env_steps')
   })
 })

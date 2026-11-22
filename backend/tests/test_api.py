@@ -332,6 +332,8 @@ def test_run_detail_history_log(
     assert history["columns"][0] == "epoch"
     assert history["rows"][2]["lr"] is None
     assert history["lr_steps"] == []
+    # 学習曲線の横軸の候補 (デモの実験は epoch だけ)
+    assert history["x_columns"] == ["epoch"]
 
     # step ごとに学習率を変えた実験は, 更新ごとの学習率も返却
     # (エポックの読めない行は除外)

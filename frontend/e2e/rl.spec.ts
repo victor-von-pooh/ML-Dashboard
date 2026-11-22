@@ -73,6 +73,33 @@ test('強化学習の指標を学習曲線で見て, 方策の守りを確かめ
   expect(weights.status()).toBe(403)
 })
 
+test('学習曲線の横軸を環境のステップ数にし, 比較でも選ぶ', async ({ page }) => {
+  // 実験の詳細: step の extra で記録した env_steps を横軸に選べる
+  await page.goto(`/projects/${projectId}/runs/${RUN_ID}`)
+  const axis = page.getByLabel('横軸')
+  await expect(axis.getByRole('option')).toHaveText(['エポック', 'env_steps'])
+  await axis.selectOption('env_steps')
+  await expect(page.getByRole('img', { name: 'reward の env_steps に対する推移' })).toBeVisible()
+  // 横軸の列そのもののグラフは出さない
+  await expect(page.getByRole('img', { name: /^env_steps / })).toHaveCount(0)
+
+  // 比較: env_steps を記録していない実験は, そうと出してグラフに描かない
+  const other = 'cartpole/2026-11-20/10-30-00'
+  await page.goto(`/projects/${projectId}/compare?run=${RUN_ID}&run=${other}`)
+  await page.getByLabel('横軸').selectOption('env_steps')
+  await expect(
+    page.getByRole('img', { name: 'valid/reward の実験ごとの env_steps に対する推移' }),
+  ).toBeVisible()
+  await expect(
+    page.getByText(/横軸の env_steps が無い.*出していない実験: cartpole 11-20 10-30-00/),
+  ).toBeVisible()
+  await expect(page.getByText(/一番短い実験/)).toHaveCount(0)
+
+  // エポックに戻すと, 両方の実験を描く
+  await page.getByLabel('横軸').selectOption('epoch')
+  await expect(page.getByText(/出していない実験/)).toHaveCount(0)
+})
+
 test('足りない追加の依存のカードを見て, 学習の開始が止まる', async ({ page }) => {
   // 実験の一覧から追加の依存の一覧を開く
   await page.goto(`/projects/${projectId}`)

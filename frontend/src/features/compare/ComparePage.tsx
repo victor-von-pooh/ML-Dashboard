@@ -32,14 +32,25 @@ import {
 import {
   compareLabeler,
   formatDateTime,
+  formatAxis,
   formatDuration,
   formatMetric,
   formatValue,
 } from '../../lib/format'
 import { groupImageSeries, sharedImageSeries } from '../../lib/images'
 import { groupByModel } from '../../lib/modelGroups'
-import { compareCharts } from '../../lib/compareCharts'
-import { MAX_COMPARE, diffConfigs, flattenConfig } from '../../lib/metrics'
+import { compareCharts, withoutAxis } from '../../lib/compareCharts'
+import {
+  EPOCH_AXIS,
+  MAX_COMPARE,
+  axisLabel,
+  axisOptions,
+  axisStart,
+  diffConfigs,
+  flattenConfig,
+  hasAxis,
+  integerAxis,
+} from '../../lib/metrics'
 import {
   ColumnLabel,
   EvaluationCell,
@@ -63,6 +74,8 @@ export function ComparePage() {
   const [logScale, setLogScale] = useState(false)
   // 長さの違う実験を比べるときに, 横軸を一番短い実験の最後のエポックに合わせる
   const [fitShortest, setFitShortest] = useState(false)
+  // 横軸の列 (エポックか, 環境のステップ数などのエポックごとに増え続ける列)
+  const [chosenAxis, setAxis] = useState(EPOCH_AXIS)
   const project = useProject(projectId)
 
   // 同じ実験の重複を除き, 色の数までに制限
@@ -134,23 +147,32 @@ export function ComparePage() {
   const readyOrdered = [...ready].sort(
     (a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0),
   )
+  // 横軸の候補は, どれかの実験で使える列. 候補から消えた列はエポックに戻す
+  const axes = axisOptions(ready.map((slot) => slot.history))
+  const axis = axes.includes(chosenAxis) ? chosenAxis : EPOCH_AXIS
+  const byEpoch = axis === EPOCH_AXIS
   // 全ての実験の列を, 指標の順にそろえて並べる
   // 検証用がある指標の学習用は, 指定した場合だけ表示
   // 描き直してもグラフの拡大と凡例の選択は残るので, 描画ごとに作り直す
-  const charts = compareCharts(
-    ready.map((slot) => ({
-      label: label(slot.id),
-      color: slot.color,
-      history: slot.history,
-      config: slot.run.config,
-      best: slot.run.best,
-    })),
-    showTrain,
-  )
+  const entries = ready.map((slot) => ({
+    label: label(slot.id),
+    color: slot.color,
+    history: slot.history,
+    config: slot.run.config,
+    best: slot.run.best,
+  }))
+  const charts = compareCharts(entries, showTrain, axis)
+  const noAxis = withoutAxis(entries, axis)
+  const axisHistories = ready.map((slot) => slot.history).filter((item) => hasAxis(item, axis))
+  // 横軸の目盛りと左端は全てのグラフで同じなので, 1 回だけ求める
+  const integerX = integerAxis(axisHistories, axis)
+  const xMin = axisStart(axisHistories, axis)
 
-  // 実験ごとの最後のエポック (長さの違う実験を比べる横軸のため)
-  const lengths = ready
-    .map((slot) => Math.max(0, ...slot.history.rows.map((row) => Number(row.epoch ?? 0))))
+  // 実験ごとの横軸の最後の値 (長さの違う実験を比べる横軸のため)
+  const lengths = axisHistories
+    .map((history) =>
+      Math.max(0, ...history.rows.map((row) => Number((byEpoch ? row.epoch : row[axis]) ?? 0))),
+    )
     .filter((value) => value > 0)
   const shortest = Math.min(...lengths)
   const longest = Math.max(...lengths)
@@ -350,6 +372,22 @@ export function ComparePage() {
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-sm font-semibold">学習曲線</h2>
               <div className="flex flex-wrap items-center gap-4 text-xs text-ink-2">
+                {axes.length > 1 && (
+                  <label className="flex items-center gap-2">
+                    横軸
+                    <select
+                      value={axis}
+                      onChange={(event) => setAxis(event.target.value)}
+                      className="rounded-md border border-line bg-surface px-2 py-1 font-mono text-xs text-ink"
+                    >
+                      {axes.map((option) => (
+                        <option key={option} value={option}>
+                          {axisLabel(option)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
@@ -376,11 +414,19 @@ export function ComparePage() {
                       onChange={(event) => setFitShortest(event.target.checked)}
                       className="accent-[var(--accent)]"
                     />
-                    横軸を一番短い実験 ({shortest} エポック) に合わせる
+                    横軸を一番短い実験 (
+                    {byEpoch ? `${shortest} エポック` : `${axis} = ${formatAxis(shortest)}`})
+                    に合わせる
                   </label>
                 )}
               </div>
             </div>
+            {noAxis.length > 0 && (
+              <p className="mb-3 text-xs text-ink-3">
+                横軸の {axis} が無い (かエポックごとに増え続けない) ので, 出していない実験:{' '}
+                {noAxis.join(', ')}
+              </p>
+            )}
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               {charts.map(({ column, series, missing, identical, sparse, direction }) => (
                 <Card
@@ -392,8 +438,14 @@ export function ComparePage() {
                     series={series}
                     logScale={logScale}
                     xMax={fitShortest ? shortest : undefined}
-                    xLabel="epoch"
-                    label={`${column} の実験ごとの推移`}
+                    xLabel={axis}
+                    integerX={integerX}
+                    xMin={xMin}
+                    label={
+                      byEpoch
+                        ? `${column} の実験ごとの推移`
+                        : `${column} の実験ごとの ${axis} に対する推移`
+                    }
                   />
                   {missing.length > 0 && (
                     <p className="mt-1 text-[11px] text-ink-3">
@@ -407,7 +459,7 @@ export function ComparePage() {
                   )}
                   {identical.map((names) => (
                     <p key={names.join()} className="mt-1 text-[11px] text-ink-3">
-                      線が重なっている実験: {names.join(', ')} (全てのエポックで同じ値)
+                      線が重なっている実験: {names.join(', ')} (全ての点で同じ値)
                     </p>
                   ))}
                 </Card>

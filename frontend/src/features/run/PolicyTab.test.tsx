@@ -90,6 +90,7 @@ describe('PolicyTab', () => {
       ],
       lr_steps: [],
       named_lr_steps: {},
+      x_columns: [],
     }
     render(
       <PolicyTab
@@ -137,6 +138,7 @@ describe('PolicyTab', () => {
           ],
           lr_steps: [],
           named_lr_steps: {},
+          x_columns: [],
         }}
         best={{ monitor: 'valid/reward', mode: 'max', epoch: 2, value: 30 }}
       />,
@@ -158,6 +160,7 @@ describe('PolicyTab', () => {
           rows: [{ epoch: 1, 'valid/reward': 1 }],
           lr_steps: [],
           named_lr_steps: {},
+          x_columns: [],
         }}
         best={null}
       />,

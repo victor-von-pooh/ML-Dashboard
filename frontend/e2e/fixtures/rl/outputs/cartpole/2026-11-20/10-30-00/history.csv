@@ -1,0 +1,4 @@
+epoch,train/loss,train/entropy,train/reward,train/length,train/violations,valid/loss,valid/reward,valid/length,valid/violations,valid/success,lr
+1,0.55,0.69,18.0,18.0,0.5,-20.0,20.0,20.0,0.4,0.0,0.01
+2,0.50,0.67,40.0,40.0,0.3,-80.0,80.0,80.0,0.2,0.1,0.01
+3,0.45,0.63,100.0,100.0,0.1,-150.0,150.0,150.0,0.1,0.4,0.01

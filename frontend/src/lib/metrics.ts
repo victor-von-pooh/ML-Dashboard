@@ -72,9 +72,72 @@ export function summarizeDiff(diff: Record<string, unknown>): string[] {
   })
 }
 
-/** 列の値をエポックとの組にする */
-export function toPoints(history: History, key: string): [number, number | null][] {
-  return history.rows.map((row, index) => [row.epoch ?? index + 1, row[key] ?? null])
+/** 学習曲線の既定の横軸 (history.csv の epoch. 無い記録では行の番号) */
+export const EPOCH_AXIS = 'epoch'
+
+/**
+ * 列の値を横軸の値との組にする. 横軸は既定でエポック, 他の列 (環境のステップ数など)
+ * を選んだ場合は, その列の値の無い行を除く
+ */
+export function toPoints(
+  history: History,
+  key: string,
+  x: string = EPOCH_AXIS,
+): [number, number | null][] {
+  if (x === EPOCH_AXIS) {
+    return history.rows.map((row, index) => [row.epoch ?? index + 1, row[key] ?? null])
+  }
+  return history.rows.flatMap<[number, number | null]>((row) => {
+    const position = row[x]
+    return position == null ? [] : [[position, row[key] ?? null]]
+  })
+}
+
+/**
+ * 実験が横軸に使える列か. エポックは全ての実験で使え, 他の列はバックエンドが
+ * 横軸の候補 (エポックごとに増え続ける列) とした場合だけ
+ */
+export function hasAxis(history: History, x: string): boolean {
+  return x === EPOCH_AXIS || (history.x_columns ?? []).includes(x)
+}
+
+/** 実験の横軸の候補を, エポックを先頭に重ねずに並べる */
+export function axisOptions(histories: History[]): string[] {
+  const options = histories.flatMap((history) => history.x_columns ?? [])
+  return [...new Set([EPOCH_AXIS, ...options])]
+}
+
+/** エポックの位置を, 選んだ横軸の上の位置にする (目印のため). 無ければ null */
+export function axisAt(history: History, x: string, epoch: number): number | null {
+  if (x === EPOCH_AXIS) return epoch
+  // 再開で同じエポックの行が重なる場合は, 最後の (使われた) 行
+  const row = history.rows.findLast((item) => item.epoch === epoch)
+  return row?.[x] ?? null
+}
+
+/** 横軸の選択肢の表示名 (エポックは日本語, 他の列は列の名前のまま) */
+export function axisLabel(x: string): string {
+  return x === EPOCH_AXIS ? 'エポック' : x
+}
+
+/**
+ * 横軸の左端. エポック以外の列 (環境のステップ数など) は, 値が全て 0 以上なら 0 から描く
+ * (学習を始めた時点からの進み具合として読むため). それ以外は undefined (最初の値)
+ */
+export function axisStart(histories: History[], x: string): number | undefined {
+  if (x === EPOCH_AXIS) return undefined
+  const nonNegative = histories.every((history) =>
+    history.rows.every((row) => row[x] == null || row[x] >= 0),
+  )
+  return nonNegative ? 0 : undefined
+}
+
+/** 横軸の値が全て整数か (目盛りを整数に限るため) */
+export function integerAxis(histories: History[], x: string): boolean {
+  if (x === EPOCH_AXIS) return true
+  return histories.every((history) =>
+    history.rows.every((row) => row[x] == null || Number.isInteger(row[x])),
+  )
 }
 
 /** 2 つの系列の全ての点 (エポックと値) が同じかどうか */

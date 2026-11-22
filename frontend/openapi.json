@@ -2688,6 +2688,14 @@
             "type": "object",
             "title": "Named Lr Steps",
             "default": {}
+          },
+          "x_columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "X Columns",
+            "default": []
           }
         },
         "type": "object",

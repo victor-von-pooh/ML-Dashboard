@@ -1499,6 +1499,11 @@ export interface components {
             named_lr_steps: {
                 [key: string]: components["schemas"]["LrPoint"][];
             };
+            /**
+             * X Columns
+             * @default []
+             */
+            x_columns: string[];
         };
         /** JobCreate */
         JobCreate: {
