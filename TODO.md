@@ -67,7 +67,6 @@
 - 終わりの条件: 図に割合のカードが写り, e2e が割合のカードの値を確かめる
 - つながり: 上の「方策のタブの割合のカードの表示の残り」
 
-
 ### 実験の詳細に Scheduler の主な引数を出す
 - 何を: backend の `OptimizerInfo` に `scheduler_params` (ML-Found の `run.json` の `optimizers` の項目) を足し, `openapi.json` と `schema.d.ts` を作り直す. 実験の詳細の Optimizer の欄に, Scheduler のクラス名の下で引数を表にする. 中に Scheduler を持つもの (`schedulers`) は入れ子で出す. `lr_lambdas` の要素と `scale_fn` は文字か `{function, args, keywords}` の辞書 (`function` も文字か辞書) で, `groups` は Optimizer のまとまりごと, `milestones` は並び. `"inf"` などの文字はそのまま出す
 - なぜ: 同じ条件で学習し直すときに, 自分で渡した Scheduler の引数を探す手間を無くすため
