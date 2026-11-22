@@ -74,6 +74,11 @@ export function IntegerField({
     setInvalid(false)
   }
   const commit = (raw: string) => {
+    // 書いたままの値の参照を変えずに離れた場合は, 誤りにせず書き換えない
+    if (typeof value === 'string' && raw === value) {
+      setInvalid(false)
+      return
+    }
     const parsed = Number(raw)
     if (raw.trim() === '' || !Number.isInteger(parsed) || parsed < 1) {
       setInvalid(true)
@@ -85,6 +90,8 @@ export function IntegerField({
   const describedBy = [invalid ? `${id}-error` : '', hint ? `${id}-hint` : '']
     .filter(Boolean)
     .join(' ')
+  // 値の参照 (環境変数など. 画面には書いたままで届く) は数の欄に出せないので文字の欄
+  const written = typeof value === 'string'
 
   return (
     <div className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] items-center gap-2">
@@ -93,9 +100,9 @@ export function IntegerField({
       </label>
       <input
         id={id}
-        type="number"
-        min={1}
-        step={1}
+        type={written ? 'text' : 'number'}
+        min={written ? undefined : 1}
+        step={written ? undefined : 1}
         defaultValue={String(value ?? '')}
         key={String(value)}
         onBlur={(event) => commit(event.target.value)}
@@ -103,7 +110,7 @@ export function IntegerField({
         aria-invalid={invalid}
         aria-describedby={describedBy || undefined}
         disabled={disabled}
-        className="h-8 w-32 rounded-md border border-line bg-bg px-2 font-mono text-xs aria-[invalid=true]:border-critical"
+        className={`h-8 ${written ? 'w-full' : 'w-32'} rounded-md border border-line bg-bg px-2 font-mono text-xs aria-[invalid=true]:border-critical`}
       />
       {invalid && (
         <span id={`${id}-error`} className="col-start-2 text-[11px] text-critical-text">

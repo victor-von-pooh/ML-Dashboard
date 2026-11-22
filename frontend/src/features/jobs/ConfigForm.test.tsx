@@ -73,4 +73,17 @@ describe('IntegerField (検証の間隔)', () => {
     fireEvent.blur(input)
     expect(state.text).toBe(before)
   })
+
+  it('書いたままの値の参照 (環境変数など) を文字のまま出し, 整数で書き換えられる', () => {
+    const before = 'trainer:\n  valid_every_n_epochs: ${oc.env:EVERY}\n'
+    const { state } = setup(before, { trainer: { valid_every_n_epochs: '${oc.env:EVERY}' } })
+    const input = screen.getByLabelText('検証の間隔')
+    expect(input).toHaveValue('${oc.env:EVERY}')
+    fireEvent.blur(input)
+    expect(state.text).toBe(before)
+    expect(input).toHaveAttribute('aria-invalid', 'false')
+    fireEvent.change(input, { target: { value: '2' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(parse(state.text)).toEqual({ trainer: { valid_every_n_epochs: 2 } })
+  })
 })

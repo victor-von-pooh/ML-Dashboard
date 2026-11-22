@@ -14,6 +14,14 @@ from ml_dashboard.api.routes import (
     get_project,
     get_run_data,
 )
+from ml_dashboard.core.env_refs import (
+    config_without_env,
+    diff_without_env,
+    env_replacements,
+    flatten,
+    read_texts,
+    redact,
+)
 from ml_dashboard.core.jobs import Job, JobManager
 from ml_dashboard.core.loader import import_ml_found
 from ml_dashboard.core.model_spec import (
@@ -612,7 +620,7 @@ def check_config(
     default: Optional[Path] = None, refresh_requires: bool = False
 ) -> CheckedConfig:
     """
-    ML-Found で config を読み込み, 学習を始める前の確認をする関数
+    学習を始める前の確認をし, 環境変数の値を文から除く関数
 
     Parameters
     ----------
@@ -630,7 +638,84 @@ def check_config(
     Returns
     ----------
     checked: CheckedConfig
-        default との差分と, 学習に使う config 全体
+        default との差分と, 学習に使う config 全体 (どちらも環境変数を引く
+        値は書いたまま. 警告, お知らせ, 誤りの文の値は参照の書き方に置換)
+    """
+    # 確かめは解決した値で行い, 画面に返す文から環境変数の値を除去
+    default_path = default or default_config_for(Path(project.path), script)
+    texts = read_texts([default_path, path])
+    try:
+        checked, cfg = run_checks(
+            project, path, default_path, refresh_requires
+        )
+    except Exception as error:
+        # 読み込めない場合, 名前を参照で決める環境変数は安全側に全て消す
+        message = redact(str(error), env_replacements(texts))
+        if message == str(error):
+            raise
+        raise rebuild_error(error, message) from error.__cause__
+    replacements = env_replacements(texts, cfg)
+    checked.warnings = [
+        redact(text, replacements) for text in checked.warnings
+    ]
+    checked.notes = [redact(text, replacements) for text in checked.notes]
+    if checked.value_error is not None:
+        checked.value_error = redact(checked.value_error, replacements)
+
+    return checked
+
+
+def rebuild_error(error: Exception, message: str) -> Exception:
+    """
+    エラーを, 種類を変えずに文だけ置き換えたものにする関数
+
+    Parameters
+    ----------
+    error: Exception
+        元のエラー
+    message: str
+        置き換える文
+
+    Returns
+    ----------
+    rebuilt: Exception
+        同じ種類のエラー, 文だけで作れない種類の場合は ValueError
+    """
+    try:
+        rebuilt = type(error)(message)
+    except Exception:
+        rebuilt = ValueError(message)
+    if str(rebuilt) != message:
+        rebuilt = ValueError(message)
+
+    return rebuilt
+
+
+def run_checks(
+    project: Project, path: Path, default_path: Path,
+    refresh_requires: bool = False
+) -> tuple[CheckedConfig, DictConfig]:
+    """
+    ML-Found で config を読み込み, 学習を始める前の確認をする関数
+
+    Parameters
+    ----------
+    project: Project
+        プロジェクト
+    path: Path
+        experiment の config のパス
+    default_path: Path
+        元にする default の config
+    refresh_requires: bool = False
+        requires の機能を, 覚えた結果を使わずに確かめる場合は True (起動)
+
+    Returns
+    ----------
+    checked: CheckedConfig
+        default との差分と, 学習に使う config 全体 (環境変数を引く値は
+        書いたまま)
+    cfg: DictConfig
+        学習に使う config (解決していないもの)
     """
     # ML-Found の読み込みは PyTorch も読むので, 使うときだけ読み込み
     # ダッシュボードの submodule の ML-Found で確かめるので, プロジェクトの
@@ -654,7 +739,6 @@ def check_config(
     # 自作の Optimizer (custom_optim.Lion など) を読めるように,
     # 学習のスクリプトと同じくプロジェクトのディレクトリから読み込む
     project_dir = Path(project.path)
-    default_path = default or default_config_for(project_dir, script)
     sys.path.insert(0, str(project_dir))
     try:
         cfg, diff = load_config(str(default_path), str(path))
@@ -720,26 +804,49 @@ def check_config(
             requires_error if value_error is None
             else f"{value_error}\n{requires_error}"
         )
-    config = OmegaConf.to_container(cfg, resolve=True)
+
+    # 画面に返す config と差分は, 環境変数を引く値を書いたままにした形
+    # (環境変数に入れた秘密の値を画面に出さないため)
+    config = config_without_env(cfg)
+    default_config = config_without_env(load_default(default_path))
     checked = CheckedConfig(
-        diff={
-            str(key): {
-                "default": value.get("default"),
-                "experiment": value.get("experiment")
-            }
-            for key, value in diff.items()
-        },
-        config=(
-            {str(key): value for key, value in config.items()}
-            if isinstance(config, dict) else {}
+        diff=diff_without_env(
+            diff, flatten(default_config), flatten(config)
         ),
+        config=config,
         warnings=warnings,
         notes=notes,
         default_config=default_path.relative_to(project_dir).as_posix(),
         value_error=value_error
     )
 
-    return checked
+    return checked, cfg
+
+
+def load_default(default_path: Path) -> DictConfig:
+    """
+    ML-Found の既定値に default を重ねた config を読み込む関数
+
+    Parameters
+    ----------
+    default_path: Path
+        元にする default の config
+
+    Returns
+    ----------
+    cfg: DictConfig
+        空の experiment を重ねた config (差分の default の側に使用)
+    """
+    from ml_found.config import load_config
+
+    # 公開の load_config で読むために, 空の experiment を一時ファイルに作成
+    with tempfile.TemporaryDirectory() as directory:
+        empty = Path(directory) / "experiment.yaml"
+        empty.write_text("{}\n", encoding="utf-8")
+        loaded, _ = load_config(str(default_path), str(empty))
+    cfg: DictConfig = loaded
+
+    return cfg
 
 
 def check_requires(
