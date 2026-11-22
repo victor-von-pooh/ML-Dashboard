@@ -9,10 +9,12 @@ DEV_TOKEN := $(or $(DEV_TOKEN),$(shell python3 -c 'import secrets; print(secrets
 
 .PHONY: setup dev-backend dev-frontend build serve api check demo e2e screenshots
 
-# 依存のインストール
+# 依存のインストール. 既定で問題の設定から学習の監視する指標と向きを受け取る
+# ML-Quest (problem) も入れる (make setup EXTRAS= で外すと, その欄は使えない)
+EXTRAS ?= problem
 setup:
 	git submodule update --init
-	cd backend && uv sync
+	cd backend && uv sync $(foreach extra,$(EXTRAS),--extra $(extra))
 	cd frontend && pnpm install
 
 # 開発用のサーバー (2 つの端末で起動)

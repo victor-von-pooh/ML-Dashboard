@@ -4,6 +4,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Literal, Optional
 
+import yaml
 from fastapi import APIRouter, HTTPException, Request
 from omegaconf import DictConfig, OmegaConf
 from pydantic import BaseModel, model_validator
@@ -112,6 +113,9 @@ class ValidateResult(BaseModel):
     notes: list[str] = []
     # 元にした default の config (プロジェクトのディレクトリからの相対パス)
     default_config: Optional[str] = None
+    # 元にした default の config が trainer.monitor を書いているか (書いて
+    # いなければ, 画面で問題の設定の監視する指標と向きを選べる)
+    monitor_in_default: bool = False
 
 
 class CheckedConfig(BaseModel):
@@ -955,6 +959,35 @@ def check_output_dir(loaded: object) -> None:
         )
 
 
+def writes_monitor(path: Path) -> bool:
+    """
+    default の config が監視する指標 (trainer.monitor) を書いているかを
+    確かめる関数
+
+    Parameters
+    ----------
+    path: Path
+        default の config
+
+    Returns
+    ----------
+    written: bool
+        null でない trainer.monitor があれば True (読めない場合は False)
+    """
+    # 書いたままの値を見る (環境変数の参照なども書いたものとみなす)
+    try:
+        loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        written = False
+        return written
+    trainer = loaded.get("trainer") if isinstance(loaded, dict) else None
+    written = isinstance(trainer, dict) and (
+        trainer.get("monitor") is not None
+    )
+
+    return written
+
+
 def validate_text(
     project: Project, text: str, script: Optional[str] = None,
     default: Optional[Path] = None, refresh_requires: bool = False
@@ -1116,16 +1149,18 @@ def validate_config(
         )
 
     default = resolve_default(project, body.default_config)
+    project_dir = Path(project.path)
+    default_path = default or default_config_for(project_dir, body.script)
+    monitor_in_default = writes_monitor(default_path)
 
     # 学習と同じ方法で読み込み, 失敗した場合は理由と元にした default を返却
     try:
         checked = validate_text(project, body.text, body.script, default)
     except Exception as error:
-        project_dir = Path(project.path)
-        default_path = default or default_config_for(project_dir, body.script)
         result = ValidateResult(
             ok=False, error=describe(error), diff={},
-            default_config=default_path.relative_to(project_dir).as_posix()
+            default_config=default_path.relative_to(project_dir).as_posix(),
+            monitor_in_default=monitor_in_default
         )
         return result
 
@@ -1133,7 +1168,8 @@ def validate_config(
     result = ValidateResult(
         ok=checked.value_error is None, error=checked.value_error,
         diff=checked.diff, config=checked.config, warnings=checked.warnings,
-        notes=checked.notes, default_config=checked.default_config
+        notes=checked.notes, default_config=checked.default_config,
+        monitor_in_default=monitor_in_default
     )
 
     return result

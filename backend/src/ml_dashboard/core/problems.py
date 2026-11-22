@@ -1,18 +1,26 @@
 """
 ML-Pathfinder の置き場の問題の設定から, 書き出した学習のプロジェクトの
-場所を読む
+場所と, 学習で監視する指標と向きを読む
 
-ダッシュボードは ML-Quest に依らないので, 問題の設定のうち記録の
-`project.path` と名前だけを読む. 知らない新しい版は読まずに理由を返す
+書き出したプロジェクトの一覧は ML-Quest に依らずに出すので, 記録の
+`project.path` と名前だけを読む. 知らない新しい版は読まずに理由を返す.
+監視する指標と向きは, 任意の依存の ML-Quest の受け渡し (`handoff`) から
+受け取る (値の求め方は ML-Quest の約束のため)
 """
 
 from datetime import datetime
 from pathlib import Path
+from types import ModuleType
 from typing import Any, Optional
 
 import yaml
 
-from ml_dashboard.core.models import RecordedProject, RecordedProjects
+from ml_dashboard.core.models import (
+    ProblemTraining,
+    ProblemTrainings,
+    RecordedProject,
+    RecordedProjects,
+)
 from ml_dashboard.core.projects import is_project_dir
 
 # 問題の設定のファイルの名前 (problems/<識別子>/problem.yaml)
@@ -98,13 +106,13 @@ def read_record(path: Path) -> tuple[Optional[dict[str, Any]], Optional[str]]:
     return record, None
 
 
-def updated_of(project: RecordedProject) -> str:
+def updated_of(project: RecordedProject | ProblemTraining) -> str:
     """
     一覧の 1 件の更新時刻を, 並べ替えの鍵にする関数
 
     Parameters
     ----------
-    project: RecordedProject
+    project: RecordedProject | ProblemTraining
         一覧の 1 件
 
     Returns
@@ -137,16 +145,7 @@ def recorded_projects(root: Path, registered: set[str]) -> RecordedProjects:
         置き場を読めない理由
     """
     # problems/<識別子>/problem.yaml (置き場が無ければ空)
-    files: list[Path] = []
-    error = None
-    try:
-        if root.is_dir():
-            files = [
-                child / PROBLEM_FILE for child in sorted(root.iterdir())
-                if (child / PROBLEM_FILE).is_file()
-            ]
-    except OSError as failure:
-        error = f"{root} を読めません: {failure}"
+    files, error = problem_files(root)
 
     # 記録の場所をたどった先が, 今ある登録していないプロジェクトのもの
     found: list[RecordedProject] = []
@@ -179,6 +178,141 @@ def recorded_projects(root: Path, registered: set[str]) -> RecordedProjects:
             projects.append(project)
     result = RecordedProjects(
         root=str(root), projects=projects, skipped=skipped, error=error
+    )
+
+    return result
+
+
+def problem_files(root: Path) -> tuple[list[Path], Optional[str]]:
+    """
+    置き場の problems の下の問題の設定のファイルを集める関数
+
+    Parameters
+    ----------
+    root: Path
+        ML-Pathfinder の置き場の problems
+
+    Returns
+    ----------
+    files: list[Path]
+        problems/<識別子>/problem.yaml (置き場が無ければ空)
+    error: Optional[str]
+        置き場を読めない理由 (読めれば None)
+    """
+    # 識別子の順. 置き場が無いのは問題の設定がまだ無いだけ
+    files: list[Path] = []
+    error = None
+    try:
+        if root.is_dir():
+            files = [
+                child / PROBLEM_FILE for child in sorted(root.iterdir())
+                if (child / PROBLEM_FILE).is_file()
+            ]
+    except OSError as failure:
+        error = f"{root} を読めません: {failure}"
+
+    return files, error
+
+
+def training_of(path: Path, quest: ModuleType) -> ProblemTraining:
+    """
+    問題の設定 1 件の, 学習で監視する指標と向きを ML-Quest で求める関数
+
+    Parameters
+    ----------
+    path: Path
+        problem.yaml
+    quest: ModuleType
+        ML-Quest のモジュール (load_problem と handoff を持つもの)
+
+    Returns
+    ----------
+    training: ProblemTraining
+        監視する指標と向き. 渡せない場合は理由 (読めない, 渡せる答えが
+        そろっていない, 既製のモデルをそのまま使うなど)
+    """
+    # 読み方, 版の移し方, 渡せるかの確かめは ML-Quest に任せる. 読めない
+    # 場合の名前はディレクトリの名前
+    updated_at = modified_at(path)
+    try:
+        problem = quest.load_problem(path)
+    except Exception as error:
+        training = ProblemTraining(
+            problem=path.parent.name, problem_path=str(path),
+            reason=f"読めません: {error}", updated_at=updated_at
+        )
+        return training
+    name = problem.get("name") if isinstance(problem, dict) else None
+    title = name if isinstance(name, str) and name else path.parent.name
+    try:
+        stages = quest.handoff(problem)
+    except Exception as error:
+        training = ProblemTraining(
+            problem=title, problem_path=str(path),
+            reason=f"後ろの段階に渡せません: {error}", updated_at=updated_at
+        )
+        return training
+
+    # 記録したプロジェクトの場所 (記録が無ければ None)
+    project = stages.get("project") if isinstance(stages, dict) else None
+    recorded = project.get("path") if isinstance(project, dict) else None
+    project_path = recorded if isinstance(recorded, str) else None
+
+    # 既製のモデルをそのまま使う (学習しない) 問題の設定は値が None
+    values = stages.get("training") if isinstance(stages, dict) else None
+    monitor = values.get("monitor") if isinstance(values, dict) else None
+    mode = values.get("mode") if isinstance(values, dict) else None
+    if monitor is None:
+        reason = (
+            "学習しない (既製のモデルをそのまま使う) 問題の設定なので, "
+            "監視する指標がありません"
+        )
+        training = ProblemTraining(
+            problem=title, problem_path=str(path), project_path=project_path,
+            reason=reason, updated_at=updated_at
+        )
+        return training
+    if not isinstance(monitor, str) or mode not in ("min", "max"):
+        training = ProblemTraining(
+            problem=title, problem_path=str(path), project_path=project_path,
+            reason=(
+                f"監視する指標か向きの形が違います ({monitor!r}, {mode!r}). "
+                "ML-Quest の版を確かめてください"
+            ),
+            updated_at=updated_at
+        )
+        return training
+    training = ProblemTraining(
+        problem=title, problem_path=str(path), project_path=project_path,
+        monitor=monitor, mode=mode, updated_at=updated_at
+    )
+
+    return training
+
+
+def problem_trainings(root: Path, quest: ModuleType) -> ProblemTrainings:
+    """
+    置き場の問題の設定ごとに, 学習で監視する指標と向きを集める関数
+
+    Parameters
+    ----------
+    root: Path
+        ML-Pathfinder の置き場の problems
+    quest: ModuleType
+        ML-Quest のモジュール
+
+    Returns
+    ----------
+    result: ProblemTrainings
+        問題の設定ごとの値か渡せない理由 (更新の新しい順), 置き場を読めない
+        理由
+    """
+    # 渡せないものも理由と一緒に並べる (選べない理由が分かるように)
+    files, error = problem_files(root)
+    problems = [training_of(file, quest) for file in files]
+    problems.sort(key=updated_of, reverse=True)
+    result = ProblemTrainings(
+        root=str(root), problems=problems, error=error
     )
 
     return result

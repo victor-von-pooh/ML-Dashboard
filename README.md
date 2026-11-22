@@ -42,7 +42,7 @@ ML-Found が実験ごとに残すディレクトリ (`history.csv`, `config.yaml
 - **プロジェクト**: ML-Found を使うディレクトリを登録する. 親のディレクトリからまとめて探せる. ML-Pathfinder で書き出したプロジェクトは一覧から選ぶだけで登録できる
 - **実験の一覧と詳細**: 状態, default との差分, ベストの指標, テスト用の評価の値で並べ, 絞り込む. 守る指標が比べる相手より落ちた実験に印を付ける. 詳細では学習曲線, 何の実験か, 評価, 見本, 方策, 画像の推移, config, モデル, 環境, ログ, ファイルを見る. メモ, タグ, 星も付けられる
 - **比較と分析**: 8 つまでの実験を重ねて比べ, テスト用の評価の値と守る指標の印も並べる. 違うモデルの定義の実験は定義ごとに分けて並べる. 同じ名前の実験で値を変えた config の項目と結果の関係を見る
-- **学習の起動とジョブ**: config を書き換えて ML-Found で確かめてから起動し, 進み具合を見て止める. 実験の設定でもう一度起動でき, 実験に写したモデルの定義で同じモデルを学習し直せる. プロジェクトの `models/` のモデルの定義の候補を選び, 同じ設定で 1 つずつ順に学習して比べられる
+- **学習の起動とジョブ**: config を書き換えて ML-Found で確かめてから起動し, 進み具合を見て止める. 実験の設定でもう一度起動でき, 実験に写したモデルの定義で同じモデルを学習し直せる. プロジェクトの `models/` のモデルの定義の候補を選び, 同じ設定で 1 つずつ順に学習して比べられる. 監視する指標を書いていないプロジェクトでは, ML-Pathfinder の問題の設定の監視する指標と向き (ML-Quest の受け渡し) を選んで入れられる
 - **学習の準備**: プロジェクトのデータセット, モデルの定義, 学習の環境がそろっているかを見る. 確かめてから, プロジェクトの `.venv` を作って ML-Found と要る機能 (ML-EDA, ML-ModelControl, ML-Inference など) を入れられる
 - **追加の依存**: 強化学習の環境, MuJoCo, ROS 2, CUDA, 他の段階のライブラリが入っているかと入れ方を見る
 
@@ -59,7 +59,7 @@ ML-Found が実験ごとに残すディレクトリ (`history.csv`, `config.yaml
 ```bash
 git clone --recursive https://github.com/victor-von-pooh/ML-Dashboard.git
 cd ML-Dashboard
-make setup   # submodule, Python と Node.js の依存
+make setup   # submodule, Python と Node.js の依存 (問題の設定を読む ML-Quest も. 外す場合は make setup EXTRAS=)
 make demo    # demo のプロジェクトで config を変えた 4 つの実験を作る (CPU で十数秒)
 make serve   # 画面をビルドして http://127.0.0.1:8765 で起動 (Ctrl-C で止める)
 ```
@@ -91,6 +91,7 @@ make screenshots    # README の画面の図 (7 枚) と操作ガイドの実験
 | `frontend/` | 画面 (TypeScript, React, Vite, ECharts). `e2e/` は画面の通しのテスト, `src/api/schema.d.ts` は OpenAPI から生成した型 |
 | `demo/` | 動作の確認と画面の通しのテストに使う ML-Found のプロジェクト |
 | `ML-Found/` | submodule (学習のライブラリ) |
+| `ML-Quest/` | submodule (問題の設定のライブラリ. 任意の依存で, 学習の監視する指標と向きを受け取る) |
 | `docs/` | 操作ガイド, 設計, README の画面の例 (`images/`) |
 
 ## ライセンス

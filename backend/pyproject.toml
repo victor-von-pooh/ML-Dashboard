@@ -21,6 +21,11 @@ dependencies = [
     "uvicorn>=0.32"
 ]
 
+[project.optional-dependencies]
+# 問題の設定から学習の監視する指標と向きを受け取る場合 (問題の設定は, その
+# 約束を持つ ML-Quest を通して読む. 無くても他の機能は使える)
+problem = ["ml-quest"]
+
 [project.scripts]
 ml-dashboard = "ml_dashboard.cli:main"
 
@@ -34,6 +39,7 @@ dev = [
 
 [tool.uv.sources]
 ml-found = { path = "../ML-Found", editable = true }
+ml-quest = { path = "../ML-Quest", editable = true }
 # Linux (CI) では CUDA の無い軽い PyTorch を使う
 torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 

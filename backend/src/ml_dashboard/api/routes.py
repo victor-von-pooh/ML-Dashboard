@@ -1,4 +1,6 @@
+import importlib
 from pathlib import Path
+from types import ModuleType
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -10,6 +12,7 @@ from ml_dashboard.core.model_candidates import describe_models, run_key
 from ml_dashboard.core.models import (
     History,
     LogEntry,
+    ProblemTrainings,
     ProjectCandidate,
     ProjectDetail,
     ProjectInfo,
@@ -20,7 +23,7 @@ from ml_dashboard.core.models import (
     RunSummary,
     SampleCloud,
 )
-from ml_dashboard.core.problems import recorded_projects
+from ml_dashboard.core.problems import problem_trainings, recorded_projects
 from ml_dashboard.core.projects import (
     Project,
     ProjectError,
@@ -56,6 +59,9 @@ router = APIRouter(prefix="/api")
 
 # 実験の ID (<name>/<日付>/<時刻>) を 3 つの部分で受けるパス
 RUN_PATH = "/projects/{project_id}/runs/{name}/{date}/{time}"
+
+# 任意の依存のライブラリの入れ方の案内
+SETUP_HINT = "make setup (backend で uv sync --extra problem)"
 
 # 見つからない場合の応答の説明
 NOT_FOUND: dict[int | str, dict[str, str]] = {
@@ -305,6 +311,72 @@ def list_recorded_projects(request: Request) -> RecordedProjects:
     """
     registered = {project.path for project in get_store(request).load()}
     result = recorded_projects(get_problems_dir(), registered)
+
+    return result
+
+
+def load_library(name: str, attribute: str) -> ModuleType:
+    """
+    任意の依存のライブラリを読み込む関数
+
+    Parameters
+    ----------
+    name: str
+        モジュールの名前 (ml_quest)
+    attribute: str
+        使う関数の名前 (古い版で無い場合を見分けるため)
+
+    Returns
+    ----------
+    module: ModuleType
+        読み込んだモジュール
+
+    Raises
+    ----------
+    HTTPException
+        入っていない場合と, 使う関数の無い古い版の場合は 501
+    """
+    # 入っていなければ入れ方, 古ければ入れ直し方の案内
+    try:
+        module = importlib.import_module(name)
+    except ImportError as error:
+        raise HTTPException(
+            501,
+            f"{name} が入っていません. {SETUP_HINT} で入れてから起動し直して"
+            "ください"
+        ) from error
+    if not hasattr(module, attribute):
+        raise HTTPException(
+            501,
+            f"{name} が古く, {attribute} がありません. {SETUP_HINT} で入れ"
+            "直してから起動し直してください"
+        )
+
+    return module
+
+
+@router.get(
+    "/problems/training",
+    responses={501: {"description": "ML-Quest が入っていないか古い"}}
+)
+def list_problem_trainings() -> ProblemTrainings:
+    """
+    ML-Pathfinder の問題の設定ごとの, 学習で監視する指標と向きを返す関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    result: ProblemTrainings
+        問題の設定ごとの監視する指標と向きか, 渡せない理由 (更新の新しい
+        順)
+    """
+    # 値は ML-Quest の受け渡しから受け取る (無ければ 501 で, 他の機能は
+    # そのまま使える)
+    quest = load_library("ml_quest", "handoff")
+    result = problem_trainings(get_problems_dir(), quest)
 
     return result
 

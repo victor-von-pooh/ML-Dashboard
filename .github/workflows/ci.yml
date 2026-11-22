@@ -16,7 +16,7 @@ jobs:
         with:
           submodules: true
       - uses: astral-sh/setup-uv@v6
-      - run: uv sync --python 3.13
+      - run: uv sync --python 3.13 --extra problem
       - run: uv run ruff check .
       - run: uv run mypy src
       - run: uv run pytest -q
@@ -49,7 +49,7 @@ jobs:
       - run: pnpm build
         working-directory: frontend
       # API の型がバックエンドの仕様と合っているかの確認
-      - run: uv sync --python 3.13
+      - run: uv sync --python 3.13 --extra problem
         working-directory: backend
       - run: pnpm gen:api && git diff --exit-code -- openapi.json src/api/schema.d.ts
         working-directory: frontend
@@ -70,7 +70,7 @@ jobs:
           node-version: 24
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
-      - run: uv sync --python 3.13
+      - run: uv sync --python 3.13 --extra problem
         working-directory: backend
       - run: pnpm install --frozen-lockfile
         working-directory: frontend

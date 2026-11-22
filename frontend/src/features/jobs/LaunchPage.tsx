@@ -391,8 +391,11 @@ function LaunchForm({
               // config かスクリプトを選び直したら, フォームの状態 (選び直した名前など) も作り直す
               key={`${selectedScript}:${configPath ?? 'none'}`}
               projectId={projectId}
+              projectPath={project.data.path}
               script={selectedScript}
               text={text}
+              // 実験の設定でもう一度起動する場合は, その実験と同じ値で学習するために入れない
+              autoFillMonitor={fromRun === null}
               onChange={editText}
             />
           </div>

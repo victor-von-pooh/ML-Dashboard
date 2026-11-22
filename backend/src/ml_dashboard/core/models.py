@@ -61,6 +61,30 @@ class RecordedProjects(BaseModel):
     error: Optional[str] = None
 
 
+class ProblemTraining(BaseModel):
+    # ML-Pathfinder の問題の設定 1 件の, 学習で監視する指標と向き
+    # (ML-Quest の受け渡しの training. ML-Found の trainer.monitor と
+    # trainer.mode と同じ値)
+    problem: str
+    problem_path: str
+    # 書き出したプロジェクトの記録 (無ければ None)
+    project_path: Optional[str] = None
+    monitor: Optional[str] = None
+    mode: Optional[Mode] = None
+    # 値を渡せない理由 (既製のモデル, 読めない設定など. 渡せれば None)
+    reason: Optional[str] = None
+    # problem.yaml の更新時刻 (読めなければ None)
+    updated_at: Optional[str] = None
+
+
+class ProblemTrainings(BaseModel):
+    # 置き場の problems, 問題の設定 (更新の新しい順), 置き場を読めない
+    # 場合の理由
+    root: str
+    problems: list[ProblemTraining]
+    error: Optional[str] = None
+
+
 class BestValue(BaseModel):
     monitor: str
     mode: Mode
