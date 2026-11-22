@@ -63,9 +63,6 @@ POLICY_SPEC = "policy.json"
 # 1 つの評価で返す行の上限 (多い場合は先頭だけ)
 MAX_EVALUATION_ROWS = 2000
 
-# 読む評価のファイルの大きさの上限
-MAX_EVALUATION_BYTES = 20 * 1024 * 1024
-
 # evaluations/ がリンクの実験の注意 (評価の無い実験と見分けるため)
 EVALUATIONS_LINK_NOTICE = (
     "evaluations/ がシンボリックリンクなので, 評価を読んでいません"
@@ -384,7 +381,7 @@ def read_task(
     task: Optional[RunTask]
         何の実験か, 無いか読めない場合は None
     """
-    from ml_found.experiment.task import describe_origin, load_task
+    from ml_found import describe_origin, load_task
 
     # 新しい版は返す値 (newer_version) で画面に知らせる. ML-Found の警告は
     # サーバーのログに残るだけ (警告の抑止はプロセス全体に効くので使わない)
@@ -673,6 +670,9 @@ def skip_reason(path: Path) -> str:
     reason: str
         リンク, 普通のファイルでない, 大きすぎる, 読めない のどれか
     """
+    import_ml_found()
+    from ml_found.experiment import MAX_EVALUATION_BYTES
+
     try:
         link_stat = path.lstat()
     except OSError:
@@ -1155,6 +1155,10 @@ def load_plain_evaluations(
     skipped: list[str]
         読まなかったファイルの名前と理由
     """
+    # 上限は ML-Found の load_evaluations と同じ値
+    import_ml_found()
+    from ml_found.experiment import MAX_EVALUATION_BYTES
+
     # evaluations/ もリンクを辿らずに開き, 中のファイルはその dir_fd から.
     # dir_fd を使えない環境では, evaluations/ の入れ替わりをデバイスと
     # i-node で確かめる
@@ -1423,7 +1427,7 @@ def read_samples(run_dir: Path, notices: list[str]) -> list[Sample]:
         見るので含めない
     """
     from ml_found import load_samples
-    from ml_found.experiment.results import read_samples_index
+    from ml_found.experiment import read_samples_index
 
     samples: list[Sample] = []
     index = run_dir / SAMPLES_DIR / SAMPLES_INDEX
@@ -1476,7 +1480,7 @@ class DigestCache:
         digest: str
             16 進の小文字 64 文字
         """
-        from ml_found.rl.bundle import file_sha256
+        from ml_found.rl import file_sha256
 
         # 同じファイルなら, 大きな重みの読み直しは省略
         file_stat = path.stat()
@@ -1518,7 +1522,7 @@ def read_policy(run_dir: Path) -> Optional[RunPolicy]:
     policy: Optional[RunPolicy]
         方策の一式, 無い実験は None
     """
-    from ml_found.rl.bundle import read_policy_spec
+    from ml_found.rl import read_policy_spec
 
     policy = None
     if not has_policy(run_dir):
