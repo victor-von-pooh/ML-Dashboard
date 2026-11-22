@@ -6,8 +6,15 @@ from typing import Any, Optional
 
 from omegaconf import DictConfig, ListConfig, OmegaConf
 
-# config の中の環境変数の参照 (${oc.env:NAME} や ${oc.env:NAME,既定値}) の名前
-ENV_NAME_PATTERN = re.compile(r"oc\.env\s*:\s*['\"]?\s*([A-Za-z_][\w.-]*)")
+# config の中の環境変数の参照 (${oc.env:NAME} や ${oc.env:NAME,既定値}) の
+# 名前の始まり
+ENV_CALL_PATTERN = re.compile(r"oc\.env\s*:\s*['\"]?\s*")
+
+# 書いたままの名前
+ENV_NAME_PATTERN = re.compile(r"[A-Za-z_][\w.-]*")
+
+# 名前を参照で決める場合に, 参照を解決するために一時的に置くキー
+NAME_KEY = "__ml_dashboard_env_name__"
 
 # 環境変数を引く値の代わりに置く印 (値の参照を辿った先の判定に使用)
 ENV_MARK = "\x00ml_dashboard_env\x00"
@@ -236,16 +243,165 @@ def diff_without_env(
     return hidden
 
 
-def env_replacements(
-    texts: Iterable[str], environ: Optional[dict[str, str]] = None
-) -> list[tuple[str, str]]:
+def flatten(data: Any, prefix: str = "") -> dict[str, Any]:
     """
-    文の中で消す環境変数の値と, 代わりに出す参照の組を作る関数
+    入れ子の辞書を . でつないだキーの辞書に平らにする関数
+
+    ML-Found の差分と同じく, 辞書だけを辿り, リストは値として扱う
+
+    Parameters
+    ----------
+    data: Any
+        平らにする辞書, 辞書以外の場合はそのまま値として扱う
+    prefix: str = ""
+        親のキー
+
+    Returns
+    ----------
+    flat: dict[str, Any]
+        . でつないだキーと値の辞書
+    """
+    if not isinstance(data, dict):
+        flat = {prefix: data}
+        return flat
+
+    flat = {}
+    for key, value in data.items():
+        child = f"{prefix}.{key}" if prefix else str(key)
+        flat.update(flatten(value, child))
+
+    return flat
+
+
+def closing_brace(text: str, start: int) -> int:
+    """
+    ${ で始まる参照の, 対になる } の位置を探す関数
+
+    Parameters
+    ----------
+    text: str
+        参照を含む文
+    start: int
+        ${ の $ の位置
+
+    Returns
+    ----------
+    end: int
+        対になる } の位置, 見つからない場合は -1
+    """
+    depth = 0
+    for index in range(start, len(text)):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return index
+
+    return -1
+
+
+def find_env_names(texts: Iterable[str]) -> tuple[set[str], list[str], bool]:
+    """
+    書いたままの config から, 環境変数の参照の名前を集める関数
 
     Parameters
     ----------
     texts: Iterable[str]
         config に書いたままの文 (ファイルの中身)
+
+    Returns
+    ----------
+    names: set[str]
+        書いたままの名前
+    refs: list[str]
+        名前を決める参照 (${oc.env:${n}} の ${n})
+    unknown: bool
+        名前を読めない参照がある場合は True
+    """
+    names: set[str] = set()
+    refs: list[str] = []
+    unknown = False
+    for text in texts:
+        for match in ENV_CALL_PATTERN.finditer(text):
+            start = match.end()
+            if text.startswith("${", start):
+                end = closing_brace(text, start)
+                if end < 0:
+                    unknown = True
+                    continue
+                refs.append(text[start:end + 1])
+                continue
+            name = ENV_NAME_PATTERN.match(text, start)
+            if name is None:
+                unknown = True
+                continue
+            names.add(name.group(0))
+
+    return names, refs, unknown
+
+
+def resolve_names(
+    cfg: Optional[DictConfig], refs: list[str]
+) -> tuple[set[str], bool]:
+    """
+    名前を決める参照を, 解決した config から引く関数
+
+    Parameters
+    ----------
+    cfg: Optional[DictConfig]
+        学習に使う config, 読み込めなかった場合は None
+    refs: list[str]
+        名前を決める参照
+
+    Returns
+    ----------
+    names: set[str]
+        引けた名前
+    unknown: bool
+        引けない参照がある場合は True
+    """
+    names: set[str] = set()
+    if not refs:
+        return names, False
+    if cfg is None:
+        return names, True
+
+    # 一番上に参照を置いて解決 (相対の参照など, 引けないものは名前が不明)
+    unknown = False
+    copy = OmegaConf.create(OmegaConf.to_container(cfg, resolve=False))
+    if not isinstance(copy, DictConfig):
+        return names, True
+    for ref in refs:
+        try:
+            copy[NAME_KEY] = ref
+            name = copy[NAME_KEY]
+        except Exception:
+            unknown = True
+            continue
+        if isinstance(name, str) and name:
+            names.add(name)
+        else:
+            unknown = True
+
+    return names, unknown
+
+
+def env_replacements(
+    texts: Iterable[str], cfg: Optional[DictConfig] = None,
+    environ: Optional[dict[str, str]] = None
+) -> list[tuple[str, str]]:
+    """
+    文の中で消す環境変数の値と, 代わりに出す参照の組を作る関数
+
+    名前が分からない参照がある場合は, 安全側に全ての環境変数の値を消す
+
+    Parameters
+    ----------
+    texts: Iterable[str]
+        config に書いたままの文 (ファイルの中身)
+    cfg: Optional[DictConfig] = None
+        学習に使う config (名前を参照で決める場合に使用), 無ければ None
     environ: Optional[dict[str, str]] = None
         環境変数, None の場合は今のプロセスのもの
 
@@ -255,9 +411,11 @@ def env_replacements(
         値と ${oc.env:名前} の組 (長い値から)
     """
     environ = dict(os.environ) if environ is None else environ
-    names = {
-        name for text in texts for name in ENV_NAME_PATTERN.findall(text)
-    }
+    names, refs, unknown = find_env_names(texts)
+    resolved, unresolved = resolve_names(cfg, refs)
+    names |= resolved
+    if unknown or unresolved:
+        names = set(environ)
     pairs = {
         (environ[name], f"${{oc.env:{name}}}")
         for name in names if environ.get(name)

@@ -1363,6 +1363,7 @@ def test_validate_hides_env_values(
         "  token: plain\n  url: plain\n  alias: plain\n  nested: plain\n"
         "  tokens: []\n  name: plain\n"
         "  key: ${oc.env:ML_DASHBOARD_TEST_OTHER}\n"
+        "  env_name: ML_DASHBOARD_TEST_SECRET\n"
     )
     project_id = register(client, project_dir)
     url = f"/api/projects/{project_id}/validate"
@@ -1406,7 +1407,10 @@ def test_validate_hides_env_values(
         "optimizer:\n  name: SGD\n  params:\n"
         "    lr: ${oc.env:ML_DASHBOARD_TEST_SECRET}\n",
         "experiment:\n  name: bad/${oc.env:ML_DASHBOARD_TEST_SECRET}\n",
-        "trainer:\n  epochs: ${oc.env:ML_DASHBOARD_TEST_SECRET}\n"
+        "trainer:\n  epochs: ${oc.env:ML_DASHBOARD_TEST_SECRET}\n",
+        # 名前を参照で決める場合も, 解決した名前の値を出さない
+        "optimizer:\n  name: SGD\n  params:\n"
+        "    lr: ${oc.env:${data.env_name}}\n"
     ):
         result = client.post(url, json={"text": text}).json()
         assert result["ok"] is False

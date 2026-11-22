@@ -101,8 +101,8 @@ export function IntegerField({
       <input
         id={id}
         type={written ? 'text' : 'number'}
-        min={1}
-        step={1}
+        min={written ? undefined : 1}
+        step={written ? undefined : 1}
         defaultValue={String(value ?? '')}
         key={String(value)}
         onBlur={(event) => commit(event.target.value)}

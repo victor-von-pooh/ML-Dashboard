@@ -18,6 +18,7 @@ from ml_dashboard.core.env_refs import (
     config_without_env,
     diff_without_env,
     env_replacements,
+    flatten,
     read_texts,
     redact,
 )
@@ -642,16 +643,18 @@ def check_config(
     """
     # 確かめは解決した値で行い, 画面に返す文から環境変数の値を除去
     default_path = default or default_config_for(Path(project.path), script)
-    replacements = env_replacements(read_texts([default_path, path]))
+    texts = read_texts([default_path, path])
     try:
-        checked = run_checks(
+        checked, cfg = run_checks(
             project, path, default_path, refresh_requires
         )
     except Exception as error:
-        message = redact(str(error), replacements)
+        # 読み込めない場合, 名前を参照で決める環境変数は安全側に全て消す
+        message = redact(str(error), env_replacements(texts))
         if message == str(error):
             raise
         raise rebuild_error(error, message) from error.__cause__
+    replacements = env_replacements(texts, cfg)
     checked.warnings = [
         redact(text, replacements) for text in checked.warnings
     ]
@@ -691,7 +694,7 @@ def rebuild_error(error: Exception, message: str) -> Exception:
 def run_checks(
     project: Project, path: Path, default_path: Path,
     refresh_requires: bool = False
-) -> CheckedConfig:
+) -> tuple[CheckedConfig, DictConfig]:
     """
     ML-Found で config を読み込み, 学習を始める前の確認をする関数
 
@@ -711,6 +714,8 @@ def run_checks(
     checked: CheckedConfig
         default との差分と, 学習に使う config 全体 (環境変数を引く値は
         書いたまま)
+    cfg: DictConfig
+        学習に使う config (解決していないもの)
     """
     # ML-Found の読み込みは PyTorch も読むので, 使うときだけ読み込み
     # ダッシュボードの submodule の ML-Found で確かめるので, プロジェクトの
@@ -718,7 +723,6 @@ def run_checks(
     import_ml_found()
     import torch
     from ml_found.config import load_config
-    from ml_found.config.loader import build_default, flatten
     from ml_found.experiment.setup import (
         check_name,
         check_resume_path,
@@ -804,7 +808,7 @@ def run_checks(
     # 画面に返す config と差分は, 環境変数を引く値を書いたままにした形
     # (環境変数に入れた秘密の値を画面に出さないため)
     config = config_without_env(cfg)
-    default_config = config_without_env(build_default(str(default_path)))
+    default_config = config_without_env(load_default(default_path))
     checked = CheckedConfig(
         diff=diff_without_env(
             diff, flatten(default_config), flatten(config)
@@ -816,7 +820,33 @@ def run_checks(
         value_error=value_error
     )
 
-    return checked
+    return checked, cfg
+
+
+def load_default(default_path: Path) -> DictConfig:
+    """
+    ML-Found の既定値に default を重ねた config を読み込む関数
+
+    Parameters
+    ----------
+    default_path: Path
+        元にする default の config
+
+    Returns
+    ----------
+    cfg: DictConfig
+        空の experiment を重ねた config (差分の default の側に使用)
+    """
+    from ml_found.config import load_config
+
+    # 公開の load_config で読むために, 空の experiment を一時ファイルに作成
+    with tempfile.TemporaryDirectory() as directory:
+        empty = Path(directory) / "experiment.yaml"
+        empty.write_text("{}\n", encoding="utf-8")
+        loaded, _ = load_config(str(default_path), str(empty))
+    cfg: DictConfig = loaded
+
+    return cfg
 
 
 def check_requires(
