@@ -94,8 +94,9 @@ export function safeUrl(url: string | null | undefined): string | null {
 const FIRST_USE_DOWNLOADS: Record<string, string> = {
   fid:
     '初めて使うときに, FID の特徴を取り出す Inception の学習済みの重み (約 91 MB) を ' +
-    'GitHub から取ります. 取り終えるまで学習が止まったように見えます. ' +
-    'ネットワークの無い計算機では先に取っておきます',
+    'GitHub から取り, PyTorch のキャッシュ (TORCH_HOME) に置きます. 取り終えるまで学習が' +
+    '止まったように見えます. ネットワークの無い計算機では, ネットワークのある所で一度' +
+    '使ってから, キャッシュの重みを写しておきます',
 }
 
 /** 機能の名前のうち, 初めて使うときに大きなファイルを取るものと, その注意 */

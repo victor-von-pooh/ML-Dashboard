@@ -204,6 +204,16 @@ describe('指標の良い向き', () => {
     expect(guessDirection('valid/reward')).toBeNull()
   })
 
+  it('fid と chamfer は語として現れる場合だけ小さいほど良い', () => {
+    expect(guessDirection('fid')).toBe('min')
+    expect(guessDirection('valid/fid_inception')).toBe('min')
+    expect(guessDirection('valid/chamfer_l2')).toBe('min')
+    // 部分一致の名前 (大きいほど良い指標) は小さいほど良いにしない
+    expect(guessDirection('valid/confidence')).not.toBe('min')
+    expect(guessDirection('valid/fidelity')).not.toBe('min')
+    expect(guessDirection('valid/chamfered')).not.toBe('min')
+  })
+
   it('監視する指標は ML-Found の向き, 他は推測, 学習率と推測できない列は null', () => {
     const best = { monitor: 'valid/fid', mode: 'min' as const }
     expect(columnDirection('valid/fid', [best])).toEqual({ direction: 'min', guessed: false })

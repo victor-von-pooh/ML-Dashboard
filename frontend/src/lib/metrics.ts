@@ -142,15 +142,16 @@ export function judgedOnly(key: string, interval: number): boolean {
 /** 指標の良い向き (大きいほど良いか, 小さいほど良いか) */
 export type Direction = 'max' | 'min'
 
-// 名前から向きを推測する指標 (小さいほど良いものを先に判定). fid は生成の画像の
-// FID, chamfer は点群の Chamfer 距離
-const LOWER_IS_BETTER =
-  /loss|err|mae|mse|rmse|nelbo|kl|recon|residual|boundary|perplexity|time|fid|chamfer/i
+// 名前から向きを推測する指標 (小さいほど良いものを先に判定)
+const LOWER_IS_BETTER = /loss|err|mae|mse|rmse|nelbo|kl|recon|residual|boundary|perplexity|time/i
+// 語として現れる場合だけ小さいほど良い指標. fid は生成の画像の FID, chamfer は点群の
+// Chamfer 距離 (部分一致では confidence や fidelity まで小さいほど良いと取り違えるため)
+const LOWER_WORDS = /(^|[/_.-])(fid|chamfer)($|[/_.-])/i
 const HIGHER_IS_BETTER = /acc|auc|^ap$|\/ap$|f1|precision|recall|r2|score|iou|psnr|ssim/i
 
 /** 指標の名前から良い向きを推測する. 分からなければ null */
 export function guessDirection(name: string): Direction | null {
-  if (LOWER_IS_BETTER.test(name)) return 'min'
+  if (LOWER_IS_BETTER.test(name) || LOWER_WORDS.test(name)) return 'min'
   if (HIGHER_IS_BETTER.test(name)) return 'max'
   return null
 }

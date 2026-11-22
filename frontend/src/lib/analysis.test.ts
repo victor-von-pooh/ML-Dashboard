@@ -57,6 +57,9 @@ describe('analysis', () => {
     expect(metricDirection(runs, 'final:valid/acc')).toBe('max')
     expect(metricDirection(runs, 'final:valid/loss')).toBe('min')
     expect(metricDirection(runs, 'final:valid/auc')).toBe('max')
+    // 名前からの推測は学習曲線と同じ表 (fid は語として現れる場合だけ小さいほど良い)
+    expect(metricDirection(runs, 'final:valid/fid')).toBe('min')
+    expect(metricDirection(runs, 'final:valid/fidelity_acc')).toBe('max')
   })
 
   it('値ごとの最良値と平均を, 良い順に並べる', () => {
