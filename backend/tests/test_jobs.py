@@ -1,9 +1,11 @@
 import hashlib
+import json
 import os
 import time
 from pathlib import Path
 from typing import Optional
 
+import pytest
 from fastapi.testclient import TestClient
 from omegaconf import OmegaConf
 
@@ -1330,3 +1332,146 @@ def test_launch_with_default_config(
     assert again.status_code == 201
     assert again.json()["default_config"] == "configs/default/hf.yaml"
     wait_for(client, again.json()["id"], "status", "finished")
+
+
+def test_validate_hides_env_values(
+    client: TestClient, project_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    環境変数を参照する config の確かめの応答に, その値が含まれないことを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        環境変数を置き換える pytest の仕組み
+
+    Returns
+    ----------
+    None
+    """
+    secret, other = "s3cr3t-token-value", "an0ther-hidden-value"
+    monkeypatch.setenv("ML_DASHBOARD_TEST_SECRET", secret)
+    monkeypatch.setenv("ML_DASHBOARD_TEST_OTHER", other)
+    (project_dir / "configs" / "default" / "train.yaml").write_text(
+        "experiment:\n  name: demo\n  output_dir: outputs\n"
+        "data:\n"
+        "  token: plain\n  url: plain\n  alias: plain\n  nested: plain\n"
+        "  tokens: []\n  name: plain\n"
+        "  key: ${oc.env:ML_DASHBOARD_TEST_OTHER}\n"
+    )
+    project_id = register(client, project_dir)
+    url = f"/api/projects/{project_id}/validate"
+
+    # そのまま, 文字の中, 他の項目を介した参照, 入れ子, リストの中
+    text = (
+        "data:\n"
+        "  token: ${oc.env:ML_DASHBOARD_TEST_SECRET}\n"
+        "  url: https://user:${oc.env:ML_DASHBOARD_TEST_SECRET}@example.com\n"
+        "  alias: ${data.token}\n"
+        "  nested: ${oc.env:ML_DASHBOARD_TEST_NONE,"
+        "${oc.env:ML_DASHBOARD_TEST_SECRET}}\n"
+        "  tokens: ['${oc.env:ML_DASHBOARD_TEST_SECRET}']\n"
+        "  name: ${experiment.name}\n"
+        "  key: changed\n"
+    )
+    result = client.post(url, json={"text": text}).json()
+    assert result["ok"] is True, result["error"]
+    body = json.dumps(result)
+    assert secret not in body
+    assert other not in body
+
+    # 書いたままの値を返し, 環境変数を引かない参照は解決
+    data = result["config"]["data"]
+    assert data["token"] == "${oc.env:ML_DASHBOARD_TEST_SECRET}"
+    assert data["alias"] == "${data.token}"
+    assert data["tokens"] == ["${oc.env:ML_DASHBOARD_TEST_SECRET}"]
+    assert data["name"] == "demo"
+    assert result["diff"]["data.url"] == {
+        "default": "plain",
+        "experiment": "https://user:${oc.env:ML_DASHBOARD_TEST_SECRET}"
+        "@example.com"
+    }
+    assert result["diff"]["data.key"] == {
+        "default": "${oc.env:ML_DASHBOARD_TEST_OTHER}",
+        "experiment": "changed"
+    }
+
+    # 値の誤り, 読み込めない誤り, 起動の誤りの文にも値を出さない
+    for text in (
+        "optimizer:\n  name: SGD\n  params:\n"
+        "    lr: ${oc.env:ML_DASHBOARD_TEST_SECRET}\n",
+        "experiment:\n  name: bad/${oc.env:ML_DASHBOARD_TEST_SECRET}\n",
+        "trainer:\n  epochs: ${oc.env:ML_DASHBOARD_TEST_SECRET}\n"
+    ):
+        result = client.post(url, json={"text": text}).json()
+        assert result["ok"] is False
+        assert "${oc.env:ML_DASHBOARD_TEST_SECRET}" in result["error"]
+        assert secret not in json.dumps(result)
+
+        launched = client.post(
+            f"/api/projects/{project_id}/jobs",
+            json={"script": "train.py", "config_text": text}
+        )
+        assert launched.status_code == 400
+        assert secret not in launched.text
+
+
+def test_validate_uses_env_values(
+    client: TestClient, project_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    値を使う確かめは, 環境変数を解決した値で今までどおり働くことを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        環境変数を置き換える pytest の仕組み
+
+    Returns
+    ----------
+    None
+    """
+    monkeypatch.setenv("ML_DASHBOARD_TEST_EPOCHS", "7")
+    monkeypatch.setenv("ML_DASHBOARD_TEST_DEVICE", "gpu")
+    (project_dir / "configs" / "default" / "train.yaml").write_text(
+        "experiment:\n  name: demo\n  output_dir: outputs\n"
+        "data:\n  train_path: missing.csv\n"
+    )
+    project_id = register(client, project_dir)
+    url = f"/api/projects/{project_id}/validate"
+
+    # 解決した値で範囲を確かめ, 食い違いの誤りの文は参照の書き方で出す
+    text = (
+        "trainer:\n  epochs: ${oc.env:ML_DASHBOARD_TEST_EPOCHS}\n"
+        "scheduler:\n  name: OneCycleLR\n"
+        "  params:\n    max_lr: 0.1\n    epochs: 3\n"
+    )
+    result = client.post(url, json={"text": text}).json()
+    assert result["ok"] is False
+    assert "trainer.epochs (${oc.env:ML_DASHBOARD_TEST_EPOCHS})" in (
+        result["error"]
+    )
+    assert result["config"]["trainer"]["epochs"] == (
+        "${oc.env:ML_DASHBOARD_TEST_EPOCHS}"
+    )
+
+    # 解決した値のデバイスを確かめ, 他の項目の場所の確かめも今までどおり
+    text = "experiment:\n  device: ${oc.env:ML_DASHBOARD_TEST_DEVICE}\n"
+    result = client.post(url, json={"text": text}).json()
+    assert result["ok"] is False
+    assert "experiment.device の誤り" in result["error"]
+    assert "gpu" not in json.dumps(result)
+    assert result["warnings"] == [
+        "data.train_path のファイルが見つかりません: missing.csv "
+        "(プロジェクトのディレクトリから)"
+    ]

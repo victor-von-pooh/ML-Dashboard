@@ -79,12 +79,6 @@
 - 終わりの条件: `version` と `min_version` の付いた確かめの結果を差し込んだ backend のテストと画面のテストで, 版が古い時は「版が古い」と版と下限が出て, 無い時と版を読めない時は今のまま出る. 2 つの項目の無い古い ML-Found の結果でも壊れない
 - つながり: ML-Found の docs/DESIGN.md の「5. 追加の依存」 (学習の中で出る `MissingRequirementError` の文は学習のログに出るだけで, この画面は受け取らない)
 
-### 確かめた config の画面に環境変数の値を出さない
-- 何を: 学習の前の config の確かめ (`api/jobs.py` の `check_config`) の応答 (config, 差分, 警告, 誤りの文) に, 環境変数の参照 (`${oc.env:NAME}`. 入れ子や文字の中の参照も) の値を出さない. 応答の config は参照を解決せずに書いたまま返す (環境変数を引く他の項目への参照も書いたままになる). 差分は ML-Found の `load_config` (`get_diff`) が解決した値で返すので, 解決しない差分を取り直すか ML-Found に頼む. 警告と誤りの文は, 環境変数を引く値を挙げない. 値を使う確かめ (場所が実在するかなど) は今までどおり解決した値で行う. docs/DESIGN.md の「7. 安全」に決まりを足す
-- なぜ: 今は解決した config (`OmegaConf.to_container(cfg, resolve=True)`) と差分をそのまま返すので, 環境変数に入れた秘密の値が画面と応答に出るため. 実験の詳細の `config.yaml` は ML-Found が解決した値で保存するもので, この項目では扱わない (ML-Found は秘密の値を config に入れない決まりを持つ)
-- 終わりの条件: 環境変数を参照する config (そのまま, 入れ子, 文字の中) の確かめの応答の全体に, その値が含まれないことを backend のテストで確かめる
-- つながり: ML-Found の docs/DESIGN.md の「24. 安全」
-
 ### 実験のディレクトリのファイルをリンクを辿らずに読み書きする
 - 何を: 実験のディレクトリのファイルを画面が自分で読む所 (`core/runs.py` の `run.json` と `progress.json` (`read_json`), `model_summary.csv`, `history.csv`, `lr_steps.csv`, `config.yaml` と `source.yaml` と `diff.yaml` (`load_yaml`), `output.log`, `core/logs.py` の `train.log`) を, リンクを辿らず普通のファイルだけを大きさの上限 (ファイルごとに決める) つきで読む共通の関数にそろえる. 止める要求の `STOP` の書き込み (`core/jobs.py`) は, 先にリンクや普通でないものがあれば, 開かずに種類を見て消してから, 新しい普通のファイルとして作る (既にあれば作らない形で開く). `task.yaml` と `samples/index.json` は ML-Found が守るので, ML-Found の固定を上げて任せる
 - なぜ: 今は FIFO を読むと画面が止まり (`model_summary.csv`, `run.json`), リンクを辿って実験の外を読み, 上限が無いので大きなファイルで記憶を使い, `STOP` がリンクなら実験の外のファイルを書き換えうるため
