@@ -1597,6 +1597,10 @@ export interface components {
             modules?: string[] | null;
             /** Scheduler */
             scheduler?: string | null;
+            /** Scheduler Params */
+            scheduler_params?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** ParamSpec */
         ParamSpec: {

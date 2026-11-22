@@ -269,6 +269,10 @@ class OptimizerInfo(BaseModel):
     optimizer: str
     modules: Optional[list[str]] = None
     scheduler: Optional[str] = None
+    # Scheduler の主な引数 (ML-Found の docs/FORMAT.md の「Scheduler の
+    # 引数」. 値は数, 文字, 真偽値, null とそれらの並びと辞書). 使わない
+    # 場合と, 書かない版の ML-Found の実験と辞書でない場合は None
+    scheduler_params: Optional[dict[str, Any]] = None
 
 
 class RunDetail(RunSummary):

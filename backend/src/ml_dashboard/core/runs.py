@@ -1312,12 +1312,17 @@ def read_optimizers(
         Optimizer ごとの情報 (形の違う行は除く), 書いていない場合と
         リストでない場合は None
     """
-    # 形の違う行 (手で書き換えたものなど) だけを除外
+    # 形の違う行 (手で書き換えたものなど) だけを除外. 辞書でない
+    # Scheduler の引数は行ごと捨てず, 引数だけを無いものとする
     raw = status.get("optimizers")
     if not isinstance(raw, list):
         return None
     optimizers = []
     for item in raw:
+        if isinstance(item, dict) and not isinstance(
+            item.get("scheduler_params"), (dict, type(None))
+        ):
+            item = {**item, "scheduler_params": None}
         try:
             optimizers.append(OptimizerInfo.model_validate(item))
         except ValidationError:

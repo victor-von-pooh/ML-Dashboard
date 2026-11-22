@@ -31,12 +31,6 @@
 - 終わりの条件: エポックを選ぶと, そのエポックの学習用と検証用の指標が見本の横に出る
 - つながり: 無し
 
-### 実験の詳細に Scheduler の主な引数を出す
-- 何を: backend の `OptimizerInfo` に `scheduler_params` (ML-Found の `run.json` の `optimizers` の項目) を足し, `openapi.json` と `schema.d.ts` を作り直す. 実験の詳細のモデルのタブ (`RunTabs.tsx`. Optimizer が 1 つの実験の欄と, 名前付きの Optimizer の表の両方) に, Scheduler のクラス名の下で引数を表にする. 中に Scheduler を持つもの (`schedulers`) は入れ子で出す. `lr_lambdas` の要素と `scale_fn` は文字か `{function, args, keywords}` の辞書 (`function` も文字か辞書) で, `groups` はパラメータグループごと, `milestones` は並び. `"inf"` などの文字はそのまま出す
-- なぜ: 同じ条件で学習し直すときに, 自分で渡した Scheduler の引数を探す手間を無くすため
-- 終わりの条件: config から作った Scheduler と自分で渡した Scheduler (SequentialLR の入れ子と partial の関数を含む) の実験で, 画面から引数が読める. 画面のテストがある
-- つながり: ML-Found の docs/FORMAT.md の「run.json」
-
 ### 追加の依存の版が古い時を「無い」と分けて出す
 - 何を: backend の `RequirementCheck` に `version` と `min_version` (ML-Found の `describe_requirements` の確かめの項目. 古い ML-Found では無いので任意) を足し, `make api` で画面の型を作り直す. 確かめが通らず `version` と `min_version` がある時は「無い」「入っていません」でなく「版が古い」と, 入っている版と下限を出す. 出す所は, 入れ方のカード (`RequirementCard.tsx` と `lib/requirements.ts` の表示), 起動を止める文 (`core/requirements.py` の `describe_missing`), 起動の画面の文 (`LaunchPage.tsx`), 準備の「足りない機能」(`lib/readiness.ts`). 版を読めない時 (確かめが通り `error` に「確かめていない」) は今のまま「ある」と出す
 - なぜ: ML-Found が追加の依存の版の下限を確かめるので, 入っているのに版が古い時も今は「無い」「入っていません」と出て, 何を直すかを取り違えるため

@@ -3122,6 +3122,18 @@
               }
             ],
             "title": "Scheduler"
+          },
+          "scheduler_params": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduler Params"
           }
         },
         "type": "object",
