@@ -3,12 +3,9 @@ import os
 from pathlib import Path
 
 from ml_found import load_evaluations
+from ml_found.experiment import MAX_EVALUATION_BYTES
 
-from ml_dashboard.core.results import (
-    MAX_EVALUATION_BYTES,
-    evaluation_files,
-    load_plain_evaluations,
-)
+from ml_dashboard.core.results import evaluation_files, load_plain_evaluations
 
 
 def padded_json(name: str, size: int) -> bytes:

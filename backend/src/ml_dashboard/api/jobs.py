@@ -329,7 +329,7 @@ def optim_views(cfg: Any) -> list[tuple[str, Any]]:
         接頭辞 (optimizers.<名前>: か空) と, optimizer, scheduler, trainer を
         持つ config の組
     """
-    from ml_found.training.optim import named_views, uses_named_optimizers
+    from ml_found.training import named_views, uses_named_optimizers
 
     # 名前付きの Optimizer は, ML-Found と同じ形の名前ごとの config
     # (trainer の値の参照 ${...} も解決できるように, 元の config で解決)
@@ -361,13 +361,11 @@ def check_param_names(cfg: Any) -> list[str]:
         場合があるので, エラーにはしない)
     """
     import_ml_found()
-    from ml_found.training.optim import (
-        resolve_optimizer_class,
-        resolve_scheduler_class,
-    )
-    from ml_found.training.registry import (
+    from ml_found.training import (
         check_optim_params,
         check_param_values,
+        resolve_optimizer_class,
+        resolve_scheduler_class,
     )
 
     # 名前の誤りはエラーのまま, 必須の引数の不足だけを注意として返却
@@ -486,7 +484,7 @@ def check_one_cycle_epochs(cfg: Any) -> tuple[Optional[str], Optional[str]]:
     warning: Optional[str]
         総ステップ数が多い場合の注意
     """
-    from ml_found.training.optim import resolve_scheduler_class
+    from ml_found.training import resolve_scheduler_class
     from torch import optim
 
     # OneCycleLR で総ステップ数を書かず, 1 エポックの数が決まる場合だけ判定
@@ -723,17 +721,17 @@ def run_checks(
     import_ml_found()
     import torch
     from ml_found.config import load_config
-    from ml_found.experiment.setup import (
-        check_name,
+    from ml_found.experiment import (
+        check_experiment_name,
         check_resume_path,
         check_trainer_config,
     )
-    from ml_found.training.optim import (
+    from ml_found.training import (
         check_optim_config,
         missing_data_size_params,
         try_build_optim,
     )
-    from ml_found.utils.device import get_device
+    from ml_found.utils import get_device
 
     # start_experiment が出力先を作る前に行う確認と同じものを実行
     # 自作の Optimizer (custom_optim.Lion など) を読めるように,
@@ -742,7 +740,7 @@ def run_checks(
     sys.path.insert(0, str(project_dir))
     try:
         cfg, diff = load_config(str(default_path), str(path))
-        check_name(cfg.experiment.name)
+        check_experiment_name(cfg.experiment.name)
         check_optim_config(cfg)
         # 引数の値の誤り (範囲の外など) は, 残りの確認を済ませてから返却
         value_error = None
@@ -1488,7 +1486,7 @@ def apply_overrides(text: str, overrides: list[str]) -> str:
         上書きを重ねた YAML (元のコメントは消える)
     """
     import_ml_found()
-    from ml_found.config.loader import params_sections, parse_overrides
+    from ml_found.config import params_sections, parse_overrides
 
     loaded = OmegaConf.create(text) if text.strip() else OmegaConf.create({})
     if not isinstance(loaded, DictConfig):
@@ -1825,7 +1823,7 @@ def read_registry() -> Registry:
     """
     # ML-Found の読み込みは PyTorch も読むので, 使うときだけ読み込み
     import_ml_found()
-    from ml_found.training.registry import (
+    from ml_found.training import (
         describe_optimizers,
         describe_schedulers,
     )
