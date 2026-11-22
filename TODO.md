@@ -91,6 +91,12 @@
 - 終わりの条件: 挙げたファイルの読み込みが, リンクで外の中身を返さず, FIFO で止まらず, 上限を超えると読まない (空か理由付き) ことを backend のテストで確かめる. 先にリンクか FIFO の `STOP` がある場合も, 空の要求と `now` の要求の両方で, 外を書き換えず学習が止まることをテストで確かめる
 - つながり: ML-Found の docs/DESIGN.md の「24. 安全」
 
+### 評価の読み方を ML-Found とそろえる
+- 何を: 評価の読み込み (`core/results.py`) の大きさの上限 (`MAX_EVALUATION_BYTES`) と, リンクと普通でないファイルを読まない決まりが ML-Found の `load_evaluations` と同じかをテストで確かめる (ML-Found が値を公開すればそれを読む). ML-Found の固定を上げるときに, docs/DESIGN.md とコメントの「`load_evaluations` はリンクと普通でないファイルも辿って読む」を今の挙動に直す
+- なぜ: ML-Found の `load_evaluations` もリンク, FIFO, 20 MiB を超えるファイルを読まなくなり, 同じ上限を 2 か所に持つので, 片方だけ変えると食い違うため. 画面はファイルごとの理由を出すので, 自分の読み方は残す
+- 終わりの条件: 上限と読まない決まりが ML-Found と同じことをテストで確かめ, 文書とコメントが今の ML-Found の挙動と合う
+- つながり: ML-Found の docs/FORMAT.md の「evaluations」と docs/DESIGN.md の「24. 安全」
+
 ## 条件待ち
 
 ### 学習の起動に混合精度と勾配の蓄積の欄
