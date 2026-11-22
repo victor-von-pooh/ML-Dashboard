@@ -1,4 +1,5 @@
 import type { RunParams } from '../api/client'
+import { guessDirection, type Direction } from './metrics'
 
 export type ParamValue = RunParams['params'][string]
 
@@ -37,7 +38,7 @@ export interface MetricOption {
   label: string
 }
 
-export type Direction = 'max' | 'min'
+export type { Direction }
 
 // 項目が無い実験をまとめる値の鍵と表示
 const MISSING = '__missing__'
@@ -113,10 +114,6 @@ export function metricValue(run: RunParams, metric: string): number | null {
   return run.final_metrics[metric.replace(/^final:/, '')] ?? null
 }
 
-// 名前から向きを推測する指標 (小さいほど良いものを先に判定)
-const LOWER_IS_BETTER = /loss|err|mae|mse|rmse|nelbo|kl|recon|residual|boundary|perplexity|time/i
-const HIGHER_IS_BETTER = /acc|auc|^ap$|\/ap$|f1|precision|recall|r2|score|iou|psnr|ssim/i
-
 /**
  * 結果の値は大きいほど良いか小さいほど良いかを決める.
  * ベストと監視する指標は ML-Found の向き, その他は指標の名前から推測する
@@ -133,9 +130,7 @@ export function metricDirection(runs: RunParams[], metric: string): Direction {
   const [monitor, mode] = top ? top.split('|') : [undefined, undefined]
   const name = metric.replace(/^final:/, '')
   if (metric === 'best' || name === monitor) return mode === 'max' ? 'max' : 'min'
-  if (LOWER_IS_BETTER.test(name)) return 'min'
-  if (HIGHER_IS_BETTER.test(name)) return 'max'
-  return 'min'
+  return guessDirection(name) ?? 'min'
 }
 
 export interface GroupRow {

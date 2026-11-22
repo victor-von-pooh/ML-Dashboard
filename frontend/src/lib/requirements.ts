@@ -86,3 +86,21 @@ export function describeMissing(missing: Requirement[]): {
 export function safeUrl(url: string | null | undefined): string | null {
   return url && /^https?:\/\//.test(url) ? url : null
 }
+
+/**
+ * 初めて使うときに大きなファイルを取る機能と, その注意 (ML-Found の登録簿の補足の要約).
+ * 取る間は学習が止まったように見えるので, カードと学習の起動の前に知らせる
+ */
+const FIRST_USE_DOWNLOADS: Record<string, string> = {
+  fid:
+    '初めて使うときに, FID の特徴を取り出す Inception の学習済みの重み (約 91 MB) を ' +
+    'GitHub から取ります. 取り終えるまで学習が止まったように見えます. ' +
+    'ネットワークの無い計算機では先に取っておきます',
+}
+
+/** 機能の名前のうち, 初めて使うときに大きなファイルを取るものと, その注意 */
+export function firstUseDownloads(names: string[]): { name: string; text: string }[] {
+  return [...new Set(names)]
+    .filter((name) => Object.hasOwn(FIRST_USE_DOWNLOADS, name))
+    .map((name) => ({ name, text: FIRST_USE_DOWNLOADS[name]! }))
+}

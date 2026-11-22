@@ -5,13 +5,20 @@ import {
   CircleArrowUp,
   CircleHelp,
   Copy,
+  Download,
   ExternalLink,
   XCircle,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import type { Requirement } from '../../api/client'
-import { availability, isOldCheck, isOldVersion, safeUrl } from '../../lib/requirements'
+import {
+  availability,
+  firstUseDownloads,
+  isOldCheck,
+  isOldVersion,
+  safeUrl,
+} from '../../lib/requirements'
 
 /** 確かめ方の種類の表示 */
 const CHECK_KINDS: Record<string, string> = {
@@ -75,6 +82,30 @@ function CommandLine({ command, label }: { command: string; label: string }) {
   )
 }
 
+/** 初めて使うときに大きなファイルを取る機能の注意 (取る間に学習が止まって見えるため) */
+export function FirstUseNotice({ names }: { names: string[] }) {
+  const downloads = firstUseDownloads(names)
+  if (downloads.length === 0) return null
+  return (
+    <ul className="space-y-1">
+      {downloads.map(({ name, text }) => (
+        <li
+          key={name}
+          className="flex items-start gap-1.5 rounded-md bg-surface-2 px-2 py-1.5 text-xs text-ink-2"
+        >
+          <Download className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          <span>
+            <span className="font-medium">
+              <span className="font-mono">{name}</span> の重みの取得:
+            </span>{' '}
+            {text}
+          </span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 /** 1 つの機能の要るもの, 入っているか, 入れ方のカード (ML-Found の describe_requirements) */
 export function RequirementCard({ requirement }: { requirement: Requirement }) {
   const status = availability(requirement.available, isOldVersion(requirement))
@@ -99,6 +130,7 @@ export function RequirementCard({ requirement }: { requirement: Requirement }) {
         </span>
       </header>
       <p className="text-ink-2">{requirement.description}</p>
+      <FirstUseNotice names={[requirement.name]} />
 
       <div>
         <h4 className="mb-1 text-xs font-medium text-ink-3">

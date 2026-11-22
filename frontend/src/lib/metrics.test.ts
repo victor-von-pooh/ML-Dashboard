@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  columnDirection,
   diffConfigs,
   flattenConfig,
   groupMetrics,
+  guessDirection,
   identicalSeries,
   judgedOnly,
   pointStyle,
@@ -190,5 +192,37 @@ describe('検証の間隔', () => {
       [4, 0.6],
     ])
     expect(style.sparse).toBe(false)
+  })
+})
+
+describe('指標の良い向き', () => {
+  it('名前から推測し, FID と Chamfer 距離は小さいほど良い', () => {
+    expect(guessDirection('valid/fid')).toBe('min')
+    expect(guessDirection('valid/chamfer')).toBe('min')
+    expect(guessDirection('valid/loss')).toBe('min')
+    expect(guessDirection('valid/acc')).toBe('max')
+    expect(guessDirection('valid/reward')).toBeNull()
+  })
+
+  it('監視する指標は ML-Found の向き, 他は推測, 学習率と推測できない列は null', () => {
+    const best = { monitor: 'valid/fid', mode: 'min' as const }
+    expect(columnDirection('valid/fid', [best])).toEqual({ direction: 'min', guessed: false })
+    expect(columnDirection('valid/reward', [{ monitor: 'valid/reward', mode: 'max' }])).toEqual({
+      direction: 'max',
+      guessed: false,
+    })
+    expect(columnDirection('valid/loss', [best])).toEqual({ direction: 'min', guessed: true })
+    expect(columnDirection('lr', [best])).toBeNull()
+    expect(columnDirection('lr_generator')).toBeNull()
+    expect(columnDirection('valid/reward')).toBeNull()
+  })
+
+  it('比べる実験で監視する指標の向きが食い違う場合は推測に任せる', () => {
+    const bests = [
+      { monitor: 'valid/score', mode: 'min' as const },
+      { monitor: 'valid/score', mode: 'max' as const },
+      null,
+    ]
+    expect(columnDirection('valid/score', bests)).toEqual({ direction: 'max', guessed: true })
   })
 })

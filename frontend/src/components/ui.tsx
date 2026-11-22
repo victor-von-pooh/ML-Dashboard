@@ -1,6 +1,8 @@
 import clsx from 'clsx'
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
   CheckCircle2,
   CircleHelp,
   Loader2,
@@ -18,6 +20,7 @@ import {
 } from 'react'
 
 import type { RunStatus } from '../api/client'
+import { directionLabel, type ColumnDirection } from '../lib/metrics'
 
 export function Card({
   title,
@@ -312,5 +315,24 @@ export function PageHeader({
       </div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}
     </div>
+  )
+}
+
+/** 指標の良い向きの印 (グラフの見出しに添える). 名前から推測した向きはそう書く */
+export function DirectionBadge({ value }: { value: ColumnDirection }) {
+  const Icon = value.direction === 'max' ? ArrowUp : ArrowDown
+  return (
+    <span
+      className="inline-flex items-center gap-0.5 rounded-full border border-line px-2 py-0.5 text-[11px] text-ink-2"
+      title={
+        value.guessed
+          ? '指標の名前から推測した向き'
+          : 'ML-Found の監視する指標の向き (trainer.mode)'
+      }
+    >
+      <Icon className="size-3" aria-hidden />
+      {directionLabel(value.direction)}
+      {value.guessed && ' (推測)'}
+    </span>
   )
 }
