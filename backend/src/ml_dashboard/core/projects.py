@@ -142,7 +142,8 @@ def venv_scope(project_dir: Path) -> list[Path]:
     Parameters
     ----------
     project_dir: Path
-        プロジェクトのディレクトリ
+        プロジェクトのディレクトリ (リンクと .. を解決した絶対のパス.
+        登録と場所の変更は resolve してから渡す)
 
     Returns
     ----------
