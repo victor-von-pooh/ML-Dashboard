@@ -2,6 +2,7 @@ import json
 import sys
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any, Optional
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,7 +11,9 @@ from ml_dashboard.core.models import RequirementReport
 from ml_dashboard.core.requirements import (
     REPORT_CACHE,
     REPORT_MARK,
+    describe_missing,
     describe_warnings,
+    is_old_version,
     parse_output,
     read_requires,
     requires_status,
@@ -161,9 +164,12 @@ def test_report_uses_project_python_and_dir(
     fresh = client.get(url, params={"refresh": "true"}).json()
     items = {item["name"]: item for item in fresh["requirements"]}
     assert items["rl"]["available"] is True
-    assert items["rl"]["checks"][0] == {
-        "kind": "module", "name": "gymnasium", "ok": True, "error": None
+    # 版を書かない版の ML-Found でも, 版と下限の欄は null で返す
+    check = items["rl"]["checks"][0]
+    assert {key: check[key] for key in ("kind", "name", "ok")} == {
+        "kind": "module", "name": "gymnasium", "ok": True
     }
+    assert check["version"] is None
 
     # 探すだけで読み込まず, ダッシュボードのプロセスにも読み込まない
     assert not (package / "imported").exists()
@@ -400,3 +406,110 @@ def test_unchecked_and_empty_registry() -> None:
     empty = to_report("py", "now", {"requirements": []})
     assert empty.error == "ML-Found の登録簿の結果に機能がありません"
     assert isinstance(empty, RequirementReport)
+
+
+def rl_item(
+    checks: list[dict[str, Any]], match: str = "all",
+    available: Optional[bool] = False
+) -> dict[str, Any]:
+    """
+    確かめの結果を差し込んだ, 強化学習の機能の項目を作る関数
+
+    Parameters
+    ----------
+    checks: list[dict[str, Any]]
+        確かめ方ごとの結果
+    match: str = "all"
+        all か any
+    available: Optional[bool] = False
+        全体の判定
+
+    Returns
+    ----------
+    item: dict[str, Any]
+        ML-Found の describe_requirements の 1 項目の形
+    """
+    item = {
+        "name": "rl", "description": "d", "checks": checks,
+        "match": match, "available": available,
+        "install": {"kind": "pip", "packages": ["gymnasium>=1.0"],
+                    "command": 'pip install "gymnasium>=1.0"'},
+        "note": None
+    }
+
+    return item
+
+
+def test_old_version() -> None:
+    """
+    版の古い追加の依存を, 入っていない時と分けて起動を止める文に書き,
+    版を読めない時と版を書かない版の ML-Found の結果は今のまま読むことを
+    確かめる関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    None
+    """
+    old = {"kind": "module", "name": "gymnasium", "ok": False,
+           "error": "版 0.29.1 は古い. 1.0 以上が要る",
+           "version": "0.29.1", "min_version": "1.0"}
+    absent = {"kind": "module", "name": "gymnasium", "ok": False,
+              "error": None, "version": None, "min_version": "1.0"}
+    unread = {"kind": "module", "name": "gymnasium", "ok": True,
+              "error": "版を読めないので 1.0 以上かを確かめていない",
+              "version": None, "min_version": "1.0"}
+    legacy = {"kind": "module", "name": "gymnasium", "ok": False,
+              "error": None}
+    ros2 = {
+        "name": "ros2", "description": "d",
+        "checks": [{"kind": "module", "name": "rclpy", "ok": False,
+                    "error": None}],
+        "match": "all", "available": False,
+        "install": {"kind": "guide", "url": "https://docs.ros.org/"},
+        "note": None
+    }
+
+    # 版が古い時は版と下限を出し, 入っていない機能とは分ける
+    report = to_report("py", "now", {"requirements": [rl_item([old]), ros2]})
+    assert report.requirements[0].checks[0].version == "0.29.1"
+    assert report.requirements[0].checks[0].min_version == "1.0"
+    assert is_old_version(report.requirements[0])
+    status = requires_status(["rl", "ros2"], report)
+    message = describe_missing(status)
+    assert "ros2 が入っていません" in message
+    assert (
+        "rl は入っている版が古いです (gymnasium 0.29.1, 1.0 以上が要る)"
+        in message
+    )
+    assert 'pip install "gymnasium>=1.0"' in message
+
+    # 無い時, 版を読めない時, 書かない版の ML-Found の結果は今のまま
+    for checks, available in (
+        ([absent], False), ([unread], True), ([legacy], False)
+    ):
+        payload = {"requirements": [rl_item(checks, available=available)]}
+        item = to_report("py", "now", payload).requirements[0]
+        assert not is_old_version(item)
+    legacy_report = to_report(
+        "py", "now", {"requirements": [rl_item([legacy])]}
+    )
+    assert legacy_report.requirements[0].checks[0].version is None
+    message = describe_missing(requires_status(["rl"], legacy_report))
+    assert "rl が入っていません" in message
+    assert "版が古い" not in message
+
+    # 全てが要る機能は, 入っていない確かめ方が残れば「入っていない」.
+    # どれか 1 つの機能は, 版の古いものを入れ替えれば満たせる
+    mixed = [old, {**absent, "name": "other", "min_version": None}]
+    assert not is_old_version(
+        to_report("py", "now", {"requirements": [rl_item(mixed)]})
+        .requirements[0]
+    )
+    assert is_old_version(
+        to_report("py", "now", {"requirements": [rl_item(mixed, "any")]})
+        .requirements[0]
+    )

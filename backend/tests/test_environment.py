@@ -872,3 +872,96 @@ class LockProbe:
         ]
 
         return jobs
+
+
+def test_old_version_readiness(
+    client: TestClient, project_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    準備の足りない機能のうち, 版が古いものに入っている版と下限を添え,
+    入っていない機能と分けて返すことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        差し替えに使う
+
+    Returns
+    ----------
+    None
+    """
+    from ml_dashboard.core.requirements import to_report
+
+    def item(name: str, check: dict[str, Any]) -> dict[str, Any]:
+        """
+        確かめ方 1 つの機能の項目を作る関数
+
+        Parameters
+        ----------
+        name: str
+            機能の名前
+        check: dict[str, Any]
+            確かめ方の結果
+
+        Returns
+        ----------
+        entry: dict[str, Any]
+            ML-Found の describe_requirements の 1 項目の形
+        """
+        entry = {
+            "name": name, "description": "d", "checks": [check],
+            "match": "all", "available": False,
+            "install": {"kind": "pip", "packages": [], "command": "pip x"},
+            "note": None
+        }
+
+        return entry
+
+    report = to_report(sys.executable, "now", {"requirements": [
+        item("rl", {"kind": "module", "name": "gymnasium", "ok": False,
+                    "error": "版 0.29.1 は古い. 1.0 以上が要る",
+                    "version": "0.29.1", "min_version": "1.0"}),
+        item("eda", {"kind": "module", "name": "ml_eda", "ok": False,
+                     "error": None})
+    ]})
+    report.ml_found = True
+
+    def fake_check(*args: Any, **kwargs: Any) -> Any:
+        """
+        差し込んだ確かめの結果を返す関数
+
+        Parameters
+        ----------
+        *args: Any
+            check_requirements の引数
+        **kwargs: Any
+            check_requirements の名前付きの引数
+
+        Returns
+        ----------
+        report: Any
+            差し込んだ結果
+        """
+        return report
+
+    monkeypatch.setattr(environment, "check_requirements", fake_check)
+    config = project_dir / "configs" / "default" / "train.yaml"
+    config.write_text(
+        "experiment:\n  name: demo\n  output_dir: outputs\n"
+        "requires: [rl, eda]\n",
+        encoding="utf-8"
+    )
+    link = project_dir.parent / "env" / "bin" / "python"
+    link.parent.mkdir(parents=True)
+    link.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+    link.chmod(0o755)
+    project_id = register(client, project_dir, str(link))
+    readiness = client.get(f"/api/projects/{project_id}/readiness").json()
+    assert readiness["missing"] == ["rl", "eda"]
+    assert readiness["old_versions"] == {
+        "rl": "gymnasium 0.29.1, 1.0 以上が要る"
+    }

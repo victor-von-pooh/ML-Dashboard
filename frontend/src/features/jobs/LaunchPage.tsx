@@ -29,6 +29,7 @@ import {
 } from '../../api/hooks'
 import { Button, Card, ErrorBox, PageHeader, Spinner } from '../../components/ui'
 import { formatValue } from '../../lib/format'
+import { describeMissing } from '../../lib/requirements'
 import { deleteYamlValue, getYamlValue, setYamlValue } from '../../lib/yamlEdit'
 import { chosenCandidates } from '../../lib/batches'
 import { configForScript } from '../../lib/scripts'
@@ -600,10 +601,11 @@ function RequiresNotice({
   requestError: Error | null
 }) {
   // 開始のボタンを押せない理由の短い要約 (読み上げと aria-describedby に使う)
+  const described = missing.length > 0 ? describeMissing(missing) : null
   const summary = pending
     ? 'config の requires を確かめています'
-    : missing.length > 0
-      ? `${missing.map((item) => item.name).join(', ')} が足りないので開始できません`
+    : described
+      ? described.summary
       : error
         ? 'config の requires に誤りがあるので開始できません'
         : ''
@@ -624,12 +626,12 @@ function RequiresNotice({
         </p>
       )}
       {error && <ErrorBox error={`config の requires の誤り: ${error}`} live={false} />}
-      {missing.length > 0 && (
+      {described && (
         <Card
           title={
             <span className="flex items-center gap-1.5 text-critical-text">
               <PackageX className="size-4" aria-hidden />
-              足りない追加の依存があるので開始できません
+              {described.title}
             </span>
           }
           actions={
@@ -640,8 +642,7 @@ function RequiresNotice({
         >
           <div className="space-y-3">
             <p className="text-xs text-ink-2">
-              config の requires に書いた機能が, プロジェクトの Python に入っていません.
-              次の一手で入れてから「確かめ直す」を押します ({link}).
+              {described.text} 次の一手で入れてから「確かめ直す」を押します ({link}).
             </p>
             {missing.map((requirement) => (
               <RequirementCard key={requirement.name} requirement={requirement} />

@@ -1597,6 +1597,10 @@ export interface components {
             modules?: string[] | null;
             /** Scheduler */
             scheduler?: string | null;
+            /** Scheduler Params */
+            scheduler_params?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** ParamSpec */
         ParamSpec: {
@@ -1818,6 +1822,13 @@ export interface components {
              */
             missing: string[];
             /**
+             * Old Versions
+             * @default {}
+             */
+            old_versions: {
+                [key: string]: string;
+            };
+            /**
              * Manual
              * @default []
              */
@@ -1936,6 +1947,10 @@ export interface components {
             ok?: boolean | null;
             /** Error */
             error?: string | null;
+            /** Version */
+            version?: string | null;
+            /** Min Version */
+            min_version?: string | null;
         };
         /** RequirementInstall */
         RequirementInstall: {

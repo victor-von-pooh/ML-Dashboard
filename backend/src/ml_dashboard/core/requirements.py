@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from ml_dashboard.core.jobs import child_env
 from ml_dashboard.core.models import (
     Requirement,
+    RequirementCheck,
     RequirementReport,
     RequiresStatus,
 )
@@ -538,9 +539,86 @@ def describe_next_step(requirement: Requirement) -> str:
     return step
 
 
+def old_checks(requirement: Requirement) -> list[RequirementCheck]:
+    """
+    入っているが版が下限より古い確かめ方を返す関数
+
+    Parameters
+    ----------
+    requirement: Requirement
+        確かめた機能
+
+    Returns
+    ----------
+    checks: list[RequirementCheck]
+        満たしていない (ok が False) で, 入っている版と下限のある確かめ方.
+        版を書かない版の ML-Found の結果では空
+    """
+    checks = [
+        check for check in requirement.checks
+        if check.ok is False and check.version is not None
+        and check.min_version is not None
+    ]
+
+    return checks
+
+
+def is_old_version(requirement: Requirement) -> bool:
+    """
+    足りない機能が, 入っていないのではなく版が古いだけかを判定する関数
+
+    Parameters
+    ----------
+    requirement: Requirement
+        確かめた機能
+
+    Returns
+    ----------
+    old: bool
+        足りない機能で, 版の古い確かめ方を入れ替えれば満たせる場合は True.
+        全てが要る (all) 機能は満たしていない確かめ方が全て版の古いもの,
+        どれか 1 つ (any) の機能は版の古いものが 1 つでもある場合
+    """
+    if requirement.available is not False:
+        return False
+    old = old_checks(requirement)
+    failed = [check for check in requirement.checks if check.ok is False]
+    found = bool(old) and (
+        requirement.match == "any" or len(old) == len(failed)
+    )
+
+    return found
+
+
+def describe_old_version(requirement: Requirement) -> str:
+    """
+    版の古い確かめ方の, 入っている版と下限を文にする関数
+
+    Parameters
+    ----------
+    requirement: Requirement
+        版が古い機能
+
+    Returns
+    ----------
+    text: str
+        「gymnasium 0.29.1, 1.0 以上が要る」のような文. 複数は "; " で
+        つなぐ
+    """
+    text = "; ".join(
+        f"{check.name} {check.version}, {check.min_version} 以上が要る"
+        for check in old_checks(requirement)
+    )
+
+    return text
+
+
 def describe_missing(status: RequiresStatus) -> str:
     """
     足りない機能を, 起動を止める誤りの文にする関数
+
+    入っていない機能と版が古い機能は分けて書く (何を直すかを取り違えない
+    ため)
 
     Parameters
     ----------
@@ -550,13 +628,22 @@ def describe_missing(status: RequiresStatus) -> str:
     Returns
     ----------
     message: str
-        足りない機能の名前と次の一手
+        足りない機能の名前 (版が古いものは版と下限) と次の一手
     """
-    names = ", ".join(item.name for item in status.missing)
+    absent = [item for item in status.missing if not is_old_version(item)]
+    old = [item for item in status.missing if is_old_version(item)]
+    parts = []
+    if absent:
+        names = ", ".join(item.name for item in absent)
+        parts.append(f"{names} が入っていません")
+    if old:
+        names = ", ".join(item.name for item in old)
+        details = "; ".join(describe_old_version(item) for item in old)
+        parts.append(f"{names} は入っている版が古いです ({details})")
     steps = ". ".join(describe_next_step(item) for item in status.missing)
     message = (
-        f"config の requires に書いた機能のうち {names} が, プロジェクトの "
-        f"Python ({status.python}) に入っていません. 次の一手: {steps}"
+        f"config の requires に書いた機能のうち, {'. '.join(parts)} "
+        f"(プロジェクトの Python: {status.python}). 次の一手: {steps}"
     )
 
     return message
