@@ -96,7 +96,7 @@ describe('RequirementCard', () => {
     }
     const { unmount } = render(<RequirementCard requirement={old} />)
     expect(screen.getAllByText('版が古い')[0]).toBeInTheDocument()
-    expect(screen.getByText('版が古い (0.29.1, 1.0 以上が要る)')).toBeInTheDocument()
+    expect(screen.getByText('版が古い (gymnasium 0.29.1, 1.0 以上が要る)')).toBeInTheDocument()
     expect(screen.queryByText('足りない')).toBeNull()
     expect(screen.queryByText('無い')).toBeNull()
     unmount()
@@ -147,9 +147,15 @@ describe('describeMissing', () => {
     const onlyOld = describeMissing([old])
     expect(onlyOld.summary).toBe('rl の版が古いので開始できません')
     expect(onlyOld.title).toBe('版の古い追加の依存があるので開始できません')
-    expect(onlyOld.text).toContain('rl: gymnasium 0.29.1, 1.0 以上が要る')
+    expect(onlyOld.text).toBe(
+      'config の requires に書いた機能のうち, rl は入っている版が古いです (gymnasium 0.29.1, 1.0 以上が要る).',
+    )
     const both = describeMissing([ros2, old])
     expect(both.summary).toBe('ros2 が足りず, rl の版が古いので開始できません')
     expect(both.title).toBe('足りないか版の古い追加の依存があるので開始できません')
+    // 混ざった時も機能の名前は 1 回だけ, 言い回しはバックエンドの起動を止める文とそろえる
+    expect(both.text).toBe(
+      'config の requires に書いた機能のうち, ros2 がプロジェクトの Python に入っておらず, rl は入っている版が古いです (gymnasium 0.29.1, 1.0 以上が要る).',
+    )
   })
 })

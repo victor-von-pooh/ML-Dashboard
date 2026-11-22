@@ -59,7 +59,8 @@ export function describeMissing(missing: Requirement[]): {
   const absent = missing.filter((item) => !isOldVersion(item)).map((item) => item.name)
   const old = missing.filter(isOldVersion)
   const oldNames = old.map((item) => item.name).join(', ')
-  const details = old.map((item) => `${item.name}: ${describeOldVersion(item)}`).join('; ')
+  // 括弧の中は「名前 版, 下限」だけ (機能の名前は括弧の前に 1 回だけ出す)
+  const details = old.map(describeOldVersion).join('; ')
   if (old.length === 0) {
     return {
       summary: `${absent.join(', ')} が足りないので開始できません`,
@@ -71,13 +72,13 @@ export function describeMissing(missing: Requirement[]): {
     return {
       summary: `${oldNames} の版が古いので開始できません`,
       title: '版の古い追加の依存があるので開始できません',
-      text: `config の requires に書いた機能は入っていますが, 版が古いです (${details}).`,
+      text: `config の requires に書いた機能のうち, ${oldNames} は入っている版が古いです (${details}).`,
     }
   }
   return {
     summary: `${absent.join(', ')} が足りず, ${oldNames} の版が古いので開始できません`,
     title: '足りないか版の古い追加の依存があるので開始できません',
-    text: `config の requires に書いた機能のうち, ${absent.join(', ')} がプロジェクトの Python に入っておらず, ${oldNames} は版が古いです (${details}).`,
+    text: `config の requires に書いた機能のうち, ${absent.join(', ')} がプロジェクトの Python に入っておらず, ${oldNames} は入っている版が古いです (${details}).`,
   }
 }
 

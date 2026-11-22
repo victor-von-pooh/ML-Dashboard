@@ -121,7 +121,7 @@ export function RequirementCard({ requirement }: { requirement: Requirement }) {
               {isOldCheck(check) ? (
                 // 版が古い時は, 入っている版と下限を出す (説明の文と重ねない)
                 <span className="text-critical-text">
-                  版が古い ({check.version}, {check.min_version} 以上が要る)
+                  版が古い ({check.name} {check.version}, {check.min_version} 以上が要る)
                 </span>
               ) : (
                 <>
