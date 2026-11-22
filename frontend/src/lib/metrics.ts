@@ -1,4 +1,4 @@
-import type { History } from '../api/client'
+import type { BestValue, History } from '../api/client'
 
 /** 比べられる実験の数の上限 (グラフの系列の色の数) */
 export const MAX_COMPARE = 8
@@ -137,4 +137,49 @@ export function validInterval(config: Record<string, unknown> | null | undefined
  */
 export function judgedOnly(key: string, interval: number): boolean {
   return interval > 1 && (key.startsWith('valid/') || key.startsWith('train_eval/'))
+}
+
+/** 指標の良い向き (大きいほど良いか, 小さいほど良いか) */
+export type Direction = 'max' | 'min'
+
+// 名前から向きを推測する指標 (小さいほど良いものを先に判定)
+const LOWER_IS_BETTER = /loss|err|mae|mse|rmse|nelbo|kl|recon|residual|boundary|perplexity|time/i
+// 語として現れる場合だけ小さいほど良い指標. fid は生成の画像の FID, chamfer は点群の
+// Chamfer 距離 (部分一致では confidence や fidelity まで小さいほど良いと取り違えるため)
+const LOWER_WORDS = /(^|[/_.-])(fid|chamfer)($|[/_.-])/i
+const HIGHER_IS_BETTER = /acc|auc|^ap$|\/ap$|f1|precision|recall|r2|score|iou|psnr|ssim/i
+
+/** 指標の名前から良い向きを推測する. 分からなければ null */
+export function guessDirection(name: string): Direction | null {
+  if (LOWER_IS_BETTER.test(name) || LOWER_WORDS.test(name)) return 'min'
+  if (HIGHER_IS_BETTER.test(name)) return 'max'
+  return null
+}
+
+/** 列の良い向きと, 名前から推測したか */
+export interface ColumnDirection {
+  direction: Direction
+  guessed: boolean
+}
+
+/**
+ * history.csv の列の良い向き. 監視する指標は ML-Found の向き (trainer.mode. 比べる
+ * 実験で向きが食い違う場合は推測に任せる), その他は名前から推測する. 学習率の列と,
+ * 推測できない列は null
+ */
+export function columnDirection(
+  key: string,
+  bests: (Pick<BestValue, 'monitor' | 'mode'> | null | undefined)[] = [],
+): ColumnDirection | null {
+  const modes = new Set(bests.filter((best) => best?.monitor === key).map((best) => best!.mode))
+  const [mode] = modes
+  if (modes.size === 1 && mode) return { direction: mode, guessed: false }
+  if (key === 'lr' || key.startsWith('lr_')) return null
+  const direction = guessDirection(key)
+  return direction ? { direction, guessed: true } : null
+}
+
+/** 良い向きの表示 */
+export function directionLabel(direction: Direction): string {
+  return direction === 'max' ? '大きいほど良い' : '小さいほど良い'
 }

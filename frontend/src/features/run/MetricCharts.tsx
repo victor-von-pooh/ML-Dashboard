@@ -2,8 +2,8 @@ import { useMemo, useState } from 'react'
 
 import type { BestValue, History } from '../../api/client'
 import { LineChart, type ChartMarker, type ChartSeries } from '../../components/LineChart'
-import { Card } from '../../components/ui'
-import { groupMetrics, judgedOnly, pointStyle, toPoints } from '../../lib/metrics'
+import { Card, DirectionBadge } from '../../components/ui'
+import { columnDirection, groupMetrics, judgedOnly, pointStyle, toPoints } from '../../lib/metrics'
 import { seriesVar } from '../../lib/colors'
 
 /**
@@ -76,12 +76,17 @@ export function MetricCharts({
               ]
             : []),
         ],
+        // 良い向き (監視する指標はその向き, 他は指標の名前から推測)
+        direction: columnDirection(
+          best && group.keys.includes(best.monitor) ? best.monitor : group.name,
+          [best],
+        ),
         // 何エポックかおきにだけ記録した系列 (グラフの下に点で描いた旨を添える)
         sparse: group.keys.filter(
           (key) => judgedOnly(key, validInterval) || pointStyle(toPoints(history, key)).sparse,
         ),
       })),
-    [groups, history, logScale, validInterval],
+    [groups, history, logScale, validInterval, best],
   )
 
   if (history.rows.length === 0) {
@@ -106,15 +111,20 @@ export function MetricCharts({
         </label>
       </div>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {charts.map(({ group, series, sparse }) => (
+        {charts.map(({ group, series, sparse, direction }) => (
           <Card
             key={group.name}
             title={<span className="font-mono">{group.name}</span>}
             actions={
-              best && group.keys.includes(best.monitor) ? (
-                <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent-text">
-                  監視する指標
-                </span>
+              direction || (best && group.keys.includes(best.monitor)) ? (
+                <>
+                  {direction && <DirectionBadge value={direction} />}
+                  {best && group.keys.includes(best.monitor) && (
+                    <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent-text">
+                      監視する指標
+                    </span>
+                  )}
+                </>
               ) : undefined
             }
           >

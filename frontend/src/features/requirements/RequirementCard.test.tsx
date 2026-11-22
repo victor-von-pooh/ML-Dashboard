@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { Requirement } from '../../api/client'
 import { describeMissing } from '../../lib/requirements'
-import { RequirementCard } from './RequirementCard'
+import { FirstUseNotice, RequirementCard } from './RequirementCard'
 
 const rl: Requirement = {
   name: 'rl',
@@ -157,5 +157,35 @@ describe('describeMissing', () => {
     expect(both.text).toBe(
       'config の requires に書いた機能のうち, ros2 がプロジェクトの Python に入っておらず, rl は入っている版が古いです (gymnasium 0.29.1, 1.0 以上が要る).',
     )
+  })
+})
+
+describe('初めて使うときの重みの取得', () => {
+  const fid: Requirement = {
+    ...rl,
+    name: 'fid',
+    description: '生成の画像の FID (pytorch-fid の Inception の特徴)',
+    checks: [{ kind: 'module', name: 'pytorch_fid', ok: true, error: null }],
+    available: true,
+  }
+
+  it('fid のカードに約 91 MB の重みを取る注意を出し, 他の機能には出さない', () => {
+    const { unmount } = render(<RequirementCard requirement={fid} />)
+    const card = screen.getByRole('region', { name: '追加の依存 fid' })
+    expect(card).toHaveTextContent('fid の重みの取得')
+    expect(card).toHaveTextContent('約 91 MB')
+    unmount()
+
+    render(<RequirementCard requirement={rl} />)
+    expect(screen.queryByText(/重みの取得/)).not.toBeInTheDocument()
+  })
+
+  it('学習の起動の前の注意は, requires の中の重みを取る機能だけを 1 度ずつ出す', () => {
+    const { container, rerender } = render(<FirstUseNotice names={['eda', 'fid', 'fid']} />)
+    expect(screen.getAllByRole('listitem')).toHaveLength(1)
+    expect(screen.getByRole('listitem')).toHaveTextContent('約 91 MB')
+
+    rerender(<FirstUseNotice names={['eda', 'rl']} />)
+    expect(container).toBeEmptyDOMElement()
   })
 })

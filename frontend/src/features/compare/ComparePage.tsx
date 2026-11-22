@@ -6,8 +6,16 @@ import { Link, useParams, useSearchParams } from 'react-router'
 
 import { encodeRunId, type History, type RunDetail } from '../../api/client'
 import { keys, useHistories, useProject, useRunDetails } from '../../api/hooks'
-import { LineChart, type ChartSeries } from '../../components/LineChart'
-import { Card, EmptyState, ErrorBox, PageHeader, Spinner, StatusBadge } from '../../components/ui'
+import { LineChart } from '../../components/LineChart'
+import {
+  Card,
+  DirectionBadge,
+  EmptyState,
+  ErrorBox,
+  PageHeader,
+  Spinner,
+  StatusBadge,
+} from '../../components/ui'
 import { seriesVar } from '../../lib/colors'
 import {
   MAX_COMPARE_COLUMNS,
@@ -30,17 +38,8 @@ import {
 } from '../../lib/format'
 import { groupImageSeries, sharedImageSeries } from '../../lib/images'
 import { groupByModel } from '../../lib/modelGroups'
-import {
-  MAX_COMPARE,
-  TRAIN_PREFIXES,
-  diffConfigs,
-  flattenConfig,
-  groupMetrics,
-  identicalSeries,
-  judgedOnly,
-  toPoints,
-  validInterval,
-} from '../../lib/metrics'
+import { compareCharts } from '../../lib/compareCharts'
+import { MAX_COMPARE, diffConfigs, flattenConfig } from '../../lib/metrics'
 import {
   ColumnLabel,
   EvaluationCell,
@@ -138,33 +137,16 @@ export function ComparePage() {
   // 全ての実験の列を, 指標の順にそろえて並べる
   // 検証用がある指標の学習用は, 指定した場合だけ表示
   // 描き直してもグラフの拡大と凡例の選択は残るので, 描画ごとに作り直す
-  const allColumns = [...new Set(ready.flatMap((slot) => slot.history.columns))]
-  const charts = groupMetrics(allColumns)
-    .flatMap((group) => group.keys)
-    .filter((key) => {
-      const prefix = TRAIN_PREFIXES.find((item) => key.startsWith(item))
-      return showTrain || !prefix || !allColumns.includes(key.replace(prefix, 'valid/'))
-    })
-    .map((column) => {
-      const having = ready.filter((slot) => slot.history.columns.includes(column))
-      const missing = ready.filter((slot) => !slot.history.columns.includes(column))
-      const series: ChartSeries[] = having.map((slot) => ({
-        name: label(slot.id),
-        color: slot.color,
-        points: toPoints(slot.history, column),
-        sparse: judgedOnly(column, validInterval(slot.run.config)) || undefined,
-      }))
-      return {
-        column,
-        series,
-        // 検証の間隔を空けた実験 (検証したエポックだけを点で示してつなぐ)
-        sparse: having
-          .filter((slot) => judgedOnly(column, validInterval(slot.run.config)))
-          .map((slot) => label(slot.id)),
-        missing: missing.map((slot) => label(slot.id)),
-        identical: identicalSeries(series),
-      }
-    })
+  const charts = compareCharts(
+    ready.map((slot) => ({
+      label: label(slot.id),
+      color: slot.color,
+      history: slot.history,
+      config: slot.run.config,
+      best: slot.run.best,
+    })),
+    showTrain,
+  )
 
   // 実験ごとの最後のエポック (長さの違う実験を比べる横軸のため)
   const lengths = ready
@@ -400,8 +382,12 @@ export function ComparePage() {
               </div>
             </div>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              {charts.map(({ column, series, missing, identical, sparse }) => (
-                <Card key={column} title={<span className="font-mono">{column}</span>}>
+              {charts.map(({ column, series, missing, identical, sparse, direction }) => (
+                <Card
+                  key={column}
+                  title={<span className="font-mono">{column}</span>}
+                  actions={direction ? <DirectionBadge value={direction} /> : undefined}
+                >
                   <LineChart
                     series={series}
                     logScale={logScale}

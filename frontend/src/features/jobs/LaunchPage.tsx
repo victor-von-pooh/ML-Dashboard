@@ -33,7 +33,7 @@ import { describeMissing } from '../../lib/requirements'
 import { deleteYamlValue, getYamlValue, setYamlValue } from '../../lib/yamlEdit'
 import { chosenCandidates } from '../../lib/batches'
 import { configForScript } from '../../lib/scripts'
-import { RequirementCard } from '../requirements/RequirementCard'
+import { FirstUseNotice, RequirementCard } from '../requirements/RequirementCard'
 import { ActiveBatchNotice, CandidatePicker, MIN_CANDIDATES } from './CandidatePicker'
 import { ConfigForm } from './ConfigForm'
 
@@ -458,6 +458,7 @@ function LaunchForm({
           <RequiresNotice
             id={requiresNoticeId}
             projectId={projectId}
+            requires={requires.data?.requires ?? []}
             missing={missingRequirements}
             error={requiresError}
             unknown={requires.data?.unknown ?? []}
@@ -580,6 +581,7 @@ function LaunchForm({
 function RequiresNotice({
   id,
   projectId,
+  requires,
   missing,
   error,
   unknown,
@@ -591,6 +593,7 @@ function RequiresNotice({
 }: {
   id: string
   projectId: string
+  requires: string[]
   missing: Requirement[]
   error: string | null
   unknown: string[]
@@ -650,6 +653,10 @@ function RequiresNotice({
           </div>
         </Card>
       )}
+      {/* 足りない機能はカードに出すので, 入っている機能の重みの取得だけを出す */}
+      <FirstUseNotice
+        names={requires.filter((name) => !missing.some((item) => item.name === name))}
+      />
       {unknown.length > 0 && (
         <p className="flex items-start gap-1.5 text-xs text-warning-text">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
