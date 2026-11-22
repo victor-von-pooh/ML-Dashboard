@@ -3896,6 +3896,14 @@
             "title": "Missing",
             "default": []
           },
+          "old_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Old Versions",
+            "default": {}
+          },
           "manual": {
             "items": {
               "$ref": "#/components/schemas/Requirement"
@@ -4286,6 +4294,28 @@
               }
             ],
             "title": "Error"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "min_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Version"
           }
         },
         "type": "object",

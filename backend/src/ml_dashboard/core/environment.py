@@ -23,6 +23,8 @@ from ml_dashboard.core.projects import DEFAULT_CONFIG, Project, ProjectStore
 from ml_dashboard.core.requirements import (
     REPORT_CACHE,
     check_requirements,
+    describe_old_version,
+    is_old_version,
     read_requires,
 )
 from ml_dashboard.core.runs import read_json
@@ -379,11 +381,17 @@ def check_readiness(
     check_error = None
     available: dict[str, Optional[bool]] = {}
     manual: list[Requirement] = []
+    old_versions: dict[str, str] = {}
     if exists:
         report = check_requirements(python, project_dir, refresh=refresh)
         ml_found = report.ml_found
         check_error = None if ml_found is False else report.error
         available = {item.name: item.available for item in report.requirements}
+        old_versions = {
+            item.name: describe_old_version(item)
+            for item in report.requirements
+            if item.name in requires and is_old_version(item)
+        }
         manual = [
             item for item in report.requirements
             if item.name in requires and item.available is False
@@ -451,6 +459,10 @@ def check_readiness(
         model_placeholder=placeholder, python=project.python,
         target_python=python, managed=managed, environment_exists=exists,
         ml_found=ml_found, requires=requires, missing=missing,
+        old_versions={
+            name: text for name, text in old_versions.items()
+            if name in missing
+        },
         manual=manual, unknown=unknown, outdated=outdated,
         requires_error=requires_error,
         check_error=check_error, installer="uv" if uv else "venv",

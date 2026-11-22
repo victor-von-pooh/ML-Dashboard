@@ -538,6 +538,10 @@ class RequirementCheck(BaseModel):
     name: str
     ok: Optional[bool] = None
     error: Optional[str] = None
+    # 入っている版と版の下限 (module の確かめ方. 書かない版の ML-Found と
+    # 無いか読めない場合は None). ok が False で両方ある場合は版が古い
+    version: Optional[str] = None
+    min_version: Optional[str] = None
 
 
 class RequirementInstall(BaseModel):
@@ -639,9 +643,12 @@ class ProjectReadiness(BaseModel):
     # 入れる先の Python で ML-Found を読み込めるか (確かめられない場合は
     # None)
     ml_found: Optional[bool] = None
-    # default の config の requires と, 足りない機能
+    # default の config の requires と, 足りない機能 (版が古いものも)
     requires: list[str] = []
     missing: list[str] = []
+    # 足りない機能のうち版が古いものの, 入っている版と下限の説明
+    # (例: {"rl": "gymnasium 0.29.1. 1.0 以上が要る"})
+    old_versions: dict[str, str] = {}
     # pip で入らないので, 利用者が公式の手順で入れる機能
     manual: list[Requirement] = []
     # 登録簿に無い名前 (入れられないので確かめない)

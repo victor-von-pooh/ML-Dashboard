@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { Requirement } from '../../api/client'
+import { describeMissing } from '../../lib/requirements'
 import { RequirementCard } from './RequirementCard'
 
 const rl: Requirement = {
@@ -77,5 +78,78 @@ describe('RequirementCard', () => {
     expect(screen.queryByRole('button')).toBeNull()
     expect(screen.getByText('要るもの (どれか 1 つ)')).toBeInTheDocument()
     expect(screen.getByText('補足: pip では入らない')).toBeInTheDocument()
+  })
+
+  it('版が古い時は「版が古い」と入っている版と下限を出し, 無い時と版を読めない時は今のまま', () => {
+    const old: Requirement = {
+      ...rl,
+      checks: [
+        {
+          kind: 'module',
+          name: 'gymnasium',
+          ok: false,
+          error: '版 0.29.1 は古い. 1.0 以上が要る',
+          version: '0.29.1',
+          min_version: '1.0',
+        },
+      ],
+    }
+    const { unmount } = render(<RequirementCard requirement={old} />)
+    expect(screen.getAllByText('版が古い')[0]).toBeInTheDocument()
+    expect(screen.getByText('版が古い (0.29.1. 1.0 以上が要る)')).toBeInTheDocument()
+    expect(screen.queryByText('足りない')).toBeNull()
+    expect(screen.queryByText('無い')).toBeNull()
+    unmount()
+
+    // 版を読めない時は確かめが通るので「ある」, 版の無い古い ML-Found の結果は「無い」
+    const unread: Requirement = {
+      ...rl,
+      available: true,
+      checks: [
+        {
+          kind: 'module',
+          name: 'gymnasium',
+          ok: true,
+          error: '版を読めないので 1.0 以上かを確かめていない',
+          version: null,
+          min_version: '1.0',
+        },
+      ],
+    }
+    const second = render(<RequirementCard requirement={unread} />)
+    expect(screen.getByText('入っている')).toBeInTheDocument()
+    expect(screen.getByText('ある')).toBeInTheDocument()
+    second.unmount()
+    render(<RequirementCard requirement={rl} />)
+    expect(screen.getByText('足りない')).toBeInTheDocument()
+    expect(screen.getByText('無い')).toBeInTheDocument()
+  })
+})
+
+describe('describeMissing', () => {
+  const old: Requirement = {
+    ...rl,
+    checks: [
+      {
+        kind: 'module',
+        name: 'gymnasium',
+        ok: false,
+        error: null,
+        version: '0.29.1',
+        min_version: '1.0',
+      },
+    ],
+  }
+
+  it('起動の画面の文を, 入っていない機能と版の古い機能に分ける', () => {
+    expect(describeMissing([rl]).summary).toBe('rl が足りないので開始できません')
+    expect(describeMissing([rl]).title).toBe('足りない追加の依存があるので開始できません')
+    const onlyOld = describeMissing([old])
+    expect(onlyOld.summary).toBe('rl の版が古いので開始できません')
+    expect(onlyOld.title).toBe('版の古い追加の依存があるので開始できません')
+    expect(onlyOld.text).toContain('rl: gymnasium 0.29.1. 1.0 以上が要る')
+    const both = describeMissing([ros2, old])
+    expect(both.summary).toBe('ros2 が足りず, rl の版が古いので開始できません')
+    expect(both.title).toBe('足りないか版の古い追加の依存があるので開始できません')
   })
 })
