@@ -73,6 +73,12 @@
 - 終わりの条件: config から作った Scheduler と自分で渡した Scheduler (SequentialLR の入れ子と partial の関数を含む) の実験で, 画面から引数が読める. 画面のテストがある
 - つながり: ML-Found の docs/FORMAT.md の「run.json」
 
+### 入れ方のカードで版が古い時を分けて出す
+- 何を: backend の `RequirementCheck` に `version` と `min_version` (ML-Found の `describe_requirements` の確かめの項目) を足し, `openapi.json` と `schema.d.ts` を作り直す. 入れ方のカード (`RequirementCard.tsx`) で, 確かめが通らず `version` がある時は「無い」でなく「版が古い」と, 入っている版と下限を出す
+- なぜ: ML-Found が追加の依存の版の下限を確かめるので, 入っているのに版が古い時も今は「無い」と出て, 入れ直す理由を取り違えるため
+- 終わりの条件: 下限より古い版が入った環境で, カードに「版が古い」と版と下限が出る. backend と画面のテストがある
+- つながり: ML-Found の docs/DESIGN.md の「5. 追加の依存」
+
 ## 条件待ち
 
 ### 学習の起動に混合精度と勾配の蓄積の欄
