@@ -43,6 +43,7 @@ import { compareCharts, withoutAxis } from '../../lib/compareCharts'
 import {
   EPOCH_AXIS,
   MAX_COMPARE,
+  axisLabel,
   axisOptions,
   axisStart,
   diffConfigs,
@@ -163,6 +164,9 @@ export function ComparePage() {
   const charts = compareCharts(entries, showTrain, axis)
   const noAxis = withoutAxis(entries, axis)
   const axisHistories = ready.map((slot) => slot.history).filter((item) => hasAxis(item, axis))
+  // 横軸の目盛りと左端は全てのグラフで同じなので, 1 回だけ求める
+  const integerX = integerAxis(axisHistories, axis)
+  const xMin = axisStart(axisHistories, axis)
 
   // 実験ごとの横軸の最後の値 (長さの違う実験を比べる横軸のため)
   const lengths = axisHistories
@@ -378,7 +382,7 @@ export function ComparePage() {
                     >
                       {axes.map((option) => (
                         <option key={option} value={option}>
-                          {option}
+                          {axisLabel(option)}
                         </option>
                       ))}
                     </select>
@@ -435,8 +439,8 @@ export function ComparePage() {
                     logScale={logScale}
                     xMax={fitShortest ? shortest : undefined}
                     xLabel={axis}
-                    integerX={integerAxis(axisHistories, axis)}
-                    xMin={axisStart(axisHistories, axis)}
+                    integerX={integerX}
+                    xMin={xMin}
                     label={
                       byEpoch
                         ? `${column} の実験ごとの推移`

@@ -77,7 +77,7 @@ test('学習曲線の横軸を環境のステップ数にし, 比較でも選ぶ
   // 実験の詳細: step の extra で記録した env_steps を横軸に選べる
   await page.goto(`/projects/${projectId}/runs/${RUN_ID}`)
   const axis = page.getByLabel('横軸')
-  await expect(axis.getByRole('option')).toHaveText(['epoch', 'env_steps'])
+  await expect(axis.getByRole('option')).toHaveText(['エポック', 'env_steps'])
   await axis.selectOption('env_steps')
   await expect(page.getByRole('img', { name: 'reward の env_steps に対する推移' })).toBeVisible()
   // 横軸の列そのもののグラフは出さない

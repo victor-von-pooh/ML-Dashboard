@@ -110,8 +110,14 @@ export function axisOptions(histories: History[]): string[] {
 /** エポックの位置を, 選んだ横軸の上の位置にする (目印のため). 無ければ null */
 export function axisAt(history: History, x: string, epoch: number): number | null {
   if (x === EPOCH_AXIS) return epoch
-  const row = history.rows.find((item) => item.epoch === epoch)
+  // 再開で同じエポックの行が重なる場合は, 最後の (使われた) 行
+  const row = history.rows.findLast((item) => item.epoch === epoch)
   return row?.[x] ?? null
+}
+
+/** 横軸の選択肢の表示名 (エポックは日本語, 他の列は列の名前のまま) */
+export function axisLabel(x: string): string {
+  return x === EPOCH_AXIS ? 'エポック' : x
 }
 
 /**

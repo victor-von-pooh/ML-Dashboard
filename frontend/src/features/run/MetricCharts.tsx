@@ -6,6 +6,7 @@ import { Card, DirectionBadge } from '../../components/ui'
 import {
   EPOCH_AXIS,
   axisAt,
+  axisLabel,
   axisOptions,
   axisStart,
   columnDirection,
@@ -62,6 +63,8 @@ export function MetricCharts({
       ),
     [history.columns, byEpoch, axis],
   )
+  const integerX = useMemo(() => integerAxis([history], axis), [history, axis])
+  const xMin = useMemo(() => axisStart([history], axis), [history, axis])
   // 更新ごとの学習率はエポックの軸の上の位置なので, 横軸がエポックのときだけ重ねる
   const steps = useCallback(
     (name: string) => (byEpoch ? stepsOf(history, name) : []),
@@ -144,7 +147,7 @@ export function MetricCharts({
             >
               {options.map((option) => (
                 <option key={option} value={option}>
-                  {option}
+                  {axisLabel(option)}
                 </option>
               ))}
             </select>
@@ -188,8 +191,8 @@ export function MetricCharts({
               markers={markers}
               logScale={logScale}
               xLabel={axis}
-              integerX={integerAxis([history], axis)}
-              xMin={axisStart([history], axis)}
+              integerX={integerX}
+              xMin={xMin}
               label={
                 !byEpoch
                   ? `${group.name} の ${axis} に対する推移`

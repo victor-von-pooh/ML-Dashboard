@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   axisAt,
+  axisLabel,
   axisOptions,
   axisStart,
   columnDirection,
@@ -137,6 +138,11 @@ describe('横軸の列', () => {
     expect(axisAt(rl, 'env_steps', 2)).toBeNull()
     expect(axisAt(rl, 'env_steps', 9)).toBeNull()
     expect(axisAt(rl, 'epoch', 9)).toBe(9)
+    // 再開で同じエポックが重なる場合は最後の行
+    const resumed = { ...rl, rows: [...rl.rows, { epoch: 3, env_steps: 800 }] }
+    expect(axisAt(resumed, 'env_steps', 3)).toBe(800)
+    expect(axisLabel('epoch')).toBe('エポック')
+    expect(axisLabel('env_steps')).toBe('env_steps')
     expect(integerAxis([rl], 'env_steps')).toBe(true)
     const halves = { ...rl, rows: [{ epoch: 1, env_steps: 0.5 }] }
     expect(integerAxis([rl, halves], 'env_steps')).toBe(false)
