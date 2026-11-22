@@ -86,9 +86,9 @@
 - つながり: ML-Found の docs/DESIGN.md の「24. 安全」
 
 ### 実験のディレクトリのファイルをリンクを辿らずに読み書きする
-- 何を: 実験の `run.json` と `progress.json` の読み込み (`core/runs.py` の `read_json`) を, ML-Found と同じ読み方 (リンクと普通でないファイルを読まず, 大きさの上限を持つ) にする. 止める要求の `STOP` の書き込み (`core/jobs.py`) を, リンクを辿らずに普通のファイルとして作る. `task.yaml` の注意の文を, 大きすぎて読まない場合も含む文にする
-- なぜ: 今は FIFO を読むと画面が止まり, リンクを辿って実験の外を読み, `STOP` がリンクなら実験の外のファイルを書き換えうるため
-- 終わりの条件: 3 つの読み書きが, リンク, FIFO, 上限を超えるファイルで止まらず, 実験の外を読み書きしないことを backend のテストで確かめる
+- 何を: 実験のディレクトリのファイルを画面が自分で読む所 (`core/runs.py` の `run.json` と `progress.json` (`read_json`), `model_summary.csv`, `history.csv`, `lr_steps.csv`, `config.yaml` と `source.yaml` と `diff.yaml` (`load_yaml`), `output.log`, `core/logs.py` の `train.log`) を, リンクを辿らず普通のファイルだけを大きさの上限つきで読む共通の関数にそろえる. 止める要求の `STOP` の書き込み (`core/jobs.py`) は, 先にリンクや普通でないものがあれば消してから, 普通のファイルとして作る. `task.yaml` と `samples/index.json` は ML-Found が守るので, ML-Found の固定を上げて任せる
+- なぜ: 今は FIFO を読むと画面が止まり (`model_summary.csv`, `run.json`), リンクを辿って実験の外を読み, 上限が無いので大きなファイルで記憶を使い, `STOP` がリンクなら実験の外のファイルを書き換えうるため
+- 終わりの条件: 挙げたファイルの読み込みが, リンクで外の中身を返さず, FIFO で止まらず, 上限を超えると読まない (空か理由付き) ことを backend のテストで確かめる. 先にリンクか FIFO の `STOP` がある場合も, 空の要求と `now` の要求の両方で, 外を書き換えず学習が止まることをテストで確かめる
 - つながり: ML-Found の docs/DESIGN.md の「24. 安全」
 
 ## 条件待ち
