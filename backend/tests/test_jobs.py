@@ -562,6 +562,94 @@ def test_validate_param_ranges(client: TestClient, project_dir: Path) -> None:
     assert factor["exclusive_minimum"] is False
 
 
+def test_validate_precision_and_accumulation(
+    client: TestClient, project_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    計算の精度, 勾配の蓄積, 始める前に読む重みを ML-Found で確かめることを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        bf16 を使えないデバイスの代わりに確かめの関数を差し替えるのに使用
+
+    Returns
+    ----------
+    None
+    """
+    import ml_found.experiment
+    import torch
+
+    project_id = register(client, project_dir)
+    url = f"/api/projects/{project_id}/validate"
+
+    # 既定は fp32 で毎バッチ更新, cpu では bf16 も使える
+    result = client.post(url, json={"text": "{}\n"}).json()
+    assert result["ok"] is True, result["error"]
+    assert result["config"]["trainer"]["precision"] == "fp32"
+    assert result["config"]["trainer"]["accumulate_grad_batches"] == 1
+    text = (
+        "experiment:\n  device: cpu\n"
+        "trainer:\n  precision: bf16\n  accumulate_grad_batches: 4\n"
+    )
+    result = client.post(url, json={"text": text}).json()
+    assert result["ok"] is True, result["error"]
+    assert result["diff"]["trainer.precision"]["experiment"] == "bf16"
+    assert result["diff"]["trainer.accumulate_grad_batches"]["experiment"] == 4
+
+    # 値の誤りと組み合わせの誤りは check_trainer_config のエラー
+    for text, expected in [
+        ("trainer:\n  precision: fp16\n", "trainer.precision"),
+        ("trainer:\n  accumulate_grad_batches: 0\n",
+         "trainer.accumulate_grad_batches"),
+        ("optimizer:\n  name: LBFGS\n  params:\n    lr: 0.1\n"
+         "trainer:\n  accumulate_grad_batches: 2\n",
+         "trainer.accumulate_grad_batches"),
+    ]:
+        result = client.post(url, json={"text": text}).json()
+        assert result["ok"] is False
+        assert expected in result["error"]
+
+    # デバイスで bf16 を使えない場合は, config も返す値の誤り (フォームで直す)
+    devices: list[torch.device] = []
+
+    def unsupported(cfg: object, device: torch.device) -> None:
+        devices.append(device)
+        raise ValueError(f"trainer.precision: bf16 は {device} で使えません")
+
+    monkeypatch.setattr(ml_found.experiment, "check_precision", unsupported)
+    text = "experiment:\n  device: cpu\ntrainer:\n  precision: bf16\n"
+    result = client.post(url, json={"text": text}).json()
+    assert result["ok"] is False
+    assert result["error"] == "trainer.precision: bf16 は cpu で使えません"
+    assert result["config"]["trainer"]["precision"] == "bf16"
+    assert devices == [torch.device("cpu")]
+    monkeypatch.undo()
+
+    # 始める前に読む重みは, 無いファイルと重みの辞書でないファイルがエラー
+    text = "trainer:\n  init_weights:\n    path: weights/missing.pt\n"
+    result = client.post(url, json={"text": text}).json()
+    assert result["ok"] is False
+    assert "weights/missing.pt" in result["error"]
+    (project_dir / "weights").mkdir()
+    torch.save([1, 2], project_dir / "weights" / "list.pt")
+    text = "trainer:\n  init_weights:\n    path: weights/list.pt\n"
+    result = client.post(url, json={"text": text}).json()
+    assert result["ok"] is False
+    torch.save(
+        torch.nn.Linear(2, 1).state_dict(), project_dir / "weights" / "ok.pt"
+    )
+    text = "trainer:\n  init_weights:\n    path: weights/ok.pt\n"
+    result = client.post(url, json={"text": text}).json()
+    assert result["ok"] is True, result["error"]
+    assert result["warnings"] == []
+
+
 def test_validate_notes_filled_scheduler(
     client: TestClient, project_dir: Path
 ) -> None:

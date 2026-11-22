@@ -242,6 +242,59 @@ test('フォームで config を変え, 学習を起動して完了まで見届�
   expect(detail.config.optimizer.name).toBe('SGD')
 })
 
+test('混合精度と勾配の蓄積をフォームで変えて起動する', async ({ page, request }) => {
+  // 学習のプロセスの起動 (PyTorch の読み込み) を含むので長めに待機
+  test.setTimeout(90_000)
+  await page.goto(`/projects/${projectId}/launch`)
+  await page
+    .getByLabel('experiment の config')
+    .selectOption('configs/experiment/examples/quick.yaml')
+  const editor = page.getByLabel('config の中身')
+  await expect(editor).toHaveValue(/epochs: 3/)
+
+  // 既定は fp32 で毎バッチ更新. 説明に mps でメモリを減らす方を添える
+  const precision = page.getByLabel('計算の精度')
+  await expect(precision).toHaveValue('fp32')
+  await expect(precision).toHaveAccessibleDescription(/メモリを減らすのは勾配の蓄積の方/)
+  await precision.selectOption('bf16')
+  await expect(editor).toHaveValue(/precision: bf16/)
+  const accumulate = page.getByLabel('勾配の蓄積')
+  await expect(accumulate).toHaveValue('1')
+  await accumulate.fill('0')
+  await accumulate.press('Enter')
+  await expect(page.getByText('1 以上の整数にしてください')).toBeVisible()
+  await expect(editor).not.toHaveValue(/accumulate_grad_batches/)
+  await accumulate.fill('4')
+  await accumulate.press('Enter')
+  await expect(editor).toHaveValue(/accumulate_grad_batches: 4/)
+
+  // 組み合わせの誤り (closure を使う Optimizer) は ML-Found の確かめで分かる
+  await page.getByRole('combobox', { name: 'Optimizer' }).selectOption('LBFGS')
+  await expect(editor).toHaveValue(/name: LBFGS/)
+  await page.getByRole('button', { name: 'ML-Found で config を確かめる' }).click()
+  await expect(page.getByText(/accumulate_grad_batches/).first()).toBeVisible()
+  await page.getByRole('combobox', { name: 'Optimizer' }).selectOption('Adam')
+  await expect(editor).toHaveValue(/name: Adam/)
+
+  await page.getByRole('button', { name: 'ML-Found で config を確かめる' }).click()
+  await expect(page.getByText(/読み込めました/)).toBeVisible()
+  await page.getByRole('button', { name: '学習を開始' }).click()
+  await expect(page).toHaveURL(/\/jobs\//)
+  await expect(page.getByText('完了', { exact: true }).first()).toBeVisible({ timeout: 45_000 })
+
+  // 起動した学習の config に 2 つの項目が入る
+  const runs = (await (await request.get(`/api/projects/${projectId}/runs`)).json()) as {
+    id: string
+    started_at: string
+  }[]
+  const newest = runs.toSorted((a, b) => b.started_at.localeCompare(a.started_at))[0]!
+  const detail = (await (
+    await request.get(`/api/projects/${projectId}/runs/${newest.id}`)
+  ).json()) as { config: { trainer: { precision: string; accumulate_grad_batches: number } } }
+  expect(detail.config.trainer.precision).toBe('bf16')
+  expect(detail.config.trainer.accumulate_grad_batches).toBe(4)
+})
+
 test('検証の間隔をフォームで変え, 検証したエポックだけを点で描く', async ({ page, request }) => {
   // 学習のプロセスの起動 (PyTorch の読み込み) を含むので長めに待機
   test.setTimeout(90_000)
