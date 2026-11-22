@@ -46,7 +46,7 @@ function useDebounced<T>(value: T, delay: number): T {
 }
 
 /**
- * 1 以上の整数を書く trainer の欄 (エポック数, 検証の間隔). 確定 (Enter か欄を離れる)
+ * 1 以上の整数を書く trainer の欄 (エポック数, 検証の間隔, 勾配の蓄積). 確定 (Enter か欄を離れる)
  * したときに YAML へ書き込み, 1 以上の整数でない値は書き込まずに理由を出す
  */
 export function IntegerField({
@@ -119,6 +119,64 @@ export function IntegerField({
           1 以上の整数にしてください
         </span>
       )}
+      {hint && (
+        <p id={`${id}-hint`} className="col-start-2 text-[11px] text-ink-3">
+          {hint}
+        </p>
+      )}
+    </div>
+  )
+}
+
+// 計算の精度 (trainer.precision) の選べる値と説明
+const PRECISIONS = [
+  { value: 'fp32', label: 'fp32 (既定)' },
+  { value: 'bf16', label: 'bf16 (自動の混合精度)' },
+]
+
+/**
+ * 計算の精度 (trainer.precision) を選ぶ欄. 選び直したときに YAML へ書き込む.
+ * 選べる値の外 (環境変数の参照など) は, 書いたままの値を選択肢に足して出す
+ */
+export function PrecisionField({
+  config,
+  disabled,
+  onEdit,
+  hint,
+}: {
+  config: Config
+  disabled: boolean
+  onEdit: (change: (current: string) => string) => void
+  /** 欄の下に添える説明 */
+  hint?: string
+}) {
+  const id = useId()
+  const value = getIn(config, 'trainer.precision')
+  const current = value === undefined || value === null ? 'fp32' : String(value)
+  const known = PRECISIONS.some((item) => item.value === current)
+
+  return (
+    <div className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] items-center gap-2">
+      <label htmlFor={id} className="text-sm font-semibold">
+        計算の精度
+      </label>
+      <select
+        id={id}
+        value={current}
+        onChange={(event) =>
+          onEdit((text) => setYamlValue(text, 'trainer.precision', event.target.value))
+        }
+        aria-describedby={hint ? `${id}-hint` : undefined}
+        disabled={disabled}
+        className="h-8 w-56 rounded-md border border-line bg-bg px-2 font-mono text-xs"
+      >
+        {!known && <option value={current}>{current}</option>}
+        {PRECISIONS.map((item) => (
+          <option key={item.value} value={item.value}>
+            {item.label}
+          </option>
+        ))}
+      </select>
       {hint && (
         <p id={`${id}-hint`} className="col-start-2 text-[11px] text-ink-3">
           {hint}
@@ -494,6 +552,25 @@ export function ConfigForm({
                 disabled={stale}
                 onEdit={onEdit}
                 hint="この値で割り切れるエポックと予定の最後のエポックだけ検証し, その中からベストモデルを選びます (1 なら毎エポック). Early Stopping と ReduceLROnPlateau の patience は検証の回数で数えます"
+              />
+            )}
+            {/* 混合精度と勾配の蓄積を知らない版の ML-Found の config では出さない */}
+            {getIn(config, 'trainer.precision') !== undefined && (
+              <PrecisionField
+                config={config}
+                disabled={stale}
+                onEdit={onEdit}
+                hint="bf16 では順伝播と損失を bfloat16 で計算します (重みとチェックポイントは元の型のまま). 使えるかは, cpu では「確かめる」で, cuda と mps では起動した学習の初めに分かります. mps では速さが少し上がるだけで, メモリを減らすのは勾配の蓄積の方です"
+              />
+            )}
+            {getIn(config, 'trainer.accumulate_grad_batches') !== undefined && (
+              <IntegerField
+                label="勾配の蓄積"
+                path="trainer.accumulate_grad_batches"
+                config={config}
+                disabled={stale}
+                onEdit={onEdit}
+                hint="この数のバッチの勾配を貯めてから 1 回更新します (1 なら毎バッチ). 小さなバッチで大きなバッチと同じ更新にし, メモリを減らします. closure を使う Optimizer (LBFGS など) や, 複数の Optimizer (optimizers) では使えません"
               />
             )}
           </div>

@@ -83,8 +83,11 @@ PATH_KEY_WORDS = frozenset({"path", "dir", "file"})
 # Hugging Face の model_name_or_path などの, パスでなくてもよい項目の名前の末尾
 NAME_OR_PATH_SUFFIX = "name_or_path"
 
-# パスの確認から外す項目 (ML-Found が作る出力先と, ML-Found が確かめる再開元)
-SKIPPED_PATH_KEYS = frozenset({"experiment.output_dir", "trainer.resume_from"})
+# パスの確認から外す項目 (ML-Found が作る出力先と, ML-Found が確かめる再開元と
+# 始める前に読む重み)
+SKIPPED_PATH_KEYS = frozenset({
+    "experiment.output_dir", "trainer.resume_from", "trainer.init_weights.path"
+})
 
 
 class ConfigText(BaseModel):
@@ -730,6 +733,8 @@ def run_checks(
     from ml_found.config import load_config
     from ml_found.experiment import (
         check_experiment_name,
+        check_init_weights,
+        check_precision,
         check_resume_path,
         check_trainer_config,
     )
@@ -759,13 +764,24 @@ def run_checks(
             warnings, value_error = [], str(error)
         check_trainer_config(cfg)
         check_resume_path(cfg, project_dir)
+        check_init_weights(cfg, project_dir)
 
         # デバイスは start_experiment と同じく必ず確認
+        # bf16 をデバイスで使えるかは, サーバーが GPU の文脈を持ち続けない
+        # ように cpu の場合だけ確認 (cuda と mps は学習のプロセスで確認).
+        # フォームで fp32 に戻せるように値の誤り
         try:
-            get_device(cfg.experiment.device)
+            device = get_device(cfg.experiment.device)
         except ValueError as error:
             if value_error is None:
                 value_error = f"experiment.device の誤り: {error}"
+        else:
+            try:
+                if device.type == "cpu":
+                    check_precision(cfg, device)
+            except ValueError as error:
+                if value_error is None:
+                    value_error = str(error)
 
         # 範囲を持たない引数の誤りも, 仮のパラメータで作ってみて確認
         # ダッシュボードのサーバーが GPU のメモリを持ち続けないように cpu で
