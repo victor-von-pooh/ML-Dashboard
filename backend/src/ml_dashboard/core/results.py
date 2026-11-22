@@ -773,6 +773,31 @@ def read_better(data: dict[str, Any]) -> dict[str, Better]:
     return better
 
 
+def evaluation_kind(data: dict[str, Any]) -> str:
+    """
+    評価を曲線と表のどちらで出すかを返す関数
+
+    評価のタブの出し方と守り付きの評価の判定で同じものを使う
+
+    Parameters
+    ----------
+    data: dict[str, Any]
+        形を確かめた evaluations/<名前>.json の中身
+
+    Returns
+    ----------
+    kind: str
+        横軸の列のある曲線は curve, それ以外は table
+    """
+    x = text_or_none(data.get("x"))
+    kind = (
+        "curve" if data.get("kind") == "curve" and x in data["columns"]
+        else "table"
+    )
+
+    return kind
+
+
 def to_evaluation(data: dict[str, Any]) -> Optional[Evaluation]:
     """
     評価のファイルの中身を, 画面に返す形にする関数
@@ -796,9 +821,7 @@ def to_evaluation(data: dict[str, Any]) -> Optional[Evaluation]:
 
     # 曲線は横軸の列がある場合だけ, それ以外は表として出す
     x = text_or_none(data.get("x"))
-    kind = data.get("kind")
-    if kind != "curve" or x not in columns:
-        kind = "table"
+    kind = evaluation_kind(data)
     kept = [
         {column: to_cell(row.get(column)) for column in columns}
         for row in rows[:MAX_EVALUATION_ROWS]
@@ -835,11 +858,12 @@ def is_policy_evaluation(data: dict[str, Any]) -> bool:
     Returns
     ----------
     found: bool
-        表で, 列に end と守りの結果ごとの数の列を全て持つか
+        評価のタブで表として出す評価で, 列に end と守りの結果ごとの数の
+        列を全て持つか
     """
     columns = data["columns"]
     found = (
-        data.get("kind") != "curve" and "end" in columns
+        evaluation_kind(data) == "table" and "end" in columns
         and all(status in columns for status in POLICY_STATUSES)
     )
 
@@ -1110,11 +1134,12 @@ def load_plain_evaluations(
     """
     評価のファイルのうち, シンボリックリンクでない普通のファイルだけを読む関数
 
-    ML-Found の load_evaluations はリンクと普通でないファイル (FIFO など) も
-    辿って読むので, 実験のディレクトリの外を読まないようにここで読む.
-    読み方 (JSON の辞書だけ, 読めないファイルは飛ばす) は load_evaluations と
-    同じ. 実験のディレクトリより上の入れ替わりは確かめない (他のファイルの
-    読み方と同じ)
+    ML-Found の load_evaluations は読まなかったファイルとその理由を返さない
+    ので, ファイルごとの理由を出すためにここで読む. 読むファイル (JSON の
+    辞書だけ. リンク, 普通でないファイル, 上限を超えるファイル, 読めない
+    ファイルは飛ばす) と上限は load_evaluations と同じ (テストで確かめる).
+    実験のディレクトリより上の入れ替わりは確かめない (他のファイルの読み方
+    と同じ)
 
     Parameters
     ----------

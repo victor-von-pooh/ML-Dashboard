@@ -1,4 +1,5 @@
 import csv
+import io
 import json
 import math
 import os
@@ -40,6 +41,16 @@ from ml_dashboard.core.models import (
     RunStatus,
     RunSummary,
 )
+from ml_dashboard.core.run_files import (
+    MAX_CSV_BYTES,
+    MAX_JSON_BYTES,
+    MAX_YAML_BYTES,
+    open_plain,
+    open_plain_text,
+    plain_stat,
+    read_plain,
+    read_plain_text,
+)
 
 # 実験のディレクトリの日付と時刻の名前
 DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -60,6 +71,9 @@ FINAL_WEIGHTS = ("best", "last", "partial")
 
 # 更新ごとの学習率をグラフに渡す点の数の上限
 MAX_LR_STEPS = 5000
+
+# lr_steps.csv の見出しの行として読む大きさの上限 (バイト)
+MAX_HEADER_BYTES = 1024 * 1024
 
 # 詳細の画面に返す model_summary.csv の行数の上限
 MAX_MODEL_SUMMARY_ROWS = 2000
@@ -286,7 +300,7 @@ def read_history_csv(path: Path) -> History:
     history: History
         列の名前とエポックごとの値
     """
-    text = path.read_text(encoding="utf-8", errors="replace")
+    text = read_plain_text(path, MAX_CSV_BYTES)
     reader = csv.DictReader(text.splitlines())
     columns = [str(name) for name in reader.fieldnames or []]
 
@@ -390,10 +404,10 @@ def read_model_summary(
     total: Optional[int]
         ファイルの全体の行数
     """
-    # model_summary.csv の無い実験は表示なし, 同じファイルなら前の結果を使用
-    try:
-        stat = path.stat()
-    except OSError:
+    # model_summary.csv の無い実験 (リンクと普通でないファイルも) は
+    # 表示なし, 同じファイルなら前の結果を使用
+    stat = plain_stat(path)
+    if stat is None:
         return None, None
     key = (stat.st_mtime_ns, stat.st_size, limit)
     cached = SUMMARY_CACHE.get(str(path))
@@ -405,7 +419,9 @@ def read_model_summary(
     total = 0
     result: SummaryResult
     try:
-        with path.open(encoding="utf-8-sig", newline="") as file:
+        with open_plain_text(
+            path, MAX_CSV_BYTES, encoding="utf-8-sig"
+        ) as file:
             for record in csv.DictReader(file):
                 if any(record.get(name) is None for name in SUMMARY_COLUMNS):
                     raise ValueError("model_summary.csv の列が足りません")
@@ -445,10 +461,10 @@ def cached_log(path: Path, log_format: str) -> list[LogEntry]:
     entries: list[LogEntry]
         記録 (リストは写し. 中の記録は共有するので書き換えない)
     """
-    # ファイルが無い場合は空, 更新時刻と大きさと書式が同じなら前の結果
-    try:
-        stat = path.stat()
-    except OSError:
+    # ファイルが無い場合 (リンクと普通でないファイルも) は空, 更新時刻と
+    # 大きさと書式が同じなら前の結果
+    stat = plain_stat(path)
+    if stat is None:
         return []
     key = (stat.st_mtime_ns, stat.st_size, log_format)
     cached = LOG_CACHE.get(str(path))
@@ -493,30 +509,40 @@ def read_lr_steps(
     points: list[LrPoint]
         エポックの軸の上の位置と学習率, エポックの読めない行は除外
     """
-    stat = path.stat()
+    stat = plain_stat(path)
+    if stat is None:
+        return []
     key = (stat.st_mtime_ns, stat.st_size, limit)
     cached = LR_CACHE.get(f"{path}#{column}")
     if cached is not None and cached[0] == key:
         return cached[1]
 
-    # 大きなファイルでも軽く済むように, 1 行ずつ数だけを読み込み
+    # 大きなファイルでも軽く済むように, 中身を 1 つの文字列にせず 1 行ずつ
+    # 数だけを読み込み
     epochs: list[int] = []
     lrs: list[float] = []
-    with path.open(encoding="utf-8-sig", errors="replace", newline="") as f:
-        reader = csv.reader(f)
-        header = next(reader, [])
-        if "epoch" not in header or column not in header:
-            return []
-        epoch_column, lr_column = header.index("epoch"), header.index(column)
-        for row in reader:
-            if len(row) <= max(epoch_column, lr_column):
-                continue
-            epoch = to_float(row[epoch_column])
-            if epoch is None:
-                continue
-            lr = to_float(row[lr_column])
-            epochs.append(int(epoch))
-            lrs.append(math.nan if lr is None else lr)
+    # (リンク, 普通でないファイル, 上限を超えるファイルは点なし)
+    try:
+        with open_plain_text(
+            path, MAX_CSV_BYTES, encoding="utf-8-sig"
+        ) as f:
+            reader = csv.reader(f)
+            header = next(reader, [])
+            if "epoch" not in header or column not in header:
+                return []
+            epoch_column = header.index("epoch")
+            lr_column = header.index(column)
+            for row in reader:
+                if len(row) <= max(epoch_column, lr_column):
+                    continue
+                epoch = to_float(row[epoch_column])
+                if epoch is None:
+                    continue
+                lr = to_float(row[lr_column])
+                epochs.append(int(epoch))
+                lrs.append(math.nan if lr is None else lr)
+    except (OSError, csv.Error):
+        return []
 
     # エポックごとの記録の数で位置を決め, 間引いてから返却
     counts: dict[int, int] = {}
@@ -554,9 +580,15 @@ def lr_step_columns(path: Path) -> list[str]:
     columns: list[str]
         step と epoch 以外の列の名前
     """
-    # 見出しの行だけを読み込み
-    with path.open(encoding="utf-8-sig", errors="replace", newline="") as f:
-        header = next(csv.reader(f), [])
+    # 見出しの行だけを読み込み (リンクと普通でないファイルは列なし)
+    try:
+        with open_plain(path, MAX_CSV_BYTES) as file:
+            line = file.readline(MAX_HEADER_BYTES).decode(
+                "utf-8-sig", errors="replace"
+            )
+    except OSError:
+        return []
+    header = next(csv.reader([line]), [])
     columns = [name for name in header if name not in ("step", "epoch")]
 
     return columns
@@ -579,11 +611,17 @@ def read_history(run_dir: Path, entries: list[LogEntry]) -> History:
         列の名前とエポックごとの値
     """
     # 学習を終えると history.csv が書かれるので, あればそれを使用
+    # (リンク, 普通でないファイル, 大きすぎるファイルは無いものとする)
     path = run_dir / "history.csv"
-    if path.is_file():
-        history = read_history_csv(path)
+    found: Optional[History]
+    try:
+        found = read_history_csv(path)
+    except OSError:
+        found = None
+    if found is not None:
+        history = found
         lr_path = run_dir / "lr_steps.csv"
-        if lr_path.is_file():
+        if plain_stat(lr_path) is not None:
             history.lr_steps = read_lr_steps(lr_path)
             history.named_lr_steps = {
                 column: read_lr_steps(lr_path, column=column)
@@ -617,12 +655,17 @@ def load_yaml(path: Path) -> dict[str, Any]:
     Returns
     ----------
     config: dict[str, Any]
-        ファイルの中身, 無いか辞書でない場合は空の辞書
+        ファイルの中身, 無いか辞書でない場合は空の辞書. リンク, 普通で
+        ないファイル, 大きすぎるファイルも空の辞書
     """
-    if not path.is_file():
+    try:
+        text = read_plain_text(path, MAX_YAML_BYTES)
+    except OSError:
         return {}
 
-    loaded = OmegaConf.to_container(OmegaConf.load(path), resolve=False)
+    loaded = OmegaConf.to_container(
+        OmegaConf.load(io.StringIO(text)), resolve=False
+    )
     config = (
         {str(key): value for key, value in loaded.items()}
         if isinstance(loaded, dict) else {}
@@ -720,10 +763,11 @@ def read_json(path: Path) -> dict[str, Any]:
     Returns
     ----------
     data: dict[str, Any]
-        ファイルの中身, 無いか壊れている場合は空の辞書
+        ファイルの中身, 無いか壊れている場合は空の辞書. リンク, 普通で
+        ないファイル, 大きすぎるファイルも空の辞書
     """
     try:
-        loaded = json.loads(path.read_text(encoding="utf-8"))
+        loaded = json.loads(read_plain(path, MAX_JSON_BYTES).decode("utf-8"))
     except (OSError, ValueError):
         return {}
     data = loaded if isinstance(loaded, dict) else {}
@@ -1312,12 +1356,17 @@ def read_optimizers(
         Optimizer ごとの情報 (形の違う行は除く), 書いていない場合と
         リストでない場合は None
     """
-    # 形の違う行 (手で書き換えたものなど) だけを除外
+    # 形の違う行 (手で書き換えたものなど) だけを除外. 辞書でない
+    # Scheduler の引数は行ごと捨てず, 引数だけを無いものとする
     raw = status.get("optimizers")
     if not isinstance(raw, list):
         return None
     optimizers = []
     for item in raw:
+        if isinstance(item, dict) and not isinstance(
+            item.get("scheduler_params"), (dict, type(None))
+        ):
+            item = {**item, "scheduler_params": None}
         try:
             optimizers.append(OptimizerInfo.model_validate(item))
         except ValidationError:

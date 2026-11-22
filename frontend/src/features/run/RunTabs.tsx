@@ -8,6 +8,7 @@ import { formatBytes, formatLogTime, formatValue } from '../../lib/format'
 import { flattenConfig } from '../../lib/metrics'
 import { describeModelSpec } from '../../lib/modelSpec'
 import { countParams, filterParams } from '../../lib/modelSummary'
+import { SchedulerParams } from './SchedulerParams'
 
 /** 検索できる「項目名 = 値」の表 */
 function KeyValueTable({ rows, highlight }: { rows: [string, string][]; highlight?: Set<string> }) {
@@ -178,8 +179,14 @@ function ParamTable({ rows, total }: { rows: ModelParam[]; total: number }) {
 
 /** 名前付きの複数の Optimizer の, 名前ごとのクラス, 受け持つ部分, Scheduler */
 function OptimizerTable({ optimizers }: { optimizers: NonNullable<RunDetail['optimizers']> }) {
+  // Scheduler の引数を出す場合は, 入れ子の表が狭くならないように横幅いっぱいに
+  const wide = optimizers.some((item) => item.scheduler && item.scheduler_params)
   return (
-    <Card title="Optimizer ごとの受け持つ部分" padded={false}>
+    <Card
+      title="Optimizer ごとの受け持つ部分"
+      padded={false}
+      className={clsx(wide && 'lg:col-span-2')}
+    >
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-line text-xs text-ink-3">
@@ -200,7 +207,10 @@ function OptimizerTable({ optimizers }: { optimizers: NonNullable<RunDetail['opt
           </thead>
           <tbody>
             {optimizers.map((item, index) => (
-              <tr key={item.name ?? `#${index}`} className="border-b border-line last:border-0">
+              <tr
+                key={item.name ?? `#${index}`}
+                className="border-b border-line align-top last:border-0"
+              >
                 <th scope="row" className="px-4 py-1.5 font-mono text-xs font-medium">
                   {item.name}
                 </th>
@@ -215,7 +225,14 @@ function OptimizerTable({ optimizers }: { optimizers: NonNullable<RunDetail['opt
                       ))
                     : '-'}
                 </td>
-                <td className="px-4 py-1.5 font-mono text-xs">{item.scheduler ?? 'なし'}</td>
+                <td className="px-4 py-1.5 align-top">
+                  <div className="font-mono text-xs">{item.scheduler ?? 'なし'}</div>
+                  {item.scheduler && item.scheduler_params && (
+                    <div className="mt-1.5 min-w-72">
+                      <SchedulerParams scheduler={item.scheduler} params={item.scheduler_params} />
+                    </div>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -231,6 +248,9 @@ export function ModelTab({ run }: { run: RunDetail }) {
     ['Optimizer', run.optimizer],
     ['Scheduler', run.scheduler],
   ]
+  // Optimizer が 1 つの実験の Scheduler の主な引数 (名前付きの場合は下の表に出す)
+  const single = run.optimizers?.length === 1 && run.optimizers[0]!.name === null
+  const scheduler = single ? run.optimizers![0]! : null
   return (
     <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
       {blocks.map(([title, text]) => (
@@ -241,6 +261,19 @@ export function ModelTab({ run }: { run: RunDetail }) {
             </pre>
           ) : (
             <p className="text-sm text-ink-3">ログに記録がありません.</p>
+          )}
+          {title === 'Scheduler' && scheduler?.scheduler && scheduler.scheduler_params && (
+            <section aria-label="Scheduler の主な引数" className="mt-3 border-t border-line pt-3">
+              <h3 className="text-xs font-medium text-ink-3">
+                主な引数 <span className="font-mono">{scheduler.scheduler}</span>
+              </h3>
+              <div className="mt-1">
+                <SchedulerParams
+                  scheduler={scheduler.scheduler}
+                  params={scheduler.scheduler_params}
+                />
+              </div>
+            </section>
           )}
         </Card>
       ))}

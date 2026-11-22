@@ -3122,6 +3122,18 @@
               }
             ],
             "title": "Scheduler"
+          },
+          "scheduler_params": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduler Params"
           }
         },
         "type": "object",
@@ -3884,6 +3896,14 @@
             "title": "Missing",
             "default": []
           },
+          "old_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Old Versions",
+            "default": {}
+          },
           "manual": {
             "items": {
               "$ref": "#/components/schemas/Requirement"
@@ -4274,6 +4294,28 @@
               }
             ],
             "title": "Error"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "min_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Version"
           }
         },
         "type": "object",

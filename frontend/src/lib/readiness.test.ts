@@ -21,6 +21,7 @@ function sample(patch: Partial<ProjectReadiness> = {}): ProjectReadiness {
     ml_found: null,
     requires: ['eda'],
     missing: ['eda'],
+    old_versions: {},
     manual: [],
     unknown: [],
     outdated: [],
@@ -94,6 +95,21 @@ describe('readinessItems', () => {
   it('足りない機能は入れるボタン, Python の付け替えだけは .venv を使うボタン', () => {
     const missing = sample({ environment_exists: true, ml_found: true })
     expect(readinessItems(missing)[1]?.text).toBe('足りない機能: eda')
+    // 版が古い機能は, 入っている版と下限を添えて入っていない機能と分ける
+    const old = sample({
+      environment_exists: true,
+      ml_found: true,
+      requires: ['eda', 'rl'],
+      missing: ['eda', 'rl'],
+      old_versions: { rl: 'gymnasium 0.29.1, 1.0 以上が要る' },
+    })
+    expect(readinessItems(old)[1]?.text).toBe(
+      '足りない機能: eda. 版が古い機能: rl (gymnasium 0.29.1, 1.0 以上が要る)',
+    )
+    const onlyOld = { ...old, missing: ['rl'], requires: ['rl'] }
+    expect(readinessItems(onlyOld)[1]?.text).toBe(
+      '版が古い機能: rl (gymnasium 0.29.1, 1.0 以上が要る)',
+    )
     expect(environmentAction(missing)).toBe('足りないものを入れる')
     const switchOnly = sample({
       environment_exists: true,
