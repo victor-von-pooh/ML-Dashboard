@@ -16,7 +16,7 @@ ML-Dashboard の使い方を, 画面の順に説明する. 各章の「やって
 9. [ML_tester のタスクで試す (任意)](#9-ml_tester-のタスクで試す-任意)
 10. [困ったとき](#10-困ったとき)
 
-画面の図は `demo` の実験で, 実験の一覧と比較の図は `make demo` の 4 つ (`make screenshots` で撮る), 他の図はそれに 6 章の「やってみる」のように学習率と隠れ層の大きさを変えた `spiral` の実験をいくつか足したもの. 方策と追加の依存の図は, 画面の通しのテストに置いた強化学習の実験 (`frontend/e2e/fixtures/rl/`) を `rl` として登録したもの.
+画面の図は `demo` の実験で, `images/` の直下の図 (方策と追加の依存の図を除く) と実験の一覧の図は `make demo` の 4 つ (`make screenshots` で撮る. 実行中のジョブの図は, それに長い学習を 1 つ足したもの), 他の図はそれに 6 章の「やってみる」のように学習率と隠れ層の大きさを変えた `spiral` の実験をいくつか足したもの. 方策と追加の依存の図は, 画面の通しのテストに置いた強化学習の実験 (`frontend/e2e/fixtures/rl/`) を `rl` として登録したもの.
 
 ## 準備
 
@@ -253,7 +253,7 @@ uv run python ../demo/train.py model.hidden_dim=16
   </tr>
   <tr>
     <td>誤りの例 (<code>demo</code>). YAML の欄に <code>lr: -0.1</code> を書いて確かめると「lr は 0.0 以上 (今は -0.1)」と出て, フォームの lr の欄も赤くなる</td>
-    <td><code>T_max: auto</code> と <code>warmup_ratio: 0.1</code> を書いた例 (<code>demo</code>). フォームにも <code>auto</code> が出る. 確かめると, 補う値がフォームの上のお知らせに出る</td>
+    <td><code>T_max: auto</code> と <code>warmup_ratio: 0.1</code> を書いた例 (<code>demo</code>). 右の YAML に <code>auto</code> が出る. 確かめると, 補う値がフォームの上のお知らせに出る</td>
   </tr>
 </table>
 
