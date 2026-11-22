@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# README と操作ガイドの画面の図 (実験の一覧と比較) を撮り直す. make demo と同じ
-# 4 つの実験を作業用のディレクトリに作り, ダッシュボードを起動して
-# e2e/screenshots.ts で撮る. 画面は pnpm build で作っておく
+# README と操作ガイドの画面の図 (docs/images の README の 7 枚と,
+# docs/images/guide/runs.jpg) を撮り直す. make demo と同じ 4 つの実験と,
+# 画面の通しのテストの強化学習の実験を作業用のディレクトリに置き,
+# ダッシュボードを起動して e2e/screenshots.ts で撮る. 画面は pnpm build で作っておく
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -20,6 +21,8 @@ fi
 rm -rf "$WORK"
 mkdir -p "$WORK"
 rsync -a --exclude outputs ../../demo/ "$WORK/demo/"
+# 方策と追加の依存の図に使う強化学習の実験 (学習せずに置いたもの)
+rsync -a fixtures/rl/ "$WORK/rl/"
 
 # make demo と同じ 4 つの実験
 cd ../../backend
@@ -61,7 +64,8 @@ if [ "$ready" != 1 ]; then
 fi
 
 cd ../frontend
-SHOTS_URL="$URL" SHOTS_TOKEN=shots-token SHOTS_DEMO="$WORK/demo" node e2e/screenshots.ts
+SHOTS_URL="$URL" SHOTS_TOKEN=shots-token SHOTS_DEMO="$WORK/demo" \
+  SHOTS_RL="$WORK/rl" node e2e/screenshots.ts
 
 # 止めた後にポートが空いたことを確かめる
 stop

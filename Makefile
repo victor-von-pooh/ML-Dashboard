@@ -50,6 +50,6 @@ demo:
 e2e: build
 	cd frontend && pnpm e2e
 
-# README と操作ガイドの画面の図 (実験の一覧と比較) を撮り直す
+# README の画面の図 (7 枚) と操作ガイドの実験の一覧の図を撮り直す
 screenshots: build
 	cd frontend && bash e2e/screenshots.sh
