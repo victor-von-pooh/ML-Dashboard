@@ -56,20 +56,29 @@ describe('formatLogTime', () => {
 })
 
 describe('compareLabeler', () => {
-  it('名前が全て同じなら名前と月日と時刻を出す', () => {
+  it('同じ名前の実験が 2 つ以上なら名前と月日と時刻を出す', () => {
     const label = compareLabeler(['spiral/2026-11-20/19-03-26', 'spiral/2026-11-21/08-00-00'])
     expect(label('spiral/2026-11-20/19-03-26')).toBe('spiral 11-20 19-03-26')
     expect(label('spiral/2026-11-21/08-00-00')).toBe('spiral 11-21 08-00-00')
   })
 
-  it('1 つの実験でも名前を出す', () => {
-    const label = compareLabeler(['spiral/2026-11-20/19-03-26'])
-    expect(label('spiral/2026-11-20/19-03-26')).toBe('spiral 11-20 19-03-26')
-  })
-
-  it('名前が違うなら名前と時刻を出す', () => {
+  it('名前が違えば名前と時刻を出す', () => {
     const label = compareLabeler(['spiral/2026-11-20/19-03-26', 'spiral_sgd/2026-11-20/19-05-00'])
     expect(label('spiral/2026-11-20/19-03-26')).toBe('spiral 19-03-26')
+    expect(label('spiral_sgd/2026-11-20/19-05-00')).toBe('spiral_sgd 19-05-00')
+    expect(compareLabeler(['spiral/2026-11-20/19-03-26'])('spiral/2026-11-20/19-03-26')).toBe(
+      'spiral 19-03-26',
+    )
+  })
+
+  it('名前が 2 種類以上でも, 同じ名前の実験には月日を足す', () => {
+    const label = compareLabeler([
+      'spiral/2026-11-20/19-03-26',
+      'spiral/2026-11-21/19-03-26',
+      'spiral_sgd/2026-11-20/19-05-00',
+    ])
+    expect(label('spiral/2026-11-20/19-03-26')).toBe('spiral 11-20 19-03-26')
+    expect(label('spiral/2026-11-21/19-03-26')).toBe('spiral 11-21 19-03-26')
     expect(label('spiral_sgd/2026-11-20/19-05-00')).toBe('spiral_sgd 19-05-00')
   })
 
