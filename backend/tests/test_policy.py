@@ -339,8 +339,19 @@ def test_policy_outcomes(client: TestClient, project_dir: Path) -> None:
         ],
         "rows": []
     }), encoding="utf-8")
+    # 横軸の列の無い曲線は評価のタブで表として出るので数える
+    (run_dir / "evaluations" / "loose_curve.json").write_text(json.dumps({
+        "name": "loose_curve", "split": "simulator", "kind": "curve",
+        "x": "step", "columns": [
+            "episode", "end", "ok", "clipped", "fallback", "stop", "handover"
+        ],
+        "rows": [episode_row(0, "stop"), episode_row(1, "truncated")]
+    }), encoding="utf-8")
 
     data = client.get(url).json()
+    kinds = {item["name"]: item["kind"] for item in data["evaluations"]}
+    assert kinds["curve"] == "curve"
+    assert kinds["loose_curve"] == "table"
     guarded = next(
         item for item in data["evaluations"]
         if item["name"] == "guarded_episodes"
@@ -348,7 +359,7 @@ def test_policy_outcomes(client: TestClient, project_dir: Path) -> None:
     assert len(guarded["rows"]) == 2000
     outcomes = data["policy_outcomes"]
     assert [item["name"] for item in outcomes] == [
-        "guarded_episodes", "empty"
+        "guarded_episodes", "empty", "loose_curve"
     ]
     outcome = outcomes[0]
     total = len(ends)
@@ -375,3 +386,9 @@ def test_policy_outcomes(client: TestClient, project_dir: Path) -> None:
         "terminated", "truncated", "max_steps", "stop", "handover"
     ]
     assert all(item["ratio"] is None for item in empty["ends"])
+
+    # 表として出る曲線も同じく数える
+    loose = outcomes[2]
+    assert loose["episodes"] == 2
+    assert loose["guarded"] == 1
+    assert loose["guarded_ratio"] == 0.5
