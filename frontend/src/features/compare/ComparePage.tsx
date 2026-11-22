@@ -21,7 +21,13 @@ import {
   type EvaluationColumn,
   type EvaluationSort,
 } from '../../lib/evaluations'
-import { formatDateTime, formatDuration, formatMetric, formatValue } from '../../lib/format'
+import {
+  compareLabeler,
+  formatDateTime,
+  formatDuration,
+  formatMetric,
+  formatValue,
+} from '../../lib/format'
 import { groupImageSeries, sharedImageSeries } from '../../lib/images'
 import { groupByModel } from '../../lib/modelGroups'
 import {
@@ -42,16 +48,6 @@ import {
   GuardBadge,
 } from '../runs/EvaluationColumns'
 import { ImageCompare } from './ImageCompare'
-
-/** 実験の短い名前. 名前が全て同じなら月日と時刻だけ, 違うなら名前と時刻 */
-function makeLabel(runIds: string[]): (runId: string) => string {
-  const names = new Set(runIds.map((id) => id.split('/')[0]))
-  return (runId) => {
-    const [name, date, time] = runId.split('/')
-    if (!date || !time) return runId
-    return names.size === 1 ? `${date.slice(5)} ${time}` : `${name} ${time}`
-  }
-}
 
 interface Slot {
   id: string
@@ -75,7 +71,7 @@ export function ComparePage() {
     () => [...new Set(params.getAll('run').filter(Boolean))].slice(0, MAX_COMPARE),
     [params],
   )
-  const shortLabel = useMemo(() => makeLabel(runIds), [runIds])
+  const shortLabel = useMemo(() => compareLabeler(runIds), [runIds])
 
   // 一覧に戻るときに, 比較している実験と評価の列を選んだままにする
   const requestedColumns = params.getAll('ev')

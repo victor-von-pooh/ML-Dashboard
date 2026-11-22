@@ -32,6 +32,19 @@ export function formatDateTime(iso: string): string {
   return iso.replace('T', ' ').slice(0, 19)
 }
 
+/**
+ * 比較の画面の実験の見出しを作る. 名前が全て同じなら名前と月日と時刻, 違うなら名前と時刻
+ * (図や共有した画面からも何の実験かが分かるように, 名前は必ず出す)
+ */
+export function compareLabeler(runIds: string[]): (runId: string) => string {
+  const names = new Set(runIds.map((id) => id.split('/')[0]))
+  return (runId) => {
+    const [name, date, time] = runId.split('/')
+    if (!date || !time) return runId
+    return names.size === 1 ? `${name} ${date.slice(5)} ${time}` : `${name} ${time}`
+  }
+}
+
 /** 日時が今からどれだけ前かを表す */
 export function formatRelative(iso: string, now: Date = new Date()): string {
   const diff = (now.getTime() - new Date(iso).getTime()) / 1000
