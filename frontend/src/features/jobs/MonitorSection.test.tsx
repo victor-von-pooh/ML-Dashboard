@@ -5,6 +5,7 @@ import { parse } from 'yaml'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { ProblemTraining } from '../../api/client'
+import { getYamlValue } from '../../lib/yamlEdit'
 import { MonitorSection } from './MonitorSection'
 
 const PROJECT = '/work/own'
@@ -37,23 +38,32 @@ const PRETRAINED: ProblemTraining = {
   updated_at: null,
 }
 
-/** 問題の設定の一覧か, ML-Quest が無い場合の 501 を返す fetch */
-function stubTrainings(problems: ProblemTraining[] | null) {
-  const fetchMock = vi.fn(async () =>
-    problems === null
-      ? new Response(JSON.stringify({ detail: 'ml_quest が入っていません' }), {
-          status: 501,
-          headers: { 'Content-Type': 'application/json' },
-        })
-      : new Response(JSON.stringify({ root: '/home/problems', problems, error: null }), {
-          headers: { 'Content-Type': 'application/json' },
-        }),
-  )
+/** 前の実験の記録 (指標の名前だけを使う) */
+type RunStub = { final_metrics: Record<string, number>; best: { monitor: string } | null }
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+/** 問題の設定の一覧 (ML-Quest が無い場合は 501) と実験の一覧を返す fetch */
+function stubTrainings(problems: ProblemTraining[] | null, runs: RunStub[] = []) {
+  const fetchMock = vi.fn(async (url: string) => {
+    if (String(url).includes('/runs')) return json(runs)
+    return problems === null
+      ? json({ detail: 'ML-Quest が入っていません' }, 501)
+      : json({ root: '/home/problems', problems, error: null })
+  })
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
 }
 
-/** 書き換えた YAML を config に読み直して欄に戻す (画面の確かめの代わり) */
+/**
+ * 書き換えた YAML を config に読み直して欄に戻す (画面の確かめの代わり).
+ * 「選び直す」で, 起動の画面と同じく config を読み直してフォームを作り直す
+ */
 function Harness({
   initial,
   monitorInDefault,
@@ -66,23 +76,41 @@ function Harness({
   onText: (text: string) => void
 }) {
   const [text, setText] = useState(initial)
+  const [round, setRound] = useState(0)
+  const [cleared, setCleared] = useState(false)
   const config = (parse(text) ?? {}) as Record<string, unknown>
   const trainer = (config.trainer ?? {}) as Record<string, unknown>
   return (
-    <MonitorSection
-      config={{ trainer: { monitor: null, mode: 'min', ...trainer } }}
-      monitorInDefault={monitorInDefault}
-      projectPath={PROJECT}
-      autoFill={autoFill}
-      disabled={false}
-      onEdit={(change) =>
-        setText((current) => {
-          const next = change(current)
-          onText(next)
-          return next
-        })
-      }
-    />
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          setText(initial)
+          onText(initial)
+          setRound((value) => value + 1)
+        }}
+      >
+        選び直す
+      </button>
+      <MonitorSection
+        key={round}
+        projectId="own"
+        config={{ trainer: { monitor: null, mode: 'min', ...trainer } }}
+        monitorInDefault={monitorInDefault}
+        modeWritten={getYamlValue(text, 'trainer.mode') !== undefined}
+        projectPath={PROJECT}
+        autoFill={autoFill && !cleared}
+        onCleared={() => setCleared(true)}
+        disabled={false}
+        onEdit={(change) =>
+          setText((current) => {
+            const next = change(current)
+            onText(next)
+            return next
+          })
+        }
+      />
+    </>
   )
 }
 
@@ -117,10 +145,10 @@ describe('MonitorSection (監視する指標)', () => {
     expect(screen.getByLabelText('向き')).toHaveValue('min')
     expect(screen.getByLabelText('問題の設定から')).toHaveValue(SALES.problem_path)
     expect(screen.getByLabelText('監視する指標')).toHaveAccessibleDescription(
-      /問題の設定「総菜の作る量」の学習で監視する指標と向きです/,
+      /問題の設定「総菜の作る量」で選んだ指標から決めた, 監視する指標と向きです/,
     )
     // 渡せない問題の設定は選べず, 理由が出る
-    expect(screen.getByRole('option', { name: '写真の仕分け (渡せません)' })).toBeDisabled()
+    expect(screen.getByRole('option', { name: '写真の仕分け (使えません)' })).toBeDisabled()
     expect(screen.getByText(/写真の仕分け: 学習しない/)).toBeVisible()
   })
 
@@ -173,18 +201,75 @@ describe('MonitorSection (監視する指標)', () => {
     setup({ monitorInDefault: true })
     expect(screen.getByLabelText('監視する指標')).toBeVisible()
     expect(screen.queryByLabelText('問題の設定から')).toBeNull()
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/problems/training', expect.anything())
   })
 
   it('ML-Quest が無ければ理由を出し, 欄はそのまま使える', async () => {
     stubTrainings(null)
     const state = setup({})
     expect(
-      await screen.findByText(/問題の設定の値は使えません: ml_quest が入っていません/),
+      await screen.findByText(/問題の設定の値は使えません: ML-Quest が入っていません/),
     ).toBeVisible()
     const input = screen.getByLabelText('監視する指標')
     fireEvent.change(input, { target: { value: 'valid/acc' } })
     fireEvent.blur(input)
     expect(parse(state.text)).toEqual({ trainer: { monitor: 'valid/acc' } })
+  })
+
+  it('config に向きがあれば, 初めに入れるときは指標だけを書く', async () => {
+    stubTrainings([SALES])
+    const state = setup({ initial: 'trainer:\n  mode: max\n' })
+    await waitFor(() => expect(screen.getByLabelText('監視する指標')).toHaveValue('valid/mae'))
+    expect(parse(state.text)).toEqual({ trainer: { monitor: 'valid/mae', mode: 'max' } })
+  })
+
+  it('空にした指標は, config を選び直しても入れ直さない', async () => {
+    stubTrainings([SALES])
+    const state = setup({})
+    const input = screen.getByLabelText('監視する指標')
+    await waitFor(() => expect(input).toHaveValue('valid/mae'))
+    fireEvent.change(input, { target: { value: '' } })
+    fireEvent.blur(input)
+    expect(parse(state.text)).toEqual({ trainer: { mode: 'min' } })
+
+    fireEvent.click(screen.getByRole('button', { name: '選び直す' }))
+    await screen.findByLabelText('問題の設定から')
+    expect(state.text).toBe('')
+    expect(screen.getByLabelText('監視する指標')).toHaveValue('')
+  })
+
+  // 1 行の欄は改行を落とすので, 空白とタブで確かめる
+  it('空白や改行を含む名前は書き込まず, 理由を出す', async () => {
+    stubTrainings([])
+    const state = setup({ autoFill: false })
+    const input = screen.getByLabelText('監視する指標')
+    for (const raw of ['valid/ acc', 'valid/acc\tx']) {
+      fireEvent.change(input, { target: { value: raw } })
+      fireEvent.blur(input)
+      expect(state.text).toBe('')
+      expect(input).toHaveAttribute('aria-invalid', 'true')
+      expect(input).toHaveAccessibleDescription(/空白や改行を含む名前は使えません/)
+    }
+  })
+
+  it('前の実験の記録に無い名前は, 止めずに注意を出す', async () => {
+    stubTrainings(
+      [],
+      [{ final_metrics: { 'train/loss': 1, 'valid/acc': 0.5 }, best: { monitor: 'valid/acc' } }],
+    )
+    const state = setup({ autoFill: false })
+    const input = screen.getByLabelText('監視する指標')
+    fireEvent.change(input, { target: { value: 'valid/accuracy' } })
+    fireEvent.blur(input)
+    expect(parse(state.text)).toEqual({ trainer: { monitor: 'valid/accuracy' } })
+    await waitFor(() =>
+      expect(input).toHaveAccessibleDescription(/前の実験の記録に valid\/accuracy がありません/),
+    )
+    expect(input).toHaveAttribute('aria-invalid', 'false')
+
+    // 記録にある名前なら注意を出さない
+    fireEvent.change(input, { target: { value: 'valid/acc' } })
+    fireEvent.blur(input)
+    await waitFor(() => expect(screen.queryByText(/前の実験の記録に/)).toBeNull())
   })
 })

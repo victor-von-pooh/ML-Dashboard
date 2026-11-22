@@ -2515,6 +2515,11 @@ export interface components {
              * @default false
              */
             monitor_in_default: boolean;
+            /**
+             * Mode In Default
+             * @default false
+             */
+            mode_in_default: boolean;
         };
         /** ValidationError */
         ValidationError: {

@@ -105,6 +105,8 @@ function LaunchForm({
   const batches = useBatches()
   // 選んだモデルの定義の候補 (選んだ順). どのスクリプトと default で選んだかと組で保存
   const [chosen, setChosen] = useState<{ key: string; paths: string[] }>({ key: '', paths: [] })
+  // 監視する指標を利用者が空にしたか (フォームは config ごとに作り直すので, ここで持つ)
+  const [monitorCleared, setMonitorCleared] = useState(false)
 
   // 最初はプロジェクトの train.py と既定の experiment の config を選択
   const scripts = project.data?.scripts ?? []
@@ -394,8 +396,10 @@ function LaunchForm({
               projectPath={project.data.path}
               script={selectedScript}
               text={text}
-              // 実験の設定でもう一度起動する場合は, その実験と同じ値で学習するために入れない
-              autoFillMonitor={fromRun === null}
+              // 実験の設定でもう一度起動する場合は, その実験と同じ値で学習するために入れない.
+              // 利用者が指標を空にした後は, config を選び直しても入れ直さない
+              autoFillMonitor={fromRun === null && !monitorCleared}
+              onMonitorCleared={() => setMonitorCleared(true)}
               onChange={editText}
             />
           </div>

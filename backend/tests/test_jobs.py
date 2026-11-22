@@ -1505,6 +1505,7 @@ def test_validate_monitor_in_default(
     ok = client.post(url, json={"text": "{}\n"}).json()
     assert ok["ok"] is True
     assert ok["monitor_in_default"] is False
+    assert ok["mode_in_default"] is False
     assert ok["config"]["trainer"]["monitor"] is None
     typo = client.post(url, json={"text": "trainer:\n  epoch: 3\n"}).json()
     assert typo["ok"] is False
@@ -1525,7 +1526,7 @@ def test_validate_monitor_in_default(
     assert client.post(url, json={"text": "{}\n"}).json()[
         "monitor_in_default"
     ] is True
-    default.write_text(base + "trainer:\n  monitor: null\n")
-    assert client.post(url, json={"text": "{}\n"}).json()[
-        "monitor_in_default"
-    ] is False
+    default.write_text(base + "trainer:\n  monitor: null\n  mode: max\n")
+    written = client.post(url, json={"text": "{}\n"}).json()
+    assert written["monitor_in_default"] is False
+    assert written["mode_in_default"] is True

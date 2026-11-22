@@ -1,8 +1,8 @@
-import { Info } from 'lucide-react'
+import { Info, TriangleAlert } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 
 import type { ProblemTraining } from '../../api/client'
-import { useProblemTrainings } from '../../api/hooks'
+import { useProblemTrainings, useRuns } from '../../api/hooks'
 import { deleteYamlValue, setYamlValue } from '../../lib/yamlEdit'
 
 type Config = Record<string, unknown>
@@ -14,7 +14,10 @@ const MODES: { value: Mode; label: string }[] = [
   { value: 'max', label: 'max (大きいほど良い)' },
 ]
 
-/** 末尾の区切りを除いた場所 (問題の設定の記録とプロジェクトの場所を比べるため) */
+/**
+ * 末尾の区切りを除いた場所 (問題の設定の記録とプロジェクトの場所を比べるため).
+ * どちらもバックエンドがホームを展開してリンクを辿った場所
+ */
 function samePath(left: string | null | undefined, right: string): boolean {
   if (!left) return false
   const trim = (path: string) => path.replace(/\/+$/, '')
@@ -24,7 +27,7 @@ function samePath(left: string | null | undefined, right: string): boolean {
 /** 問題の設定 1 件の値を, 選択肢の文にする */
 function optionLabel(item: ProblemTraining): string {
   if (item.monitor && item.mode) return `${item.problem} (${item.monitor}, ${item.mode})`
-  return `${item.problem} (渡せません)`
+  return `${item.problem} (使えません)`
 }
 
 /** 監視する指標と向きを config に書く (空の指標は消して ML-Found の既定に戻す) */
@@ -43,20 +46,29 @@ function writeMonitor(text: string, monitor: string | null, mode: Mode | null): 
  * 問題の設定があり, まだ指標を書いていなければ, その値を初めに入れる
  */
 export function MonitorSection({
+  projectId,
   config,
   monitorInDefault,
+  modeWritten,
   projectPath,
   autoFill,
+  onCleared,
   disabled,
   onEdit,
 }: {
+  /** プロジェクトの ID (前の実験の記録の指標の名前と照らすため) */
+  projectId: string
   config: Config
   /** default の config が trainer.monitor を書いているか (確かめの前は undefined) */
   monitorInDefault: boolean | undefined
+  /** default か experiment の config が trainer.mode を書いているか (書いていれば初めに入れない) */
+  modeWritten: boolean
   /** プロジェクトのディレクトリ (問題の設定の記録と比べる) */
   projectPath: string
   /** 問題の設定の値を初めに入れるか (実験の設定でもう一度起動する場合は入れない) */
   autoFill: boolean
+  /** 利用者が指標を空にしたとき (config を選び直しても入れ直さないため) */
+  onCleared: () => void
   disabled: boolean
   onEdit: (change: (current: string) => string) => void
 }) {
@@ -64,6 +76,8 @@ export function MonitorSection({
   const modeId = useId()
   const problemId = useId()
   const sourceId = useId()
+  const errorId = useId()
+  const unknownId = useId()
   const trainer = (config.trainer ?? {}) as Config
   const monitor = typeof trainer.monitor === 'string' ? trainer.monitor : null
   const mode = trainer.mode === 'max' ? 'max' : 'min'
@@ -91,21 +105,43 @@ export function MonitorSection({
     if (filled.current || !autoFill || !offer || !recorded || monitor !== null) return
     filled.current = true
     setSourcePath(recorded.problem_path)
-    onEdit((text) => writeMonitor(text, recorded.monitor ?? null, recorded.mode ?? null))
-  }, [autoFill, offer, recorded, monitor, onEdit])
+    // 書いてある向きは利用者か default が決めたものなので, 書き換えない
+    onEdit((text) =>
+      writeMonitor(text, recorded.monitor ?? null, modeWritten ? null : (recorded.mode ?? null)),
+    )
+  }, [autoFill, offer, recorded, monitor, modeWritten, onEdit])
 
-  // 欄の文字 (確定したときに書き込む)
+  // 欄の文字 (確定したときに書き込む). 空白や改行を含む名前は書き込まない
   const [draft, setDraft] = useState(monitor ?? '')
   const [seen, setSeen] = useState(monitor)
+  const [invalid, setInvalid] = useState(false)
   if (seen !== monitor) {
     setSeen(monitor)
     setDraft(monitor ?? '')
+    setInvalid(false)
   }
   const commit = () => {
     const value = draft.trim()
+    if (/\s/.test(value)) {
+      setInvalid(true)
+      return
+    }
+    setInvalid(false)
     if (value === (monitor ?? '')) return
+    if (!value) onCleared()
     onEdit((text) => writeMonitor(text, value || null, null))
   }
+
+  // 前の実験の記録の指標の名前 (最後のエポックの値とベストの指標). 実験の無い
+  // プロジェクトは照らさない (学習のスクリプトが記録する名前は学習するまで分からないため)
+  const runs = useRuns(projectId)
+  const known = new Set(
+    (runs.data ?? []).flatMap((run) => [
+      ...Object.keys(run.final_metrics),
+      ...(run.best ? [run.best.monitor] : []),
+    ]),
+  )
+  const unknown = monitor !== null && !invalid && known.size > 0 && !known.has(monitor)
 
   // 値の出どころ: 入れた値のままか, 利用者が変えたか
   const matches = source !== null && source.monitor === monitor && source.mode === mode
@@ -113,7 +149,7 @@ export function MonitorSection({
     source === null || monitor === null
       ? null
       : matches
-        ? `問題の設定「${source.problem}」の学習で監視する指標と向きです (ML-Quest の受け渡し).`
+        ? `問題の設定「${source.problem}」で選んだ指標から決めた, 監視する指標と向きです.`
         : `問題の設定「${source.problem}」の値 (${source.monitor}, ${source.mode}) から変えています.`
 
   return (
@@ -132,10 +168,33 @@ export function MonitorSection({
           onChange={(event) => setDraft(event.target.value)}
           onBlur={commit}
           onKeyDown={(event) => event.key === 'Enter' && commit()}
-          placeholder="(なし: valid/loss か train/loss)"
-          aria-describedby={note ? sourceId : undefined}
-          className="h-8 w-full rounded-md border border-line bg-bg px-2 font-mono text-xs outline-none placeholder:text-ink-3 focus:border-accent"
+          placeholder="空にすると ML-Found の既定 (valid/loss など) に戻ります"
+          aria-invalid={invalid}
+          aria-describedby={
+            [invalid ? errorId : '', unknown ? unknownId : '', note ? sourceId : '']
+              .filter(Boolean)
+              .join(' ') || undefined
+          }
+          className="h-8 w-full rounded-md border border-line bg-bg px-2 font-mono text-xs outline-none placeholder:text-ink-3 focus:border-accent aria-[invalid=true]:border-critical"
         />
+        {invalid && (
+          <span id={errorId} className="col-start-2 text-[11px] text-critical-text">
+            空白や改行を含む名前は使えません
+          </span>
+        )}
+        {unknown && (
+          <p
+            id={unknownId}
+            className="col-start-2 flex items-start gap-1.5 text-[11px] text-warning-text"
+          >
+            <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+            <span className="min-w-0 break-all">
+              前の実験の記録に {monitor} がありません.
+              学習のスクリプトが記録する名前か確かめてください (記録にある名前:{' '}
+              {[...known].sort().join(', ')})
+            </span>
+          </p>
+        )}
         <label htmlFor={modeId} className="text-sm font-semibold">
           向き
         </label>

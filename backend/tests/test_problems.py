@@ -150,11 +150,13 @@ def test_problem_trainings(
         "error": None
     }
 
-    # 学習する見本 (記録したプロジェクトの場所付き), 既製のモデル,
-    # 機械学習を使わない見本, 読めないもの
-    project = str(tmp_path / "own")
+    # 学習する見本 (記録したプロジェクトの場所付き. リンクの場所で記録),
+    # 既製のモデル, 機械学習を使わない見本, 読めないもの
+    (tmp_path / "own").mkdir()
+    (tmp_path / "link").symlink_to(tmp_path / "own")
+    project = str((tmp_path / "own").resolve())
     sales = quest.example_problem("総菜の作る量")
-    sales["project"] = {"path": project}
+    sales["project"] = {"path": str(tmp_path / "link")}
     pretrained = quest.example_problem("写真の仕分け (既製のモデル)")
     no_ml = quest.example_problem("問い合わせの振り分け (機械学習を使わない)")
     for key, problem, stamp in [
@@ -220,7 +222,7 @@ def test_problem_trainings_without_quest(
     monkeypatch.setitem(sys.modules, "ml_quest", None)
     response = client.get("/api/problems/training")
     assert response.status_code == 501
-    assert "ml_quest が入っていません" in response.json()["detail"]
+    assert "ML-Quest が入っていません" in response.json()["detail"]
     assert "uv sync --extra problem" in response.json()["detail"]
     assert client.get("/api/problems/projects").status_code == 200
 

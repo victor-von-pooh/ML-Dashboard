@@ -52,7 +52,7 @@ test('記録した問題の設定の監視する指標と向きが, 学習の起
   await expect(monitor).toHaveValue('valid/mae')
   await expect(page.getByLabel('向き', { exact: true })).toHaveValue('min')
   await expect(monitor).toHaveAccessibleDescription(
-    /問題の設定「e2e の売上」の学習で監視する指標と向きです/,
+    /問題の設定「e2e の売上」で選んだ指標から決めた, 監視する指標と向きです/,
   )
   const editor = page.getByLabel('config の中身')
   await expect(editor).toHaveValue(/monitor: valid\/mae/)
@@ -79,7 +79,7 @@ test('骨組みの外のプロジェクトで, 問題の設定を選んで監視
   const picker = page.getByLabel('問題の設定から')
   await expect(picker).toHaveValue('')
   await expect(monitor).toHaveValue('')
-  await expect(picker.getByRole('option', { name: 'e2e の写真 (渡せません)' })).toBeDisabled()
+  await expect(picker.getByRole('option', { name: 'e2e の写真 (使えません)' })).toBeDisabled()
   await expect(page.getByText(/e2e の写真: 学習しない/)).toBeVisible()
 
   // 選ぶと入り, ML-Found の確かめで差分になる

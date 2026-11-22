@@ -20,7 +20,9 @@ rsync -a fixtures/samples/ "$WORK/samples/"
 # 書き出したプロジェクトの一覧の確かめ用に, ML-Pathfinder の置き場と, そこに
 # 記録した (まだ登録していない) 学習のプロジェクトと, 記録の無い問題の設定.
 # 監視する指標を受け取る確かめ用に, どちらのプロジェクトも default の config
-# に trainer.monitor を書かない (own は問題の設定に記録の無い骨組みの外のもの)
+# に trainer.monitor を書かない (own は問題の設定に記録の無い骨組みの外のもの).
+# ML-Quest の骨組み (make_project) は default に trainer.monitor を書き, 欄が
+# 働かないので, default は手で書く
 for name in exported own; do
   mkdir -p "$WORK/$name/configs/default" "$WORK/$name/configs/experiment"
   printf 'experiment:\n  name: %s\n  output_dir: outputs\n' "$name" \

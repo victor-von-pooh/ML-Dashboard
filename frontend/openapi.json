@@ -6202,6 +6202,11 @@
             "type": "boolean",
             "title": "Monitor In Default",
             "default": false
+          },
+          "mode_in_default": {
+            "type": "boolean",
+            "title": "Mode In Default",
+            "default": false
           }
         },
         "type": "object",

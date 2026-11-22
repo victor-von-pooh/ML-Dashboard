@@ -116,6 +116,9 @@ class ValidateResult(BaseModel):
     # 元にした default の config が trainer.monitor を書いているか (書いて
     # いなければ, 画面で問題の設定の監視する指標と向きを選べる)
     monitor_in_default: bool = False
+    # 元にした default の config が trainer.mode を書いているか (書いて
+    # いれば, 問題の設定の値を初めに入れるときに向きを書かない)
+    mode_in_default: bool = False
 
 
 class CheckedConfig(BaseModel):
@@ -959,10 +962,10 @@ def check_output_dir(loaded: object) -> None:
         )
 
 
-def writes_monitor(path: Path) -> bool:
+def writes_monitor(path: Path) -> tuple[bool, bool]:
     """
-    default の config が監視する指標 (trainer.monitor) を書いているかを
-    確かめる関数
+    default の config が監視する指標と向き (trainer.monitor と
+    trainer.mode) を書いているかを確かめる関数
 
     Parameters
     ----------
@@ -971,21 +974,23 @@ def writes_monitor(path: Path) -> bool:
 
     Returns
     ----------
-    written: bool
+    monitor: bool
         null でない trainer.monitor があれば True (読めない場合は False)
+    mode: bool
+        null でない trainer.mode があれば True (読めない場合は False)
     """
     # 書いたままの値を見る (環境変数の参照なども書いたものとみなす)
     try:
         loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, yaml.YAMLError):
-        written = False
-        return written
+        return False, False
     trainer = loaded.get("trainer") if isinstance(loaded, dict) else None
-    written = isinstance(trainer, dict) and (
-        trainer.get("monitor") is not None
-    )
+    if not isinstance(trainer, dict):
+        return False, False
+    monitor = trainer.get("monitor") is not None
+    mode = trainer.get("mode") is not None
 
-    return written
+    return monitor, mode
 
 
 def validate_text(
@@ -1151,7 +1156,7 @@ def validate_config(
     default = resolve_default(project, body.default_config)
     project_dir = Path(project.path)
     default_path = default or default_config_for(project_dir, body.script)
-    monitor_in_default = writes_monitor(default_path)
+    monitor_in_default, mode_in_default = writes_monitor(default_path)
 
     # 学習と同じ方法で読み込み, 失敗した場合は理由と元にした default を返却
     try:
@@ -1160,7 +1165,8 @@ def validate_config(
         result = ValidateResult(
             ok=False, error=describe(error), diff={},
             default_config=default_path.relative_to(project_dir).as_posix(),
-            monitor_in_default=monitor_in_default
+            monitor_in_default=monitor_in_default,
+            mode_in_default=mode_in_default
         )
         return result
 
@@ -1169,7 +1175,8 @@ def validate_config(
         ok=checked.value_error is None, error=checked.value_error,
         diff=checked.diff, config=checked.config, warnings=checked.warnings,
         notes=checked.notes, default_config=checked.default_config,
-        monitor_in_default=monitor_in_default
+        monitor_in_default=monitor_in_default,
+        mode_in_default=mode_in_default
     )
 
     return result

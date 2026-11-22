@@ -9,6 +9,7 @@ import {
   describeRange,
   deleteYamlValue,
   formatInput,
+  getYamlValue,
   parseInput,
   setYamlValue,
 } from '../../lib/yamlEdit'
@@ -376,6 +377,7 @@ export function ConfigForm({
   script,
   text,
   autoFillMonitor,
+  onMonitorCleared,
   onChange,
 }: {
   projectId: string
@@ -386,6 +388,8 @@ export function ConfigForm({
   text: string
   /** 問題の設定の監視する指標と向きを初めに入れるか */
   autoFillMonitor: boolean
+  /** 利用者が監視する指標を空にしたとき */
+  onMonitorCleared: () => void
   onChange: (text: string) => void
 }) {
   const registry = useQuery({
@@ -494,10 +498,16 @@ export function ConfigForm({
             )}
           </div>
           <MonitorSection
+            projectId={projectId}
             config={config}
             monitorInDefault={resolved.data?.monitor_in_default}
+            modeWritten={
+              resolved.data?.mode_in_default === true ||
+              getYamlValue(text, 'trainer.mode') !== undefined
+            }
             projectPath={projectPath}
             autoFill={autoFillMonitor}
+            onCleared={onMonitorCleared}
             disabled={stale}
             onEdit={onEdit}
           />

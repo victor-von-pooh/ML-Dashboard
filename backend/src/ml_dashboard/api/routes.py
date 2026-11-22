@@ -63,6 +63,9 @@ RUN_PATH = "/projects/{project_id}/runs/{name}/{date}/{time}"
 # 任意の依存のライブラリの入れ方の案内
 SETUP_HINT = "make setup (backend で uv sync --extra problem)"
 
+# 任意の依存のライブラリの, 案内に出す名前
+LIBRARY_NAMES = {"ml_quest": "ML-Quest"}
+
 # 見つからない場合の応答の説明
 NOT_FOUND: dict[int | str, dict[str, str]] = {
     404: {"description": "プロジェクトか実験が見つからない"}
@@ -337,18 +340,19 @@ def load_library(name: str, attribute: str) -> ModuleType:
         入っていない場合と, 使う関数の無い古い版の場合は 501
     """
     # 入っていなければ入れ方, 古ければ入れ直し方の案内
+    label = LIBRARY_NAMES.get(name, name)
     try:
         module = importlib.import_module(name)
     except ImportError as error:
         raise HTTPException(
             501,
-            f"{name} が入っていません. {SETUP_HINT} で入れてから起動し直して"
+            f"{label} が入っていません. {SETUP_HINT} で入れてから起動し直して"
             "ください"
         ) from error
     if not hasattr(module, attribute):
         raise HTTPException(
             501,
-            f"{name} が古く, {attribute} がありません. {SETUP_HINT} で入れ"
+            f"{label} が古く, {attribute} がありません. {SETUP_HINT} で入れ"
             "直してから起動し直してください"
         )
 

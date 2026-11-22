@@ -214,6 +214,29 @@ def problem_files(root: Path) -> tuple[list[Path], Optional[str]]:
     return files, error
 
 
+def resolved_path(value: str) -> str:
+    """
+    記録の場所を, ホームを展開してリンクを辿った場所にする関数
+
+    Parameters
+    ----------
+    value: str
+        記録の場所
+
+    Returns
+    ----------
+    path: str
+        辿った場所 (辿れなければ書いたまま)
+    """
+    # 登録したプロジェクトの場所 (expanduser と resolve) と同じ形
+    try:
+        path = str(Path(value).expanduser().resolve())
+    except (OSError, RuntimeError):
+        path = value
+
+    return path
+
+
 def training_of(path: Path, quest: ModuleType) -> ProblemTraining:
     """
     問題の設定 1 件の, 学習で監視する指標と向きを ML-Quest で求める関数
@@ -253,10 +276,13 @@ def training_of(path: Path, quest: ModuleType) -> ProblemTraining:
         )
         return training
 
-    # 記録したプロジェクトの場所 (記録が無ければ None)
+    # 記録したプロジェクトの場所 (記録が無ければ None). 登録したプロジェクト
+    # と同じく, リンクを辿った場所にして比べられるようにする
     project = stages.get("project") if isinstance(stages, dict) else None
     recorded = project.get("path") if isinstance(project, dict) else None
-    project_path = recorded if isinstance(recorded, str) else None
+    project_path = resolved_path(recorded) if isinstance(
+        recorded, str
+    ) else None
 
     # 既製のモデルをそのまま使う (学習しない) 問題の設定は値が None
     values = stages.get("training") if isinstance(stages, dict) else None

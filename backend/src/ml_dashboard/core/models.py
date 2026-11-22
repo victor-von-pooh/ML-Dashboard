@@ -67,7 +67,7 @@ class ProblemTraining(BaseModel):
     # trainer.mode と同じ値)
     problem: str
     problem_path: str
-    # 書き出したプロジェクトの記録 (無ければ None)
+    # 書き出したプロジェクトの記録 (リンクを辿った場所. 無ければ None)
     project_path: Optional[str] = None
     monitor: Optional[str] = None
     mode: Optional[Mode] = None
