@@ -647,7 +647,7 @@ class ProjectReadiness(BaseModel):
     requires: list[str] = []
     missing: list[str] = []
     # 足りない機能のうち版が古いものの, 入っている版と下限の説明
-    # (例: {"rl": "gymnasium 0.29.1. 1.0 以上が要る"})
+    # (例: {"rl": "gymnasium 0.29.1, 1.0 以上が要る"})
     old_versions: dict[str, str] = {}
     # pip で入らないので, 利用者が公式の手順で入れる機能
     manual: list[Requirement] = []

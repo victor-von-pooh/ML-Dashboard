@@ -482,7 +482,7 @@ def test_old_version() -> None:
     message = describe_missing(status)
     assert "ros2 が入っていません" in message
     assert (
-        "rl は入っている版が古いです (gymnasium 0.29.1. 1.0 以上が要る)"
+        "rl は入っている版が古いです (gymnasium 0.29.1, 1.0 以上が要る)"
         in message
     )
     assert 'pip install "gymnasium>=1.0"' in message

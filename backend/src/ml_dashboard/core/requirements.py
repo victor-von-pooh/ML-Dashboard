@@ -602,11 +602,11 @@ def describe_old_version(requirement: Requirement) -> str:
     Returns
     ----------
     text: str
-        「gymnasium 0.29.1. 1.0 以上が要る」のような文. 複数は "; " で
+        「gymnasium 0.29.1, 1.0 以上が要る」のような文. 複数は "; " で
         つなぐ
     """
     text = "; ".join(
-        f"{check.name} {check.version}. {check.min_version} 以上が要る"
+        f"{check.name} {check.version}, {check.min_version} 以上が要る"
         for check in old_checks(requirement)
     )
 

@@ -39,11 +39,11 @@ export function isOldVersion(requirement: Requirement): boolean {
   return old.length > 0 && (requirement.match === 'any' || old.length === failed.length)
 }
 
-/** 版の古い確かめ方の, 入っている版と下限 (「gymnasium 0.29.1. 1.0 以上が要る」) */
+/** 版の古い確かめ方の, 入っている版と下限 (「gymnasium 0.29.1, 1.0 以上が要る」) */
 export function describeOldVersion(requirement: Requirement): string {
   return requirement.checks
     .filter(isOldCheck)
-    .map((check) => `${check.name} ${check.version}. ${check.min_version} 以上が要る`)
+    .map((check) => `${check.name} ${check.version}, ${check.min_version} 以上が要る`)
     .join('; ')
 }
 

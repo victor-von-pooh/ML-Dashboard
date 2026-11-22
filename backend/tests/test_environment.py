@@ -963,5 +963,5 @@ def test_old_version_readiness(
     readiness = client.get(f"/api/projects/{project_id}/readiness").json()
     assert readiness["missing"] == ["rl", "eda"]
     assert readiness["old_versions"] == {
-        "rl": "gymnasium 0.29.1. 1.0 以上が要る"
+        "rl": "gymnasium 0.29.1, 1.0 以上が要る"
     }
