@@ -1,0 +1,11 @@
+experiment:
+  name: cartpole
+  output_dir: outputs
+  seed: 42
+  device: cpu
+trainer:
+  epochs: 3
+  monitor: valid/reward
+  mode: max
+requires:
+  - rl

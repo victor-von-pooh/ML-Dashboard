@@ -342,6 +342,9 @@ class History(BaseModel):
     lr_steps: list[LrPoint] = []
     # 複数の Optimizer の実験の, 列 (lr_<名前>) ごとの更新ごとの学習率
     named_lr_steps: dict[str, list[LrPoint]] = {}
+    # 学習曲線の横軸に使える列 (epoch と, エポックごとに増え続ける step の
+    # extra の列. 環境のステップ数や見たサンプルの数など)
+    x_columns: list[str] = []
 
 
 # 分析に使う config の値 (入れ子は . でつないだ項目, 配列は JSON の文字列)

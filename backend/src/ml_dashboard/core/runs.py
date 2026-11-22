@@ -594,6 +594,44 @@ def lr_step_columns(path: Path) -> list[str]:
     return columns
 
 
+def x_columns(history: History) -> list[str]:
+    """
+    学習曲線の横軸に使える列を選ぶ関数
+
+    epoch と, step の extra の列 (名前に / を含まない. ML-Found の
+    docs/FORMAT.md) のうち, 全てのエポックに値があり, エポックごとに必ず
+    増える列 (環境のステップ数, 見たサンプルの数など). 学習率の列は除く
+
+    Parameters
+    ----------
+    history: History
+        列の名前とエポックごとの値
+
+    Returns
+    ----------
+    columns: list[str]
+        横軸に使える列の名前, epoch を先頭に history.csv の列の順
+    """
+    columns = ["epoch"] if "epoch" in history.columns else []
+    for name in history.columns:
+        # 指標 (train/ など), 学習率, エポック自身は対象外
+        if "/" in name or name in ("epoch", "lr") or name.startswith("lr_"):
+            continue
+        values = [row.get(name) for row in history.rows]
+        # 2 エポック以上の値が全てあり, 前のエポックより大きい列だけ
+        # (1 つの値や途中で減る値, 同じ値が続く値は進み具合に使えない)
+        if len(values) < 2 or any(value is None for value in values):
+            continue
+        numbers = cast(list[float], values)
+        if all(
+            numbers[index] < numbers[index + 1]
+            for index in range(len(numbers) - 1)
+        ):
+            columns.append(name)
+
+    return columns
+
+
 def read_history(run_dir: Path, entries: list[LogEntry]) -> History:
     """
     実験の指標の推移を読み込む関数
@@ -628,6 +666,7 @@ def read_history(run_dir: Path, entries: list[LogEntry]) -> History:
                 for column in lr_step_columns(lr_path)
                 if column.startswith("lr_")
             }
+        history.x_columns = x_columns(history)
         return history
 
     # 学習中や失敗した実験は, ログのエポックごとの指標から作り直し
@@ -636,6 +675,7 @@ def read_history(run_dir: Path, entries: list[LogEntry]) -> History:
     for row in rows:
         columns.extend(key for key in row if key not in columns)
     history = History(columns=columns, rows=rows)
+    history.x_columns = x_columns(history)
 
     return history
 

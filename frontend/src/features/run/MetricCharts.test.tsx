@@ -1,15 +1,25 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { History } from '../../api/client'
-import type { ChartSeries } from '../../components/LineChart'
+import type { ChartMarker, ChartSeries } from '../../components/LineChart'
 import { MetricCharts } from './MetricCharts'
 
 // グラフは描かずに, 渡した系列を記録する (jsdom では canvas を描けないため)
 const drawn = vi.hoisted(() => new Map<string, ChartSeries[]>())
+const marked = vi.hoisted(() => new Map<string, ChartMarker[]>())
 vi.mock('../../components/LineChart', () => ({
-  LineChart: ({ series, label }: { series: ChartSeries[]; label: string }) => {
+  LineChart: ({
+    series,
+    label,
+    markers = [],
+  }: {
+    series: ChartSeries[]
+    label: string
+    markers?: ChartMarker[]
+  }) => {
     drawn.set(label, series)
+    marked.set(label, markers)
     return <div role="img" aria-label={label} />
   },
 }))
@@ -30,6 +40,7 @@ const history: History = {
   }),
   lr_steps: [],
   named_lr_steps: {},
+  x_columns: ['epoch'],
 }
 
 function card(name: string): HTMLElement {
@@ -66,5 +77,50 @@ describe('MetricCharts', () => {
 
     // 学習率には向きを出さない
     expect(within(card('lr')).queryByText(/ほど良い/)).not.toBeInTheDocument()
+  })
+
+  it('横軸を環境のステップ数にすると, その列で並べ, 目印もその位置に置く', () => {
+    // 強化学習の実験 (step の extra で env_steps を記録. 更新ごとの学習率もある)
+    const rl: History = {
+      columns: ['epoch', 'train/reward', 'env_steps', 'lr'],
+      rows: [1, 2, 3].map((epoch) => ({
+        epoch,
+        'train/reward': epoch * 10,
+        env_steps: epoch * 250,
+        lr: 0.01,
+      })),
+      lr_steps: [
+        { x: 1, lr: 0.01 },
+        { x: 2, lr: 0.01 },
+      ],
+      named_lr_steps: {},
+      x_columns: ['epoch', 'env_steps'],
+    }
+    render(
+      <MetricCharts
+        history={rl}
+        best={{ monitor: 'train/reward', mode: 'max', epoch: 2, value: 20 }}
+      />,
+    )
+    // 最初はエポックで並べ, 記録した列もグラフにする
+    expect(screen.getByRole('img', { name: 'env_steps のエポックごとの推移' })).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('横軸'), { target: { value: 'env_steps' } })
+    const reward = drawn.get('reward の env_steps に対する推移')!
+    expect(reward[0]!.points).toEqual([
+      [250, 10],
+      [500, 20],
+      [750, 30],
+    ])
+    expect(marked.get('reward の env_steps に対する推移')).toEqual([{ x: 500, label: 'best 2' }])
+    // 横軸の列そのもののグラフと, エポックの軸の上の更新ごとの学習率は出さない
+    expect(screen.queryByRole('img', { name: /^env_steps / })).not.toBeInTheDocument()
+    expect(drawn.get('lr の env_steps に対する推移')).toHaveLength(1)
+    expect(screen.getByText(/更新ごとの学習率は, 横軸がエポックのときだけ/)).toBeInTheDocument()
+  })
+
+  it('横軸の候補がエポックだけの実験には, 横軸を選ぶ欄を出さない', () => {
+    render(<MetricCharts history={history} />)
+    expect(screen.queryByLabelText('横軸')).not.toBeInTheDocument()
   })
 })

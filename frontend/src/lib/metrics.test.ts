@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  axisAt,
+  axisOptions,
+  axisStart,
   columnDirection,
   diffConfigs,
   flattenConfig,
   groupMetrics,
   guessDirection,
+  hasAxis,
   identicalSeries,
+  integerAxis,
   judgedOnly,
   pointStyle,
   summarizeDiff,
@@ -83,11 +88,62 @@ describe('toPoints', () => {
       rows: [{ loss: 1 }, { loss: null }],
       lr_steps: [],
       named_lr_steps: {},
+      x_columns: [],
     }
     expect(toPoints(history, 'loss')).toEqual([
       [1, 1],
       [2, null],
     ])
+  })
+})
+
+describe('横軸の列', () => {
+  // 強化学習のエポックごとの環境のステップ数 (step の extra の env_steps)
+  const rl = {
+    columns: ['epoch', 'train/reward', 'env_steps'],
+    rows: [
+      { epoch: 1, 'train/reward': 10, env_steps: 200 },
+      { epoch: 2, 'train/reward': null, env_steps: null },
+      { epoch: 3, 'train/reward': 30, env_steps: 700 },
+    ],
+    lr_steps: [],
+    named_lr_steps: {},
+    x_columns: ['epoch', 'env_steps'],
+  }
+  const plain = { ...rl, columns: ['epoch', 'train/reward'], x_columns: ['epoch'] }
+
+  it('選んだ列を横軸にし, その列の値の無い行を除く', () => {
+    expect(toPoints(rl, 'train/reward', 'env_steps')).toEqual([
+      [200, 10],
+      [700, 30],
+    ])
+    expect(toPoints(rl, 'train/reward')).toEqual([
+      [1, 10],
+      [2, null],
+      [3, 30],
+    ])
+  })
+
+  it('候補はエポックを先頭に重ねずに並べ, 候補に無い実験は横軸に使えない', () => {
+    expect(axisOptions([plain, rl, rl])).toEqual(['epoch', 'env_steps'])
+    expect(axisOptions([{ ...plain, x_columns: [] }])).toEqual(['epoch'])
+    expect(hasAxis(rl, 'env_steps')).toBe(true)
+    expect(hasAxis(plain, 'env_steps')).toBe(false)
+    expect(hasAxis(plain, 'epoch')).toBe(true)
+  })
+
+  it('エポックの位置を横軸の上の位置にし, 値が整数かを見る', () => {
+    expect(axisAt(rl, 'env_steps', 3)).toBe(700)
+    expect(axisAt(rl, 'env_steps', 2)).toBeNull()
+    expect(axisAt(rl, 'env_steps', 9)).toBeNull()
+    expect(axisAt(rl, 'epoch', 9)).toBe(9)
+    expect(integerAxis([rl], 'env_steps')).toBe(true)
+    const halves = { ...rl, rows: [{ epoch: 1, env_steps: 0.5 }] }
+    expect(integerAxis([rl, halves], 'env_steps')).toBe(false)
+    // 数え上げる列は 0 から描き, 負の値のある列とエポックは最初の値から
+    expect(axisStart([rl], 'env_steps')).toBe(0)
+    expect(axisStart([{ ...rl, rows: [{ epoch: 1, env_steps: -5 }] }], 'env_steps')).toBeUndefined()
+    expect(axisStart([rl], 'epoch')).toBeUndefined()
   })
 })
 

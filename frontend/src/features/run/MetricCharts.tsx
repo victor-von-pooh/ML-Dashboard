@@ -1,9 +1,20 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import type { BestValue, History } from '../../api/client'
 import { LineChart, type ChartMarker, type ChartSeries } from '../../components/LineChart'
 import { Card, DirectionBadge } from '../../components/ui'
-import { columnDirection, groupMetrics, judgedOnly, pointStyle, toPoints } from '../../lib/metrics'
+import {
+  EPOCH_AXIS,
+  axisAt,
+  axisOptions,
+  axisStart,
+  columnDirection,
+  groupMetrics,
+  integerAxis,
+  judgedOnly,
+  pointStyle,
+  toPoints,
+} from '../../lib/metrics'
 import { seriesVar } from '../../lib/colors'
 
 /**
@@ -38,16 +49,38 @@ export function MetricCharts({
   validInterval?: number
 }) {
   const [logScale, setLogScale] = useState(false)
-  const groups = useMemo(() => groupMetrics(history.columns), [history.columns])
+  // 横軸の列 (エポックか, エポックごとに増え続ける列). 候補から消えた列はエポックに戻す
+  const [chosenAxis, setAxis] = useState(EPOCH_AXIS)
+  const options = useMemo(() => axisOptions([history]), [history])
+  const axis = options.includes(chosenAxis) ? chosenAxis : EPOCH_AXIS
+  const byEpoch = axis === EPOCH_AXIS
+  // 横軸に選んだ列そのもののグラフは出さない (横軸と同じ値の直線になるため)
+  const groups = useMemo(
+    () =>
+      groupMetrics(history.columns).filter(
+        (group) => byEpoch || !(group.keys.length === 1 && group.keys[0] === axis),
+      ),
+    [history.columns, byEpoch, axis],
+  )
+  // 更新ごとの学習率はエポックの軸の上の位置なので, 横軸がエポックのときだけ重ねる
+  const steps = useCallback(
+    (name: string) => (byEpoch ? stepsOf(history, name) : []),
+    [byEpoch, history],
+  )
+  const hiddenSteps = !byEpoch && groups.some((group) => stepsOf(history, group.name).length > 0)
 
+  // ベストと早期終了の目印は, 選んだ横軸の上の位置に置く (位置の無いものは出さない)
   const markers = useMemo(() => {
     const result: ChartMarker[] = []
-    if (best) result.push({ x: best.epoch, label: `best ${best.epoch}` })
-    if (earlyStoppedEpoch && earlyStoppedEpoch !== best?.epoch) {
-      result.push({ x: earlyStoppedEpoch, label: 'early stop' })
+    const at = (epoch: number) => axisAt(history, axis, epoch)
+    const bestX = best ? at(best.epoch) : null
+    if (best && bestX != null) result.push({ x: bestX, label: `best ${best.epoch}` })
+    const stopX = earlyStoppedEpoch ? at(earlyStoppedEpoch) : null
+    if (earlyStoppedEpoch && earlyStoppedEpoch !== best?.epoch && stopX != null) {
+      result.push({ x: stopX, label: 'early stop' })
     }
     return result
-  }, [best, earlyStoppedEpoch])
+  }, [best, earlyStoppedEpoch, history, axis])
 
   const charts = useMemo(
     () =>
@@ -57,18 +90,18 @@ export function MetricCharts({
           ...group.keys.map<ChartSeries>((key, position) => ({
             name: key,
             color: seriesVar(colorIndex(key, position)),
-            points: toPoints(history, key),
+            points: toPoints(history, key, axis),
             sparse: judgedOnly(key, validInterval) || undefined,
           })),
           // step ごとに学習率を変えた実験は, エポックの中の変化も点線で重ねる
           // (位置はバックエンドがエポックの軸の上に計算済み. 対数の軸では 0 以下を欠損)
-          ...(stepsOf(history, group.name).length > 0
+          ...(steps(group.name).length > 0
             ? [
                 {
                   name: `${group.name} (更新ごと)`,
                   color: seriesVar(2),
                   dashed: true,
-                  points: stepsOf(history, group.name).map<[number, number | null]>(({ x, lr }) => [
+                  points: steps(group.name).map<[number, number | null]>(({ x, lr }) => [
                     x,
                     logScale && lr != null && lr <= 0 ? null : lr,
                   ]),
@@ -83,10 +116,11 @@ export function MetricCharts({
         ),
         // 何エポックかおきにだけ記録した系列 (グラフの下に点で描いた旨を添える)
         sparse: group.keys.filter(
-          (key) => judgedOnly(key, validInterval) || pointStyle(toPoints(history, key)).sparse,
+          (key) =>
+            judgedOnly(key, validInterval) || pointStyle(toPoints(history, key, axis)).sparse,
         ),
       })),
-    [groups, history, logScale, validInterval, best],
+    [groups, history, logScale, validInterval, best, axis, steps],
   )
 
   if (history.rows.length === 0) {
@@ -99,7 +133,23 @@ export function MetricCharts({
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-4">
+        {options.length > 1 && (
+          <label className="flex items-center gap-2 text-xs text-ink-2">
+            横軸
+            <select
+              value={axis}
+              onChange={(event) => setAxis(event.target.value)}
+              className="rounded-md border border-line bg-surface px-2 py-1 font-mono text-xs text-ink"
+            >
+              {options.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="flex items-center gap-2 text-xs text-ink-2">
           <input
             type="checkbox"
@@ -110,6 +160,11 @@ export function MetricCharts({
           縦軸を対数にする (正の値だけの指標)
         </label>
       </div>
+      {hiddenSteps && (
+        <p className="text-right text-[11px] text-ink-3">
+          更新ごとの学習率は, 横軸がエポックのときだけ重ねます
+        </p>
+      )}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {charts.map(({ group, series, sparse, direction }) => (
           <Card
@@ -132,11 +187,15 @@ export function MetricCharts({
               series={series}
               markers={markers}
               logScale={logScale}
-              xLabel="epoch"
+              xLabel={axis}
+              integerX={integerAxis([history], axis)}
+              xMin={axisStart([history], axis)}
               label={
-                stepsOf(history, group.name).length > 0
-                  ? `${group.name} のエポックごとの推移と, 更新ごとの推移`
-                  : `${group.name} のエポックごとの推移`
+                !byEpoch
+                  ? `${group.name} の ${axis} に対する推移`
+                  : steps(group.name).length > 0
+                    ? `${group.name} のエポックごとの推移と, 更新ごとの推移`
+                    : `${group.name} のエポックごとの推移`
               }
             />
             {sparse.length > 0 && (

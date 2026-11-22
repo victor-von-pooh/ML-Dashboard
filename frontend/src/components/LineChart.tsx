@@ -52,6 +52,11 @@ interface Props {
   xLabel?: string
   /** 横軸の右端 (長さの違う実験を比べるときに短い実験に合わせる). 無ければ全体 */
   xMax?: number
+  /**
+   * 横軸の左端 (環境のステップ数などの数え上げる列を 0 から描く). 値がそれより小さければ
+   * 値に合わせる. 無ければ最初の値
+   */
+  xMin?: number
   /** 読み上げ用のグラフの説明 */
   label: string
   /** 横軸が整数 (エポックなど) か. 評価の曲線 (しきい値など) では false */
@@ -72,6 +77,7 @@ export function LineChart({
   height = 260,
   xLabel,
   xMax,
+  xMin,
   label,
   integerX = true,
 }: Props) {
@@ -159,7 +165,11 @@ export function LineChart({
           nameTextStyle: { color: ink3, fontSize: 11 },
           // 1 エポックだけの場合も点が端に寄らないように幅を確保
           min: (value: { min: number; max: number }) =>
-            value.min === value.max ? value.min - 1 : value.min,
+            xMin !== undefined
+              ? Math.min(xMin, value.min)
+              : value.min === value.max
+                ? value.min - 1
+                : value.min,
           max: (value: { min: number; max: number }) =>
             xMax !== undefined
               ? Math.max(xMax, value.min + 1)
@@ -238,7 +248,7 @@ export function LineChart({
       },
       { replaceMerge: ['series'] },
     )
-  }, [series, markers, logScale, xLabel, xMax, integerX, theme])
+  }, [series, markers, logScale, xLabel, xMax, xMin, integerX, theme])
 
   const reset = () => {
     chartRef.current?.dispatchAction({ type: 'dataZoom', start: 0, end: 100 })
