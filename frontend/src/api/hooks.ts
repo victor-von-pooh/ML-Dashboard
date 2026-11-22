@@ -478,3 +478,13 @@ export function useStopBatch() {
     },
   })
 }
+
+export function useDeleteBatch() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (batchId: string) => api.deleteBatch(batchId),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.batches })
+    },
+  })
+}

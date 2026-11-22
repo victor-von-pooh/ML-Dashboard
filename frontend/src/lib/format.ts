@@ -32,6 +32,24 @@ export function formatDateTime(iso: string): string {
   return iso.replace('T', ' ').slice(0, 19)
 }
 
+/**
+ * 比較の画面の実験の見出しを作る. 名前と時刻にし, 同じ名前の実験が 2 つ以上あれば, その名前の
+ * 実験には月日も足す (日をまたいだ同じ名前の実験を見分けるため. 図や共有した画面からも
+ * 何の実験かが分かるように, 名前は必ず出す)
+ */
+export function compareLabeler(runIds: string[]): (runId: string) => string {
+  const counts = new Map<string, number>()
+  for (const id of runIds) {
+    const name = id.split('/')[0] ?? id
+    counts.set(name, (counts.get(name) ?? 0) + 1)
+  }
+  return (runId) => {
+    const [name, date, time] = runId.split('/')
+    if (!name || !date || !time) return runId
+    return (counts.get(name) ?? 0) >= 2 ? `${name} ${date.slice(5)} ${time}` : `${name} ${time}`
+  }
+}
+
 /** 日時が今からどれだけ前かを表す */
 export function formatRelative(iso: string, now: Date = new Date()): string {
   const diff = (now.getTime() - new Date(iso).getTime()) / 1000
