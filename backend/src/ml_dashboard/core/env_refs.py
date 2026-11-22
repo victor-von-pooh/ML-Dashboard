@@ -301,6 +301,29 @@ def closing_brace(text: str, start: int) -> int:
     return -1
 
 
+def ends_name(text: str, index: int) -> bool:
+    """
+    名前の参照の直後で, 環境変数の名前が終わっているかを判定する関数
+
+    Parameters
+    ----------
+    text: str
+        参照を含む文
+    index: int
+        名前の参照の閉じ括弧の次の位置
+
+    Returns
+    ----------
+    ended: bool
+        直後が , か } か空白の場合は True
+    """
+    ended = index < len(text) and (
+        text[index] in ",}" or text[index].isspace()
+    )
+
+    return ended
+
+
 def find_env_names(texts: Iterable[str]) -> tuple[set[str], list[str], bool]:
     """
     書いたままの config から, 環境変数の参照の名前を集める関数
@@ -326,14 +349,16 @@ def find_env_names(texts: Iterable[str]) -> tuple[set[str], list[str], bool]:
         for match in ENV_CALL_PATTERN.finditer(text):
             start = match.end()
             if text.startswith("${", start):
+                # 名前の一部だけが参照の場合 (${n}_x) は名前が不明
                 end = closing_brace(text, start)
-                if end < 0:
+                if end < 0 or not ends_name(text, end + 1):
                     unknown = True
                     continue
                 refs.append(text[start:end + 1])
                 continue
             name = ENV_NAME_PATTERN.match(text, start)
-            if name is None:
+            # 名前の後に参照が続く場合 (pre_${n}) も名前が不明
+            if name is None or text.startswith("${", name.end()):
                 unknown = True
                 continue
             names.add(name.group(0))
@@ -394,7 +419,8 @@ def env_replacements(
     """
     文の中で消す環境変数の値と, 代わりに出す参照の組を作る関数
 
-    名前が分からない参照がある場合は, 安全側に全ての環境変数の値を消す
+    名前が分からない参照がある場合は, 安全側に全ての環境変数の値 (短い値を
+    除く) を消す
 
     Parameters
     ----------
@@ -414,11 +440,16 @@ def env_replacements(
     names, refs, unknown = find_env_names(texts)
     resolved, unresolved = resolve_names(cfg, refs)
     names |= resolved
-    if unknown or unresolved:
+    # 名前が分からない場合は全ての環境変数の値を消す. 文が崩れないように,
+    # 短い値 (1 や . など) は対象外
+    everything = unknown or unresolved
+    if everything:
         names = set(environ)
     pairs = {
         (environ[name], f"${{oc.env:{name}}}")
-        for name in names if environ.get(name)
+        for name in names if environ.get(name) and (
+            not everything or len(environ[name]) >= MIN_SUBSTRING_LENGTH
+        )
     }
     replacements = sorted(pairs, key=lambda pair: (-len(pair[0]), pair[1]))
 

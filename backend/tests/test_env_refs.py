@@ -64,6 +64,62 @@ def test_name_from_reference() -> None:
         [relative], OmegaConf.create(relative), environ
     ) == everything
 
+    # 全てを消す場合も, 文が崩れないように短い値は対象外
+    short = environ | {"ONE": "1", "DOT": "."}
+    assert env_replacements([text], None, short) == everything
+
+
+def test_name_partly_from_reference() -> None:
+    """
+    名前の一部だけが参照の場合は, 名前が分からないものとして全ての
+    環境変数の値を消すことを確かめる関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    None
+    """
+    environ = {"pre_TOKEN": "s3cr3t-value", "OTHER": "other-value"}
+    everything = [
+        ("s3cr3t-value", "${oc.env:pre_TOKEN}"),
+        ("other-value", "${oc.env:OTHER}")
+    ]
+    text = "n: TOKEN\nvalue: ${oc.env:pre_${n}}\n"
+    assert env_replacements(
+        [text], OmegaConf.create(text), environ
+    ) == everything
+
+
+def test_name_followed_by_text() -> None:
+    """
+    名前の参照の後に文字が続く場合は, 名前が分からないものとして全ての
+    環境変数の値を消し, 既定値が続く場合は名前を引くことを確かめる関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    None
+    """
+    environ = {"TOKEN_x": "s3cr3t-value", "OTHER": "other-value"}
+    text = "n: TOKEN\nvalue: ${oc.env:${n}_x}\n"
+    assert env_replacements(
+        [text], OmegaConf.create(text), environ
+    ) == [
+        ("s3cr3t-value", "${oc.env:TOKEN_x}"),
+        ("other-value", "${oc.env:OTHER}")
+    ]
+
+    text = "n: TOKEN_x\nvalue: ${oc.env:${n},fallback}\n"
+    assert env_replacements(
+        [text], OmegaConf.create(text), environ
+    ) == [("s3cr3t-value", "${oc.env:TOKEN_x}")]
+
 
 def test_short_value() -> None:
     """
