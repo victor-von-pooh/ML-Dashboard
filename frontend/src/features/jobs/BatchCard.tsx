@@ -1,11 +1,20 @@
-import { Ban, CheckCircle2, Clock, GitCompareArrows, Loader2, TriangleAlert, X } from 'lucide-react'
+import {
+  Ban,
+  CheckCircle2,
+  Clock,
+  GitCompareArrows,
+  Loader2,
+  Trash2,
+  TriangleAlert,
+  X,
+} from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useId } from 'react'
 import { Link } from 'react-router'
 
 import type { BatchCandidate, BatchInfo, JobInfo } from '../../api/client'
 import { encodeRunId } from '../../api/client'
-import { useStopBatch } from '../../api/hooks'
+import { useDeleteBatch, useStopBatch } from '../../api/hooks'
 import { Button, ErrorBox, StatusBadge } from '../../components/ui'
 import { formatDateTime } from '../../lib/format'
 import { batchState, compareCandidates } from '../../lib/batches'
@@ -27,9 +36,10 @@ const STATES: Record<
   failed: { icon: TriangleAlert, label: '起動できなかった', className: 'text-warning-text' },
 }
 
-/** 候補のまとまり. 候補ごとの状態, 待っているジョブ, 取りやめ, 候補の実験を比べる */
+/** 候補のまとまり. 候補ごとの状態, 待っているジョブ, 取りやめ, 候補の実験を比べる, 記録を消す */
 export function BatchCard({ batch, jobs }: { batch: BatchInfo; jobs: JobInfo[] }) {
   const stop = useStopBatch()
+  const remove = useDeleteBatch()
   const runOf = new Map(jobs.map((job) => [job.id, job.run_id]))
   const jobOf = new Map(jobs.map((job) => [job.id, job]))
   // 候補のジョブが残した実験と, 比較の画面の URL (比べられる数まで)
@@ -71,6 +81,23 @@ export function BatchCard({ batch, jobs }: { batch: BatchInfo; jobs: JobInfo[] }
               候補の実験を比べる
               {runIds.length > MAX_COMPARE && ` (先頭の ${MAX_COMPARE} つ)`}
             </Link>
+          )}
+          {batch.finished && (
+            <Button
+              icon={Trash2}
+              disabled={remove.isPending}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    'まとまりの記録と候補の config を消しますか? 候補のジョブと実験は残ります.',
+                  )
+                ) {
+                  remove.mutate(batch.id)
+                }
+              }}
+            >
+              記録を消す
+            </Button>
           )}
           {!batch.finished && !batch.owned && (
             <p id={stopReasonId} className="max-w-64 text-xs text-ink-3">
@@ -185,6 +212,11 @@ export function BatchCard({ batch, jobs }: { batch: BatchInfo; jobs: JobInfo[] }
       {stop.error && (
         <div className="mt-3">
           <ErrorBox error={stop.error} />
+        </div>
+      )}
+      {remove.error && (
+        <div className="mt-3">
+          <ErrorBox error={remove.error} />
         </div>
       )}
     </section>

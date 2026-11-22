@@ -311,6 +311,152 @@ def test_batch_runs_candidates(
     assert batch["owned"] and batch["project_name"]
 
 
+def test_delete_batch(
+    client: TestClient, project_dir: Path, tmp_path: Path
+) -> None:
+    """
+    終わったまとまりの記録を消せ, 候補のジョブと実験は残り, 進めている
+    途中のまとまりは消せないことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ (アプリの置き場は home)
+
+    Returns
+    ----------
+    None
+    """
+    make_specs(project_dir)
+    project_id = register(client, project_dir)
+    runs = client.get(f"/api/projects/{project_id}/runs").json()
+    response = client.post(
+        f"/api/projects/{project_id}/batches",
+        json={
+            "script": "train.py", "config_text": "{}\n",
+            "specs": ["models/a.yaml", "models/b.yaml"]
+        }
+    )
+    batch = wait_batch(client, response.json()["id"])
+    batch_dir = tmp_path / "home" / "batches" / batch["id"]
+    assert (batch_dir / "candidates" / "0.yaml").is_file()
+
+    # 記録と候補の config だけを消し, ジョブ (その config) と実験は残す
+    deleted = client.delete(f"/api/batches/{batch['id']}")
+    assert deleted.status_code == 204
+    assert not batch_dir.exists()
+    assert batch["id"] not in [
+        item["id"] for item in client.get("/api/batches").json()
+    ]
+    for candidate in batch["candidates"]:
+        job = client.get(f"/api/jobs/{candidate['job_id']}")
+        assert job.status_code == 200
+        assert "spec: models/" in (job.json()["config_text"] or "")
+    assert client.get(f"/api/projects/{project_id}/runs").json() == runs
+
+    # 消したまとまり, 形の違う ID は 404
+    assert client.delete(f"/api/batches/{batch['id']}").status_code == 404
+    assert client.delete("/api/batches/NOT-AN-ID").status_code == 404
+
+    # 待つ候補のあるまとまりは, 別のプロセスが進めていても消さない
+    manager = BatchManager(tmp_path / "home")
+    candidate = BatchCandidate(path="models/a.yaml", name="a", sha256="0" * 64)
+    active = manager.create("p", "train.py", None, [(candidate, "{}\n")])
+    active.owner = BatchOwner(
+        hostname=manager.owner.hostname, pid=os.getppid(),
+        started_at=datetime.now().astimezone().isoformat()
+    )
+    manager.save(active)
+    conflict = client.delete(f"/api/batches/{active.id}")
+    assert conflict.status_code == 409
+    assert manager.load(active.id) is not None
+
+    # 持ち主の居ないまとまりは, 待つ候補を取りやめてから消す
+    active.owner = BatchOwner(
+        hostname=manager.owner.hostname, pid=2 ** 22 + 12345,
+        started_at="2026-11-01T00:00:00+09:00"
+    )
+    manager.save(active)
+    assert client.delete(f"/api/batches/{active.id}").status_code == 204
+    assert manager.load(active.id) is None
+
+
+def test_delete_batch_error(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    記録のディレクトリを消せない場合は 500 と分かる文を返し, 消した
+    まとまりのロックは表から外すことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ (アプリの置き場は home)
+    monkeypatch: pytest.MonkeyPatch
+        pytest の差し替え
+
+    Returns
+    ----------
+    None
+    """
+    manager = BatchManager(tmp_path / "home")
+    candidate = BatchCandidate(path="models/a.yaml", name="a", sha256="0" * 64)
+    batch = manager.create("p", "train.py", None, [(candidate, "{}\n")])
+    batch.candidates[0].state = "finished"
+    manager.save(batch)
+
+    def broken(path: Path) -> None:
+        raise PermissionError("権限がありません")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(batches_module.shutil, "rmtree", broken)
+        response = client.delete(f"/api/batches/{batch.id}")
+    assert response.status_code == 500
+    assert "記録を消せませんでした" in response.json()["detail"]
+    assert manager.load(batch.id) is not None
+
+    manager.lock(batch.id)
+    assert batch.id in manager.locks
+    assert manager.remove(batch.id)
+    assert batch.id not in manager.locks
+
+
+def test_remove_batch_link(tmp_path: Path) -> None:
+    """
+    まとまりのディレクトリがリンクなら, リンクだけを消して先を消さない
+    ことを確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    manager = BatchManager(tmp_path / "home")
+    candidate = BatchCandidate(path="models/a.yaml", name="a", sha256="0" * 64)
+    batch = manager.create("p", "train.py", None, [(candidate, "{}\n")])
+    batch.candidates[0].state = "finished"
+    manager.save(batch)
+
+    # 記録を外に移し, 置き場にはリンクを置く
+    outside = tmp_path / "outside"
+    manager.batch_dir(batch.id).rename(outside)
+    manager.batch_dir(batch.id).symlink_to(outside)
+    assert manager.remove(batch.id)
+    assert not manager.batch_dir(batch.id).is_symlink()
+    assert (outside / "batch.json").is_file()
+    assert not manager.remove(batch.id)
+
+
 def test_batch_conflict_and_stop(
     client: TestClient, project_dir: Path
 ) -> None:

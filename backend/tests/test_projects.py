@@ -1,10 +1,15 @@
+import sys
 from pathlib import Path
+
+import pytest
 
 from ml_dashboard.core.projects import (
     default_config_for,
     experiment_config_for,
     find_projects,
+    find_python,
     read_submodules,
+    venv_scope,
 )
 
 
@@ -177,3 +182,80 @@ def test_find_projects_skips_nested_submodule(tmp_path: Path) -> None:
     )
 
     assert find_projects(tmp_path) == [tmp_path / "tasks" / "a"]
+
+
+def make_venv(directory: Path, name: str = ".venv") -> Path:
+    """
+    中身の無い仮想環境の Python を置く関数
+
+    Parameters
+    ----------
+    directory: Path
+        仮想環境を置くディレクトリ
+    name: str = ".venv"
+        仮想環境のディレクトリの名前
+
+    Returns
+    ----------
+    python: Path
+        置いた bin/python
+    """
+    python = directory / name / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    python.write_text("")
+
+    return python
+
+
+def test_find_python_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    登録で拾う仮想環境が, プロジェクトとそれを含む git のルートまでに
+    限られることを確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        pytest の差し替え
+
+    Returns
+    ----------
+    None
+    """
+    home = tmp_path / "home"
+    monkeypatch.setattr(Path, "home", lambda: home)
+
+    # ホームの近くの関係ない環境は, git のリポジトリの外のプロジェクトでは
+    # 拾わず, プロジェクトの環境が無ければダッシュボードの Python
+    make_venv(home / "work")
+    loose = home / "work" / "tasks" / "demo"
+    loose.mkdir(parents=True)
+    assert venv_scope(loose) == [loose]
+    assert find_python(loose) == sys.executable
+    own = make_venv(loose, "venv")
+    assert find_python(loose) == str(own)
+
+    # git のリポジトリの中なら, ルートまでの環境を近い順に拾い, ルートの
+    # 上の環境は拾わない
+    repo = home / "work" / "repo"
+    project = repo / "tasks" / "demo"
+    project.mkdir(parents=True)
+    (repo / ".git").mkdir()
+    assert venv_scope(project) == [project, repo / "tasks", repo]
+    assert find_python(project) == sys.executable
+    root = make_venv(repo)
+    assert find_python(project) == str(root)
+    near = make_venv(repo / "tasks")
+    assert find_python(project) == str(near)
+
+    # submodule (.git がファイル) もリポジトリのルートとし, ホームは探さない
+    sub = home / "sub"
+    (sub / "task").mkdir(parents=True)
+    (sub / ".git").write_text("gitdir: ../.git/modules/sub\n")
+    assert venv_scope(sub / "task") == [sub / "task", sub]
+    make_venv(home)
+    assert find_python(sub / "task") == sys.executable
+    assert venv_scope(home) == []
