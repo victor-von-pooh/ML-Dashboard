@@ -1478,10 +1478,13 @@
             "description": "Successful Response"
           },
           "404": {
-            "description": "プロジェクトか実験が見つからない"
+            "description": "候補のまとまりが見つからない"
           },
           "409": {
-            "description": "進めている途中のまとまりか, 環境のジョブがある"
+            "description": "待つ候補か学習中の候補が残っている"
+          },
+          "500": {
+            "description": "記録のディレクトリを消せなかった"
           },
           "422": {
             "description": "Validation Error",

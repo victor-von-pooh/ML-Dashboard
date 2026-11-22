@@ -385,6 +385,48 @@ def test_delete_batch(
     assert manager.load(active.id) is None
 
 
+def test_delete_batch_error(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    記録のディレクトリを消せない場合は 500 と分かる文を返し, 消した
+    まとまりのロックは表から外すことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ (アプリの置き場は home)
+    monkeypatch: pytest.MonkeyPatch
+        pytest の差し替え
+
+    Returns
+    ----------
+    None
+    """
+    manager = BatchManager(tmp_path / "home")
+    candidate = BatchCandidate(path="models/a.yaml", name="a", sha256="0" * 64)
+    batch = manager.create("p", "train.py", None, [(candidate, "{}\n")])
+    batch.candidates[0].state = "finished"
+    manager.save(batch)
+
+    def broken(path: Path) -> None:
+        raise PermissionError("権限がありません")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(batches_module.shutil, "rmtree", broken)
+        response = client.delete(f"/api/batches/{batch.id}")
+    assert response.status_code == 500
+    assert "記録を消せませんでした" in response.json()["detail"]
+    assert manager.load(batch.id) is not None
+
+    manager.lock(batch.id)
+    assert batch.id in manager.locks
+    assert manager.remove(batch.id)
+    assert batch.id not in manager.locks
+
+
 def test_remove_batch_link(tmp_path: Path) -> None:
     """
     まとまりのディレクトリがリンクなら, リンクだけを消して先を消さない

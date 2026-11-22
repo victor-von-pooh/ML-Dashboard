@@ -688,8 +688,16 @@ def stop_batch(
     return info
 
 
+# 記録を消す口の応答
+DELETE_RESPONSES: dict[int | str, dict[str, str]] = {
+    404: {"description": "候補のまとまりが見つからない"},
+    409: {"description": "待つ候補か学習中の候補が残っている"},
+    500: {"description": "記録のディレクトリを消せなかった"},
+}
+
+
 @router.delete(
-    "/batches/{batch_id}", status_code=204, responses=NOT_FOUND | CONFLICT
+    "/batches/{batch_id}", status_code=204, responses=DELETE_RESPONSES
 )
 def delete_batch(request: Request, batch_id: str) -> None:
     """
@@ -724,6 +732,12 @@ def delete_batch(request: Request, batch_id: str) -> None:
             "進めている途中のまとまりは消せません. 終わるか取りやめてから"
             "消してください (別のプロセスが進めているまとまりは, その"
             "プロセスが終わりを記録してから消せます)"
+        ) from error
+    except OSError as error:
+        raise HTTPException(
+            500,
+            f"候補のまとまりの記録を消せませんでした ({error}). 置き場の "
+            f"batches/{batch_id} の権限を確かめてください"
         ) from error
     if not removed:
         raise HTTPException(

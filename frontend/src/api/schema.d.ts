@@ -3582,14 +3582,14 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description プロジェクトか実験が見つからない */
+            /** @description 候補のまとまりが見つからない */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description 進めている途中のまとまりか, 環境のジョブがある */
+            /** @description 待つ候補か学習中の候補が残っている */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3604,6 +3604,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description 記録のディレクトリを消せなかった */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

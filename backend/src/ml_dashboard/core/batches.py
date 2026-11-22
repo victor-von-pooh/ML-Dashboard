@@ -574,6 +574,8 @@ class BatchManager:
         ----------
         BatchActiveError
             待つ候補か学習中の候補が残っている場合
+        OSError
+            記録のディレクトリを消せなかった場合
         """
         # 進め方の保存と重ならないように, 同じロックの中で確かめてから削除
         with self.lock(batch_id):
@@ -590,6 +592,10 @@ class BatchManager:
             else:
                 shutil.rmtree(path)
             removed = True
+
+        # 消したまとまりのロックを表から削除
+        with self.table_lock:
+            self.locks.pop(batch_id, None)
 
         return removed
 
