@@ -156,10 +156,9 @@ function OutcomeTable({ outcome }: { outcome: PolicyOutcome }) {
   return (
     <section aria-label={`守り付きの評価 ${outcome.name}`} className="space-y-2">
       <div>
-        <h4 className="font-mono text-sm font-medium">{outcome.name}</h4>
+        <h3 className="font-mono text-sm font-medium">{outcome.name}</h3>
         <p className="text-xs text-ink-3">
-          {details.join(' · ')}
-          {outcome.description && <span className="ml-2">{outcome.description}</span>}
+          {[...details, outcome.description].filter(Boolean).join(' · ')}
         </p>
       </div>
       {outcome.episodes === 0 ? (
@@ -179,9 +178,11 @@ function OutcomeTable({ outcome }: { outcome: PolicyOutcome }) {
               <caption className="sr-only">{`${outcome.name} の終え方ごとの割合`}</caption>
               <thead>
                 <tr className="border-b border-line text-left text-xs text-ink-3">
-                  <th className="px-4 py-1.5 font-medium">終え方</th>
-                  <th className="px-4 py-1.5 text-right font-medium">エピソード</th>
-                  <th className="px-4 py-1.5 text-right font-medium">割合</th>
+                  <th className="px-4 py-1.5 font-medium whitespace-nowrap">終え方</th>
+                  <th className="px-4 py-1.5 text-right font-medium whitespace-nowrap">
+                    エピソード
+                  </th>
+                  <th className="px-4 py-1.5 text-right font-medium whitespace-nowrap">割合</th>
                 </tr>
               </thead>
               <tbody>
@@ -230,16 +231,20 @@ function OutcomesCard({
         )}
         {history && (
           <section aria-label="学習の成功の割合" className="border-t border-line pt-3">
-            <h4 className="text-sm font-medium">
+            <h3 className="text-sm font-medium">
               学習の成功の割合{' '}
               <span className="font-mono text-xs text-ink-3">{SUCCESS_COLUMN}</span>
-            </h4>
+            </h3>
             {success ? (
               <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-                {success.best && (
+                {success.bestEpoch != null && (
                   <>
-                    <dt className="text-ink-3">ベストのエポック ({success.best.epoch})</dt>
-                    <dd className="tabular">{formatShare(success.best.value)}</dd>
+                    <dt className="text-ink-3">ベストのエポック ({success.bestEpoch})</dt>
+                    {success.best ? (
+                      <dd className="tabular">{formatShare(success.best.value)}</dd>
+                    ) : (
+                      <dd className="text-ink-2">このエポックに値がありません</dd>
+                    )}
                   </>
                 )}
                 <dt className="text-ink-3">最後のエポック ({success.last.epoch})</dt>

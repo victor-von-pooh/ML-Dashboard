@@ -133,12 +133,13 @@ export interface SuccessValue {
 
 /**
  * 学習の指標の成功の割合 (valid/success) の, ベストのエポックと最後のエポックの値.
+ * bestEpoch はベストのエポック (無ければ null) で, best はそのエポックの値 (無ければ null).
  * 列が無いか値が 1 つも無ければ null
  */
 export function trainingSuccess(
   history: History,
   best: BestValue | null | undefined,
-): { best: SuccessValue | null; last: SuccessValue } | null {
+): { bestEpoch: number | null; best: SuccessValue | null; last: SuccessValue } | null {
   if (!history.columns.includes(SUCCESS_COLUMN)) return null
   const points: SuccessValue[] = []
   history.rows.forEach((row, index) => {
@@ -151,5 +152,5 @@ export function trainingSuccess(
   const last = points.at(-1)
   if (!last) return null
   const found = best ? points.find((point) => point.epoch === best.epoch) : undefined
-  return { best: found ?? null, last }
+  return { bestEpoch: best?.epoch ?? null, best: found ?? null, last }
 }

@@ -106,12 +106,46 @@ describe('PolicyTab', () => {
     expect(rows[2]).toHaveTextContent('50.0%')
     expect(rows[5]).toHaveTextContent('守りが元の制御に戻した')
     expect(screen.getByText(/守りが止めたか元の制御に戻した: 25.0%/)).toHaveTextContent('(2 / 8)')
-    expect(screen.getByText(/分割 simulator · エポック 7 · 8 エピソード/)).toBeInTheDocument()
+    // 件数と説明の間にも区切りを入れ, 評価の名前はカードの見出しの次の段
+    expect(
+      screen.getByText(
+        '分割 simulator · エポック 7 · 8 エピソード · 守りを当てて動かしたエピソード',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 3, name: 'guarded_episodes' })).toBeInTheDocument()
+    // 狭い幅でも表の見出しを折らない
+    for (const header of within(table).getAllByRole('columnheader')) {
+      expect(header).toHaveClass('whitespace-nowrap')
+    }
 
     // ベストのエポックと, 値のある最後のエポックの成功の割合
     const success = screen.getByRole('region', { name: '学習の成功の割合' })
     expect(within(success).getByText('ベストのエポック (1)').nextSibling).toHaveTextContent('20.0%')
     expect(within(success).getByText('最後のエポック (2)').nextSibling).toHaveTextContent('90.0%')
+  })
+
+  it('ベストのエポックに成功の割合の値が無ければそう出す', () => {
+    render(
+      <PolicyTab
+        policy={policy}
+        outcomes={[]}
+        history={{
+          columns: ['epoch', 'valid/reward', 'valid/success'],
+          rows: [
+            { epoch: 1, 'valid/reward': 10, 'valid/success': 0.2 },
+            { epoch: 2, 'valid/reward': 30, 'valid/success': null },
+          ],
+          lr_steps: [],
+          named_lr_steps: {},
+        }}
+        best={{ monitor: 'valid/reward', mode: 'max', epoch: 2, value: 30 }}
+      />,
+    )
+    const success = screen.getByRole('region', { name: '学習の成功の割合' })
+    expect(within(success).getByText('ベストのエポック (2)').nextSibling).toHaveTextContent(
+      'このエポックに値がありません',
+    )
+    expect(within(success).getByText('最後のエポック (1)').nextSibling).toHaveTextContent('20.0%')
   })
 
   it('評価の無い実験と成功の割合の無い学習はそう出す', () => {
