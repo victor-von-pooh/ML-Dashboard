@@ -1479,3 +1479,54 @@ def test_validate_uses_env_values(
         "data.train_path のファイルが見つかりません: missing.csv "
         "(プロジェクトのディレクトリから)"
     ]
+
+
+def test_validate_monitor_in_default(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    default の config が監視する指標を書いているかを, 確かめの結果に返す
+    ことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 書いていない default (読めない experiment の config でも返す)
+    project_id = register(client, project_dir)
+    url = f"/api/projects/{project_id}/validate"
+    ok = client.post(url, json={"text": "{}\n"}).json()
+    assert ok["ok"] is True
+    assert ok["monitor_in_default"] is False
+    assert ok["mode_in_default"] is False
+    assert ok["config"]["trainer"]["monitor"] is None
+    typo = client.post(url, json={"text": "trainer:\n  epoch: 3\n"}).json()
+    assert typo["ok"] is False
+    assert typo["monitor_in_default"] is False
+
+    # experiment の config に書いても default の値ではない
+    written = client.post(
+        url, json={"text": "trainer:\n  monitor: valid/acc\n  mode: max\n"}
+    ).json()
+    assert written["ok"] is True, written
+    assert written["monitor_in_default"] is False
+    assert written["config"]["trainer"]["monitor"] == "valid/acc"
+
+    # default に書くと True. null は書いていないものとみなす
+    default = project_dir / "configs" / "default" / "train.yaml"
+    base = default.read_text()
+    default.write_text(base + "trainer:\n  monitor: valid/loss\n")
+    assert client.post(url, json={"text": "{}\n"}).json()[
+        "monitor_in_default"
+    ] is True
+    default.write_text(base + "trainer:\n  monitor: null\n  mode: max\n")
+    written = client.post(url, json={"text": "{}\n"}).json()
+    assert written["monitor_in_default"] is False
+    assert written["mode_in_default"] is True

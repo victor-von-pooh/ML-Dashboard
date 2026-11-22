@@ -7,6 +7,8 @@ export type ProjectDetail = Schemas['ProjectDetail']
 export type ProjectCandidate = Schemas['ProjectCandidate']
 export type RecordedProject = Schemas['RecordedProject']
 export type RecordedProjects = Schemas['RecordedProjects']
+export type ProblemTraining = Schemas['ProblemTraining']
+export type ProblemTrainings = Schemas['ProblemTrainings']
 export type RunSummary = Schemas['RunSummary']
 export type RunDetail = Schemas['RunDetail']
 export type RunModelSpec = Schemas['RunModelSpec']
@@ -166,6 +168,8 @@ export const api = {
     }),
   /** ML-Pathfinder の問題の設定に記録された, 登録していないプロジェクト */
   recordedProjects: () => request<RecordedProjects>('/api/problems/projects'),
+  /** 問題の設定ごとの学習で監視する指標と向き (ML-Quest が無ければ 501) */
+  problemTrainings: () => request<ProblemTrainings>('/api/problems/training'),
   listRuns: (projectId: string) =>
     request<RunSummary[]>(`/api/projects/${encodeURIComponent(projectId)}/runs`),
   getRun: (projectId: string, runId: string) =>

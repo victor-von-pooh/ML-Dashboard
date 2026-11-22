@@ -114,6 +114,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/problems/training": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Problem Trainings
+         * @description ML-Pathfinder の問題の設定ごとの, 学習で監視する指標と向きを返す関数
+         *
+         *     Parameters
+         *     ----------
+         *     None
+         *
+         *     Returns
+         *     ----------
+         *     result: ProblemTrainings
+         *         問題の設定ごとの監視する指標と向きか, 渡せない理由 (更新の新しい
+         *         順)
+         */
+        get: operations["list_problem_trainings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}": {
         parameters: {
             query?: never;
@@ -1698,6 +1728,32 @@ export interface components {
             /** High */
             high?: (number | null)[] | null;
         };
+        /** ProblemTraining */
+        ProblemTraining: {
+            /** Problem */
+            problem: string;
+            /** Problem Path */
+            problem_path: string;
+            /** Project Path */
+            project_path?: string | null;
+            /** Monitor */
+            monitor?: string | null;
+            /** Mode */
+            mode?: ("min" | "max") | null;
+            /** Reason */
+            reason?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** ProblemTrainings */
+        ProblemTrainings: {
+            /** Root */
+            root: string;
+            /** Problems */
+            problems: components["schemas"]["ProblemTraining"][];
+            /** Error */
+            error?: string | null;
+        };
         /** Progress */
         Progress: {
             /** Phase */
@@ -2454,6 +2510,16 @@ export interface components {
             notes: string[];
             /** Default Config */
             default_config?: string | null;
+            /**
+             * Monitor In Default
+             * @default false
+             */
+            monitor_in_default: boolean;
+            /**
+             * Mode In Default
+             * @default false
+             */
+            mode_in_default: boolean;
         };
         /** ValidationError */
         ValidationError: {
@@ -2580,6 +2646,33 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RecordedProjects"];
                 };
+            };
+        };
+    };
+    list_problem_trainings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemTrainings"];
+                };
+            };
+            /** @description ML-Quest が入っていないか古い */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

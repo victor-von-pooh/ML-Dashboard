@@ -7,6 +7,7 @@ import { api, type BatchInfo, type JobInfo, type RunNote } from './client'
 export const keys = {
   projects: ['projects'] as const,
   recorded: ['problems', 'projects'] as const,
+  problemTrainings: ['problems', 'training'] as const,
   project: (id: string) => ['projects', id] as const,
   runs: (projectId: string) => ['projects', projectId, 'runs'] as const,
   run: (projectId: string, runId: string) => ['projects', projectId, 'run', runId] as const,
@@ -135,6 +136,16 @@ export function useMoveProject() {
 /** ML-Pathfinder で書き出した, 登録していないプロジェクト (開いている間だけ読む) */
 export function useRecordedProjects(enabled: boolean) {
   return useQuery({ queryKey: keys.recorded, queryFn: api.recordedProjects, enabled })
+}
+
+/** 問題の設定ごとの学習で監視する指標と向き (ML-Quest が無い場合は読み直さない) */
+export function useProblemTrainings(enabled: boolean) {
+  return useQuery({
+    queryKey: keys.problemTrainings,
+    queryFn: api.problemTrainings,
+    enabled,
+    retry: false,
+  })
 }
 
 export function useScanProjects() {

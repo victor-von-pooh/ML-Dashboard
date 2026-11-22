@@ -18,13 +18,19 @@ rsync -a fixtures/rl/ "$WORK/rl/"
 rsync -a fixtures/samples/ "$WORK/samples/"
 
 # 書き出したプロジェクトの一覧の確かめ用に, ML-Pathfinder の置き場と, そこに
-# 記録した (まだ登録していない) 学習のプロジェクトと, 記録の無い問題の設定
-mkdir -p "$WORK/exported/configs/default" "$WORK/pathfinder/problems/sales" \
-  "$WORK/pathfinder/problems/draft"
-printf 'experiment:\n  name: exported\n  output_dir: outputs\n' \
-  > "$WORK/exported/configs/default/train.yaml"
-printf 'format_version: 2\nname: e2e の売上\nproject:\n  path: %s\n' \
-  "$WORK/exported" > "$WORK/pathfinder/problems/sales/problem.yaml"
+# 記録した (まだ登録していない) 学習のプロジェクトと, 記録の無い問題の設定.
+# 監視する指標を受け取る確かめ用に, どちらのプロジェクトも default の config
+# に trainer.monitor を書かない (own は問題の設定に記録の無い骨組みの外のもの).
+# ML-Quest の骨組み (make_project) は default に trainer.monitor を書き, 欄が
+# 働かないので, default は手で書く
+for name in exported own; do
+  mkdir -p "$WORK/$name/configs/default" "$WORK/$name/configs/experiment"
+  printf 'experiment:\n  name: %s\n  output_dir: outputs\n' "$name" \
+    > "$WORK/$name/configs/default/train.yaml"
+  printf '{}\n' > "$WORK/$name/configs/experiment/train.yaml"
+  printf 'print("train")\n' > "$WORK/$name/train.py"
+done
+mkdir -p "$WORK/pathfinder/problems/draft"
 printf 'format_version: 2\nname: e2e の下書き\n' \
   > "$WORK/pathfinder/problems/draft/problem.yaml"
 
@@ -42,6 +48,11 @@ done
 
 # 領域と点群の見本 (新しい版の一覧の見本も)
 uv run python "$WORK/../make_samples.py" "$WORK/samples"
+
+# ML-Quest で書く問題の設定 (exported を記録した e2e の売上, 記録の無い
+# e2e の解約, 学習しない e2e の写真)
+uv run python "$WORK/../make_problems.py" "$WORK/pathfinder/problems" \
+  "$WORK/exported"
 
 # データの置き場と ML-Pathfinder の置き場も作業用のディレクトリにし,
 # 決まったトークンで起動

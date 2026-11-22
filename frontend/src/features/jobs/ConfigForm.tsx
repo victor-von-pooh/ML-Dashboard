@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight, Info, TriangleAlert } from 'lucide-react'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 
 import { api, type ClassSpec, type ParamSpec } from '../../api/client'
 import { Card, ErrorBox, Spinner } from '../../components/ui'
@@ -9,9 +9,11 @@ import {
   describeRange,
   deleteYamlValue,
   formatInput,
+  getYamlValue,
   parseInput,
   setYamlValue,
 } from '../../lib/yamlEdit'
+import { MonitorSection } from './MonitorSection'
 
 type Config = Record<string, unknown>
 
@@ -371,14 +373,23 @@ function ClassSection({
  */
 export function ConfigForm({
   projectId,
+  projectPath,
   script,
   text,
+  autoFillMonitor,
+  onMonitorCleared,
   onChange,
 }: {
   projectId: string
+  /** プロジェクトのディレクトリ (問題の設定の記録と比べる) */
+  projectPath: string
   /** 学習のスクリプト (元にする default の config を選ぶのに使う) */
   script: string
   text: string
+  /** 問題の設定の監視する指標と向きを初めに入れるか */
+  autoFillMonitor: boolean
+  /** 利用者が監視する指標を空にしたとき */
+  onMonitorCleared: () => void
   onChange: (text: string) => void
 }) {
   const registry = useQuery({
@@ -413,15 +424,20 @@ export function ConfigForm({
   useEffect(() => {
     latest.current = text
   }, [text])
-  const onEdit = (change: (current: string) => string) => {
+  // 監視する指標の欄の初めの書き込み (effect) から呼ぶので, 描画ごとに作り直さない
+  const onChangeRef = useRef(onChange)
+  useEffect(() => {
+    onChangeRef.current = onChange
+  }, [onChange])
+  const onEdit = useCallback((change: (current: string) => string) => {
     try {
       latest.current = change(latest.current)
-      onChange(latest.current)
+      onChangeRef.current(latest.current)
       setEditError(null)
     } catch (error) {
       setEditError(`YAML として読めないので, フォームから書き換えられません: ${String(error)}`)
     }
-  }
+  }, [])
 
   return (
     <Card title="フォームで設定">
@@ -481,6 +497,20 @@ export function ConfigForm({
               />
             )}
           </div>
+          <MonitorSection
+            projectId={projectId}
+            config={config}
+            monitorInDefault={resolved.data?.monitor_in_default}
+            modeWritten={
+              resolved.data?.mode_in_default === true ||
+              getYamlValue(text, 'trainer.mode') !== undefined
+            }
+            projectPath={projectPath}
+            autoFill={autoFillMonitor}
+            onCleared={onMonitorCleared}
+            disabled={stale}
+            onEdit={onEdit}
+          />
           {/* 名前付きの複数の Optimizer (optimizers) は, 名前ごとに Optimizer と Scheduler */}
           {(namedOptimizers(config).length > 0
             ? namedOptimizers(config).map((name) => ({

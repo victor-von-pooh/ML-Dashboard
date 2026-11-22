@@ -127,6 +127,28 @@
         }
       }
     },
+    "/api/problems/training": {
+      "get": {
+        "summary": "List Problem Trainings",
+        "description": "ML-Pathfinder の問題の設定ごとの, 学習で監視する指標と向きを返す関数\n\nParameters\n----------\nNone\n\nReturns\n----------\nresult: ProblemTrainings\n    問題の設定ごとの監視する指標と向きか, 渡せない理由 (更新の新しい\n    順)",
+        "operationId": "list_problem_trainings",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemTrainings"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "ML-Quest が入っていないか古い"
+          }
+        }
+      }
+    },
     "/api/projects/{project_id}": {
       "get": {
         "summary": "Read Project",
@@ -3556,6 +3578,115 @@
         ],
         "title": "PolicySpace"
       },
+      "ProblemTraining": {
+        "properties": {
+          "problem": {
+            "type": "string",
+            "title": "Problem"
+          },
+          "problem_path": {
+            "type": "string",
+            "title": "Problem Path"
+          },
+          "project_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Path"
+          },
+          "monitor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monitor"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "min",
+                  "max"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "problem",
+          "problem_path"
+        ],
+        "title": "ProblemTraining"
+      },
+      "ProblemTrainings": {
+        "properties": {
+          "root": {
+            "type": "string",
+            "title": "Root"
+          },
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/ProblemTraining"
+            },
+            "type": "array",
+            "title": "Problems"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "root",
+          "problems"
+        ],
+        "title": "ProblemTrainings"
+      },
       "Progress": {
         "properties": {
           "phase": {
@@ -6066,6 +6197,16 @@
               }
             ],
             "title": "Default Config"
+          },
+          "monitor_in_default": {
+            "type": "boolean",
+            "title": "Monitor In Default",
+            "default": false
+          },
+          "mode_in_default": {
+            "type": "boolean",
+            "title": "Mode In Default",
+            "default": false
           }
         },
         "type": "object",

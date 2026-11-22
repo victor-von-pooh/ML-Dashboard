@@ -1,3 +1,6 @@
 [submodule "ML-Found"]
 	path = ML-Found
 	url = https://github.com/victor-von-pooh/ML-Found.git
+[submodule "ML-Quest"]
+	path = ML-Quest
+	url = https://github.com/victor-von-pooh/ML-Quest.git
