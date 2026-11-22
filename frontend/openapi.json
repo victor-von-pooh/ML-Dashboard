@@ -1457,6 +1457,45 @@
         }
       }
     },
+    "/api/batches/{batch_id}": {
+      "delete": {
+        "summary": "Delete Batch",
+        "description": "終わった候補のまとまりの記録を消す関数, 候補のジョブと実験は消さない\n\nParameters\n----------\nrequest: Request\n    リクエスト\nbatch_id: str\n    まとまりの ID\n\nReturns\n----------\nNone",
+        "operationId": "delete_batch",
+        "parameters": [
+          {
+            "name": "batch_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Batch Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "プロジェクトか実験が見つからない"
+          },
+          "409": {
+            "description": "進めている途中のまとまりか, 環境のジョブがある"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects/{project_id}/notes": {
       "get": {
         "summary": "List Notes",

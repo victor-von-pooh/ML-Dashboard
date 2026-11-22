@@ -18,6 +18,7 @@ from ml_dashboard.api.jobs import (
 )
 from ml_dashboard.api.routes import NOT_FOUND, get_project
 from ml_dashboard.core.batches import (
+    BatchActiveError,
     BatchManager,
     is_active,
     is_batch_id,
@@ -685,6 +686,49 @@ def stop_batch(
     info = to_batch_info(request, batch)
 
     return info
+
+
+@router.delete(
+    "/batches/{batch_id}", status_code=204, responses=NOT_FOUND | CONFLICT
+)
+def delete_batch(request: Request, batch_id: str) -> None:
+    """
+    終わった候補のまとまりの記録を消す関数, 候補のジョブと実験は消さない
+
+    Parameters
+    ----------
+    request: Request
+        リクエスト
+    batch_id: str
+        まとまりの ID
+
+    Returns
+    ----------
+    None
+    """
+    if not is_batch_id(batch_id):
+        raise HTTPException(
+            404, f"候補のまとまりが見つかりません: {batch_id}"
+        )
+
+    # 持ち主の居ないまとまりは, ジョブの状態から読み直して保存してから消す
+    manager = get_batches(request)
+    manager.refresh_foreign(
+        batch_id, lambda job_id: job_running(request.app, job_id)
+    )
+    try:
+        removed = manager.remove(batch_id)
+    except BatchActiveError as error:
+        raise HTTPException(
+            409,
+            "進めている途中のまとまりは消せません. 終わるか取りやめてから"
+            "消してください (別のプロセスが進めているまとまりは, その"
+            "プロセスが終わりを記録してから消せます)"
+        ) from error
+    if not removed:
+        raise HTTPException(
+            404, f"候補のまとまりが見つかりません: {batch_id}"
+        )
 
 
 def stop_job(

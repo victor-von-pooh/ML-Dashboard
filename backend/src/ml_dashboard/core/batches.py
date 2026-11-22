@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 import socket
 import subprocess
 import tempfile
@@ -136,6 +137,11 @@ def pid_reused(owner: BatchOwner) -> bool:
     ).total_seconds() > 1
 
     return reused
+
+
+class BatchActiveError(Exception):
+    # 進めている途中のまとまりを消そうとした誤り
+    pass
 
 
 class BatchHooks(Protocol):
@@ -547,6 +553,45 @@ class BatchManager:
             self.save(batch)
 
         return batch
+
+    def remove(self, batch_id: str) -> bool:
+        """
+        終わったまとまりの記録と候補の config を消す関数
+
+        候補のジョブ (ジョブの置き場の config) と実験は消さない
+
+        Parameters
+        ----------
+        batch_id: str
+            まとまりの ID
+
+        Returns
+        ----------
+        removed: bool
+            消したかどうか, 無いか読めない場合は False
+
+        Raises
+        ----------
+        BatchActiveError
+            待つ候補か学習中の候補が残っている場合
+        """
+        # 進め方の保存と重ならないように, 同じロックの中で確かめてから削除
+        with self.lock(batch_id):
+            batch = self.load(batch_id)
+            if batch is None:
+                return False
+            if is_active(batch):
+                raise BatchActiveError(batch_id)
+
+            # リンクは辿らず, リンクだけを削除
+            path = self.batch_dir(batch_id)
+            if path.is_symlink():
+                path.unlink()
+            else:
+                shutil.rmtree(path)
+            removed = True
+
+        return removed
 
     def start(self, batch: Batch, hooks: BatchHooks) -> threading.Thread:
         """

@@ -284,4 +284,7 @@ export const api = {
       `/api/batches/${encodeURIComponent(batchId)}/stop${force ? '?force=true' : ''}`,
       { method: 'POST' },
     ),
+  // 終わったまとまりの記録と候補の config を消す (候補のジョブと実験は残る)
+  deleteBatch: (batchId: string) =>
+    request<void>(`/api/batches/${encodeURIComponent(batchId)}`, { method: 'DELETE' }),
 }
