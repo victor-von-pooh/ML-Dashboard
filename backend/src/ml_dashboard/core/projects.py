@@ -135,6 +135,37 @@ def find_projects(root: Path, max_depth: int = 3) -> list[Path]:
     return found
 
 
+def venv_scope(project_dir: Path) -> list[Path]:
+    """
+    プロジェクトの仮想環境を探すディレクトリを返す関数
+
+    Parameters
+    ----------
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    scope: list[Path]
+        プロジェクトのディレクトリから, プロジェクトを含む git のルート
+        までのディレクトリ (近い順). ホームと / の手前までに git のルートが
+        無ければ, プロジェクトのディレクトリだけ
+    """
+    # 同じリポジトリの上の階層の環境 (ML_tester のルートの .venv など) だけを
+    # 関係する環境とし, リポジトリの外 (ホームの近くの別の作業の環境) は除外
+    home = Path.home()
+    chain: list[Path] = []
+    for directory in [project_dir, *project_dir.parents]:
+        if directory == home or directory == directory.parent:
+            break
+        chain.append(directory)
+        if (directory / ".git").exists():
+            return chain
+    scope = chain[:1]
+
+    return scope
+
+
 def find_python(project_dir: Path) -> str:
     """
     プロジェクトの学習に使う Python を探す関数
@@ -147,21 +178,16 @@ def find_python(project_dir: Path) -> str:
     Returns
     ----------
     python: str
-        プロジェクトから git のルートかホームまでの仮想環境の Python,
-        無ければダッシュボードの Python
+        プロジェクトに関係する仮想環境 (venv_scope の中の .venv か venv)
+        の Python, 無ければダッシュボードの Python
     """
-    # プロジェクトから上に向かって仮想環境を探し, 関係の無い場所の手前で終了
-    home = Path.home()
-    for directory in [project_dir, *project_dir.parents]:
-        if directory == home or directory == directory.parent:
-            break
+    # プロジェクトに近いディレクトリの環境から使用
+    for directory in venv_scope(project_dir):
         for venv in (".venv", "venv"):
             candidate = directory / venv / "bin" / "python"
             if candidate.is_file():
                 python = str(candidate)
                 return python
-        if (directory / ".git").exists():
-            break
 
     python = sys.executable
 
