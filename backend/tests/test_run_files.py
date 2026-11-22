@@ -242,3 +242,125 @@ def test_stop_replaces_links_and_fifos(
     job = wait_for(client, job_id, "status", "finished")
     assert job["run"]["status"] == "stopped"
     assert outside.read_text(encoding="utf-8") == "keep\n"
+
+
+def test_csv_is_streamed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    model_summary.csv と lr_steps.csv を 1 つの文字列にせずに流して読み,
+    開いた後に上限を超えて伸びたファイルも読むのを止めることを確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        全てを読む関数を差し替えるのに使う
+
+    Returns
+    ----------
+    None
+    """
+    def refuse(*args: Any, **kwargs: Any) -> Any:
+        """
+        全てを 1 つの文字列にして読む関数の代わり (呼ばれたら誤り)
+
+        Parameters
+        ----------
+        *args: Any
+            引数
+        **kwargs: Any
+            名前付きの引数
+
+        Returns
+        ----------
+        None
+        """
+        raise AssertionError("中身を 1 つの文字列にして読んだ")
+
+    monkeypatch.setattr(runs, "read_plain_text", refuse)
+    monkeypatch.setattr(run_files, "read_plain", refuse)
+    summary = tmp_path / "model_summary.csv"
+    summary.write_text(OUTSIDE["model_summary.csv"], encoding="utf-8")
+    rows, total = read_model_summary(summary)
+    assert rows is not None and total == 1
+    steps = tmp_path / "lr_steps.csv"
+    steps.write_text(OUTSIDE["lr_steps.csv"], encoding="utf-8")
+    assert [point.lr for point in read_lr_steps(steps)] == [0.1]
+
+    # 開いた後に上限を超えて伸びたファイルは, 読む途中で止める
+    grown = tmp_path / "grown.csv"
+    grown.write_text("a\n", encoding="utf-8")
+    with pytest.raises(run_files.RunFileError):
+        with run_files.open_plain_text(grown, 16) as file:
+            with grown.open("a", encoding="utf-8") as writer:
+                writer.write("b\n" * 64)
+            file.read()
+
+
+def test_stop_is_written_before_it_appears(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    STOP を一時ファイルに書き終えてから置き換え, 読む側が空の STOP を
+    見る間が無く, ハードリンクで共有した外の中身も書き換えないことを
+    確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        置き換えの瞬間を見るのに使う
+
+    Returns
+    ----------
+    None
+    """
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    stop = run_dir / "STOP"
+    outside = tmp_path / "outside.txt"
+    outside.write_text("keep\n", encoding="utf-8")
+    os.link(outside, stop)
+
+    # 置き換える時には, 一時ファイルに中身を書き終え, STOP は前のまま
+    seen: list[tuple[str, str]] = []
+    original = os.replace
+
+    def watch(source: Any, target: Any) -> None:
+        """
+        置き換える前の一時ファイルと STOP の中身を記録する関数
+
+        Parameters
+        ----------
+        source: Any
+            一時ファイル
+        target: Any
+            置き換える先
+
+        Returns
+        ----------
+        None
+        """
+        seen.append((
+            Path(source).read_text(encoding="utf-8"),
+            Path(target).read_text(encoding="utf-8")
+        ))
+        original(source, target)
+
+    monkeypatch.setattr(run_files.os, "replace", watch)
+    run_files.replace_with_plain(stop, b"now\n")
+    assert seen == [("now\n", "keep\n")]
+    assert stop.read_text(encoding="utf-8") == "now\n"
+    assert outside.read_text(encoding="utf-8") == "keep\n"
+    # 一時ファイルは残らない
+    assert sorted(path.name for path in run_dir.iterdir()) == ["STOP"]
+
+    # ディレクトリの STOP は置けず, 一時ファイルも残さない
+    stop.unlink()
+    stop.mkdir()
+    with pytest.raises(OSError):
+        run_files.replace_with_plain(stop, b"")
+    assert sorted(path.name for path in run_dir.iterdir()) == ["STOP"]

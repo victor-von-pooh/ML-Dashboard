@@ -1,9 +1,11 @@
+import io
 import os
 import stat
+import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import BinaryIO, Optional
+from typing import BinaryIO, Optional, TextIO
 
 # 実験のディレクトリのファイルを画面が自分で読み書きする共通の関数.
 # リンクを辿って実験の外を読み書きせず, FIFO などで止まらず, 大きなファイルで
@@ -20,16 +22,6 @@ READ_FLAGS = (
     os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     | getattr(os, "O_BINARY", 0) | getattr(os, "O_CLOEXEC", 0)
 )
-
-# 新しい普通のファイルとして作る旗 (既にあれば作らない)
-CREATE_FLAGS = (
-    os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
-    | getattr(os, "O_BINARY", 0) | getattr(os, "O_CLOEXEC", 0)
-)
-
-# 作り直すときに, 消した後に別のものが置かれた場合に試す回数
-CREATE_RETRIES = 3
-
 
 class RunFileError(OSError):
     # 読まないファイル (リンク, 普通でないファイル, 大きすぎるファイル).
@@ -130,6 +122,100 @@ def open_plain(path: Path, limit: Optional[int]) -> Iterator[BinaryIO]:
         yield file
 
 
+class LimitedReader(io.RawIOBase):
+    def __init__(self, file: BinaryIO, limit: int, name: str):
+        # 読んだ大きさを数え, 上限を超えたら止める (開いた後に伸びた場合)
+        self.file = file
+        self.limit = limit
+        self.name = name
+        self.total = 0
+
+    def readable(self) -> bool:
+        """
+        読めるかを返す関数
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        ----------
+        readable: bool
+            常に True
+        """
+        return True
+
+    def readinto(self, buffer: memoryview) -> int:  # type: ignore[override]
+        """
+        上限を超えない範囲で読む関数
+
+        Parameters
+        ----------
+        buffer: memoryview
+            読んだ中身を入れる場所
+
+        Returns
+        ----------
+        count: int
+            読んだ大きさ
+
+        Raises
+        ----------
+        RunFileError
+            読んだ大きさが上限を超えた場合
+        """
+        data = self.file.read(len(buffer))
+        self.total += len(data)
+        if self.total > self.limit:
+            raise RunFileError(f"大きすぎるので読みません: {self.name}")
+        count = len(data)
+        buffer[:count] = data
+
+        return count
+
+
+@contextmanager
+def open_plain_text(
+    path: Path, limit: int, encoding: str = "utf-8"
+) -> Iterator[TextIO]:
+    """
+    普通のファイルを, 上限の大きさまで文字として少しずつ読むために開く関数
+
+    中身を 1 つの文字列にせずに行ごとに読めるので, 大きな CSV でも記憶を
+    使わない. 読めない文字は置き換え, 改行はそのまま渡す (csv のため)
+
+    Parameters
+    ----------
+    path: Path
+        ファイルのパス
+    limit: int
+        大きさの上限 (バイト). 開いた後に伸びて超えた場合も読むのを止める
+    encoding: str = "utf-8"
+        文字の符号化
+
+    Returns
+    ----------
+    file: TextIO
+        開いたファイル (抜けると閉じる)
+
+    Raises
+    ----------
+    RunFileError
+        リンク, 普通のファイルでない, 上限を超える場合
+    OSError
+        無いか読めない場合
+    """
+    with open_plain(path, limit) as raw:
+        reader = io.BufferedReader(LimitedReader(raw, limit, path.name))
+        text = io.TextIOWrapper(
+            reader, encoding=encoding, errors="replace", newline=""
+        )
+        try:
+            yield text
+        finally:
+            text.detach()
+
+
 def read_plain(path: Path, limit: int) -> bytes:
     """
     普通のファイルを, 上限の大きさまで読む関数
@@ -195,16 +281,17 @@ def read_plain_text(
 
 def replace_with_plain(path: Path, content: bytes) -> None:
     """
-    ファイルを, 新しい普通のファイルとして作り直す関数
+    ファイルを, 新しい普通のファイルとして置き換える関数
 
-    先にあるもの (リンク, FIFO, 普通のファイル) は開かずに種類を見て消して
-    から, 既にあれば作らない形 (O_EXCL) で作る. リンクの先や, 他の場所と
-    ハードリンクで共有した中身を書き換えないため
+    同じディレクトリの一時ファイルに書き終えてから os.replace で置く. 先に
+    あるもの (リンク, FIFO, 普通のファイル) は開かずに名前ごと置き換わる
+    ので, リンクの先や, ハードリンクで共有した外の中身を書き換えない. 書き
+    終えてから置くので, 読む側が書きかけ (空) のファイルを読むこともない
 
     Parameters
     ----------
     path: Path
-        作るファイルのパス
+        置くファイルのパス
     content: bytes
         書く中身
 
@@ -215,29 +302,16 @@ def replace_with_plain(path: Path, content: bytes) -> None:
     Raises
     ----------
     OSError
-        ディレクトリがあるなど, 消せないか作れない場合
+        ディレクトリがあるなど, 置けない場合 (一時ファイルは消す)
     """
-    for attempt in range(CREATE_RETRIES):
-        # 先にあるものは開かずに消す (ディレクトリは消さずに誤り)
-        try:
-            info = path.lstat()
-        except FileNotFoundError:
-            info = None
-        if info is not None:
-            if stat.S_ISDIR(info.st_mode):
-                raise IsADirectoryError(f"ディレクトリがあります: {path}")
-            try:
-                path.unlink()
-            except FileNotFoundError:
-                pass
-
-        # 消した後に別のものが置かれた場合は, もう一度消してから作る
-        try:
-            fd = os.open(path, CREATE_FLAGS, 0o644)
-        except FileExistsError:
-            if attempt == CREATE_RETRIES - 1:
-                raise
-            continue
+    fd, temporary = tempfile.mkstemp(
+        prefix=f".{path.name}.", dir=path.parent
+    )
+    try:
         with os.fdopen(fd, "wb") as file:
             file.write(content)
-        return
+        os.chmod(temporary, 0o644)
+        os.replace(temporary, path)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise

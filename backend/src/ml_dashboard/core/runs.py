@@ -46,6 +46,7 @@ from ml_dashboard.core.run_files import (
     MAX_JSON_BYTES,
     MAX_YAML_BYTES,
     open_plain,
+    open_plain_text,
     plain_stat,
     read_plain,
     read_plain_text,
@@ -418,8 +419,9 @@ def read_model_summary(
     total = 0
     result: SummaryResult
     try:
-        text = read_plain_text(path, MAX_CSV_BYTES, encoding="utf-8-sig")
-        with io.StringIO(text, newline="") as file:
+        with open_plain_text(
+            path, MAX_CSV_BYTES, encoding="utf-8-sig"
+        ) as file:
             for record in csv.DictReader(file):
                 if any(record.get(name) is None for name in SUMMARY_COLUMNS):
                     raise ValueError("model_summary.csv の列が足りません")
@@ -515,28 +517,32 @@ def read_lr_steps(
     if cached is not None and cached[0] == key:
         return cached[1]
 
-    # 大きなファイルでも軽く済むように, 1 行ずつ数だけを読み込み
+    # 大きなファイルでも軽く済むように, 中身を 1 つの文字列にせず 1 行ずつ
+    # 数だけを読み込み
     epochs: list[int] = []
     lrs: list[float] = []
+    # (リンク, 普通でないファイル, 上限を超えるファイルは点なし)
     try:
-        text = read_plain_text(path, MAX_CSV_BYTES, encoding="utf-8-sig")
-    except OSError:
+        with open_plain_text(
+            path, MAX_CSV_BYTES, encoding="utf-8-sig"
+        ) as f:
+            reader = csv.reader(f)
+            header = next(reader, [])
+            if "epoch" not in header or column not in header:
+                return []
+            epoch_column = header.index("epoch")
+            lr_column = header.index(column)
+            for row in reader:
+                if len(row) <= max(epoch_column, lr_column):
+                    continue
+                epoch = to_float(row[epoch_column])
+                if epoch is None:
+                    continue
+                lr = to_float(row[lr_column])
+                epochs.append(int(epoch))
+                lrs.append(math.nan if lr is None else lr)
+    except (OSError, csv.Error):
         return []
-    with io.StringIO(text, newline="") as f:
-        reader = csv.reader(f)
-        header = next(reader, [])
-        if "epoch" not in header or column not in header:
-            return []
-        epoch_column, lr_column = header.index("epoch"), header.index(column)
-        for row in reader:
-            if len(row) <= max(epoch_column, lr_column):
-                continue
-            epoch = to_float(row[epoch_column])
-            if epoch is None:
-                continue
-            lr = to_float(row[lr_column])
-            epochs.append(int(epoch))
-            lrs.append(math.nan if lr is None else lr)
 
     # エポックごとの記録の数で位置を決め, 間引いてから返却
     counts: dict[int, int] = {}
