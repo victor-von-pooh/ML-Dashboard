@@ -45,6 +45,23 @@ test('強化学習の指標を学習曲線で見て, 方策の守りを確かめ
   await expect(page.getByText('一致', { exact: true })).toBeVisible()
   await expect(page.locator('pre').filter({ hasText: 'CartPole-v1' })).toBeVisible()
 
+  // 守り付きの評価の割合 (evaluations/guarded_episodes.json の 20 エピソード) と,
+  // 学習の成功の割合 (valid/success) のベストと最後のエポック
+  const outcome = page.getByRole('region', { name: '守り付きの評価 guarded_episodes' })
+  await expect(outcome).toContainText('分割 simulator · エポック 3 · 20 エピソード')
+  await expect(outcome.getByText(/守りが止めたか元の制御に戻した: 20\.0%/)).toContainText(
+    '(4 / 20)',
+  )
+  const ends = outcome.getByRole('table', { name: 'guarded_episodes の終え方ごとの割合' })
+  await expect(ends.getByRole('row')).toHaveCount(6)
+  await expect(ends.getByRole('row').nth(1)).toContainText('20.0%')
+  await expect(ends.getByRole('row').nth(2)).toContainText('60.0%')
+  await expect(ends.getByRole('row').nth(4)).toContainText('5.0%')
+  await expect(ends.getByRole('row').nth(5)).toContainText('15.0%')
+  const success = page.getByRole('region', { name: '学習の成功の割合' })
+  await expect(success.getByText('ベストのエポック (3)')).toBeVisible()
+  await expect(success.getByText('60.0%')).toHaveCount(2)
+
   // 重みは配らない: ファイルの一覧にダウンロードのリンクが無く, API も返さない
   await page.getByRole('tab', { name: /ファイル/ }).click()
   await expect(page.getByText('policy/policy.pt は配りません')).toBeAttached()

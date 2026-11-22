@@ -31,12 +31,6 @@
 - 終わりの条件: エポックを選ぶと, そのエポックの学習用と検証用の指標が見本の横に出る
 - つながり: 無し
 
-### 方策のタブの図と e2e に守り付きの評価
-- 何を: `docs/images/policy.png` を割合のカードが写る形で撮り直し, e2e の fixture (`e2e/fixtures/rl`) に守り付きの評価を足して, 方策のタブの割合を通しで確かめる
-- なぜ: 今の図と e2e は割合のカードを写さず, 確かめていない
-- 終わりの条件: 図に割合のカードが写り, e2e が割合のカードの値を確かめる
-- つながり: 無し
-
 ### 実験の詳細に Scheduler の主な引数を出す
 - 何を: backend の `OptimizerInfo` に `scheduler_params` (ML-Found の `run.json` の `optimizers` の項目) を足し, `openapi.json` と `schema.d.ts` を作り直す. 実験の詳細のモデルのタブ (`RunTabs.tsx`. Optimizer が 1 つの実験の欄と, 名前付きの Optimizer の表の両方) に, Scheduler のクラス名の下で引数を表にする. 中に Scheduler を持つもの (`schedulers`) は入れ子で出す. `lr_lambdas` の要素と `scale_fn` は文字か `{function, args, keywords}` の辞書 (`function` も文字か辞書) で, `groups` はパラメータグループごと, `milestones` は並び. `"inf"` などの文字はそのまま出す
 - なぜ: 同じ条件で学習し直すときに, 自分で渡した Scheduler の引数を探す手間を無くすため

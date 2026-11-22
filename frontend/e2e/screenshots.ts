@@ -210,6 +210,9 @@ try {
   const rlRun = 'cartpole/2026-11-20/10-00-00'
   await page.goto(`/projects/${rlId}/runs/${rlRun}?tab=policy`)
   await page.getByText('一致', { exact: true }).waitFor()
+  await page.getByRole('region', { name: '守り付きの評価 guarded_episodes' }).waitFor()
+  // 守り付きの評価の割合のカードまで写るように, タブの並びを上端へ
+  await showTabs(page)
   await shoot(page, 'policy.png')
   await page.goto(`/projects/${rlId}/requirements`)
   await page.getByRole('region', { name: '追加の依存 cuda' }).waitFor()
