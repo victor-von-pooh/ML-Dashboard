@@ -85,6 +85,12 @@
 - 終わりの条件: 環境変数を参照する config (そのまま, 入れ子, 文字の中) の確かめの応答の全体に, その値が含まれないことを backend のテストで確かめる
 - つながり: ML-Found の docs/DESIGN.md の「24. 安全」
 
+### 実験のディレクトリのファイルをリンクを辿らずに読み書きする
+- 何を: 実験のディレクトリのファイルを画面が自分で読む所 (`core/runs.py` の `run.json` と `progress.json` (`read_json`), `model_summary.csv`, `history.csv`, `lr_steps.csv`, `config.yaml` と `source.yaml` と `diff.yaml` (`load_yaml`), `output.log`, `core/logs.py` の `train.log`) を, リンクを辿らず普通のファイルだけを大きさの上限 (ファイルごとに決める) つきで読む共通の関数にそろえる. 止める要求の `STOP` の書き込み (`core/jobs.py`) は, 先にリンクや普通でないものがあれば, 開かずに種類を見て消してから, 新しい普通のファイルとして作る (既にあれば作らない形で開く). `task.yaml` と `samples/index.json` は ML-Found が守るので, ML-Found の固定を上げて任せる
+- なぜ: 今は FIFO を読むと画面が止まり (`model_summary.csv`, `run.json`), リンクを辿って実験の外を読み, 上限が無いので大きなファイルで記憶を使い, `STOP` がリンクなら実験の外のファイルを書き換えうるため
+- 終わりの条件: 挙げたファイルの読み込みが, リンクで外の中身を返さず, FIFO で止まらず, 上限を超えると読まない (空か理由付き) ことを backend のテストで確かめる. 先にリンクか FIFO の `STOP` がある場合も, 空の要求と `now` の要求の両方で, 外を書き換えず学習が止まることをテストで確かめる
+- つながり: ML-Found の docs/DESIGN.md の「24. 安全」
+
 ## 条件待ち
 
 ### 学習の起動に混合精度と勾配の蓄積の欄
