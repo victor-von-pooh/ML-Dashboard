@@ -73,6 +73,12 @@
 - 終わりの条件: config から作った Scheduler と自分で渡した Scheduler (SequentialLR の入れ子と partial の関数を含む) の実験で, 画面から引数が読める. 画面のテストがある
 - つながり: ML-Found の docs/FORMAT.md の「run.json」
 
+### 追加の依存の版が古い時を「無い」と分けて出す
+- 何を: backend の `RequirementCheck` に `version` と `min_version` (ML-Found の `describe_requirements` の確かめの項目. 古い ML-Found では無いので任意) を足し, `make api` で画面の型を作り直す. 確かめが通らず `version` と `min_version` がある時は「無い」「入っていません」でなく「版が古い」と, 入っている版と下限を出す. 出す所は, 入れ方のカード (`RequirementCard.tsx` と `lib/requirements.ts` の表示), 起動を止める文 (`core/requirements.py` の `describe_missing`), 起動の画面の文 (`LaunchPage.tsx`), 準備の「足りない機能」(`lib/readiness.ts`). 版を読めない時 (確かめが通り `error` に「確かめていない」) は今のまま「ある」と出す
+- なぜ: ML-Found が追加の依存の版の下限を確かめるので, 入っているのに版が古い時も今は「無い」「入っていません」と出て, 何を直すかを取り違えるため
+- 終わりの条件: `version` と `min_version` の付いた確かめの結果を差し込んだ backend のテストと画面のテストで, 版が古い時は「版が古い」と版と下限が出て, 無い時と版を読めない時は今のまま出る. 2 つの項目の無い古い ML-Found の結果でも壊れない
+- つながり: ML-Found の docs/DESIGN.md の「5. 追加の依存」 (学習の中で出る `MissingRequirementError` の文は学習のログに出るだけで, この画面は受け取らない)
+
 ## 条件待ち
 
 ### 学習の起動に混合精度と勾配の蓄積の欄
