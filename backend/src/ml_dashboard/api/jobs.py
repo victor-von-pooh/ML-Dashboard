@@ -767,8 +767,9 @@ def run_checks(
         check_init_weights(cfg, project_dir)
 
         # デバイスは start_experiment と同じく必ず確認
-        # bf16 はデバイスで使えるかも確認 (フォームで fp32 に戻せるように
-        # 値の誤り)
+        # bf16 をデバイスで使えるかは, サーバーが GPU の文脈を持ち続けない
+        # ように cpu の場合だけ確認 (cuda と mps は学習のプロセスで確認).
+        # フォームで fp32 に戻せるように値の誤り
         try:
             device = get_device(cfg.experiment.device)
         except ValueError as error:
@@ -776,7 +777,8 @@ def run_checks(
                 value_error = f"experiment.device の誤り: {error}"
         else:
             try:
-                check_precision(cfg, device)
+                if device.type == "cpu":
+                    check_precision(cfg, device)
             except ValueError as error:
                 if value_error is None:
                     value_error = str(error)

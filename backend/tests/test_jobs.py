@@ -629,6 +629,20 @@ def test_validate_precision_and_accumulation(
     assert result["error"] == "trainer.precision: bf16 は cpu で使えません"
     assert result["config"]["trainer"]["precision"] == "bf16"
     assert devices == [torch.device("cpu")]
+
+    # cuda と mps では GPU の文脈を持たないように不使用 (学習のプロセスで確認)
+    for name in ["cuda", "mps"]:
+        monkeypatch.setattr(
+            "ml_found.utils.get_device",
+            lambda value, name=name: torch.device(name)
+        )
+        text = (
+            f"experiment:\n  device: {name}\ntrainer:\n  precision: bf16\n"
+        )
+        result = client.post(url, json={"text": text}).json()
+        assert result["ok"] is True, result["error"]
+        assert result["config"]["trainer"]["precision"] == "bf16"
+    assert devices == [torch.device("cpu")]
     monkeypatch.undo()
 
     # 始める前に読む重みは, 無いファイルと重みの辞書でないファイルがエラー

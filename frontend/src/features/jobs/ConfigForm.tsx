@@ -560,7 +560,7 @@ export function ConfigForm({
                 config={config}
                 disabled={stale}
                 onEdit={onEdit}
-                hint="bf16 では順伝播と損失を bfloat16 で計算します (重みとチェックポイントは元の型のまま). 学習のデバイスで使えるかは「確かめる」で分かります. mps では速さが少し上がるだけで, メモリを減らすのは勾配の蓄積の方です"
+                hint="bf16 では順伝播と損失を bfloat16 で計算します (重みとチェックポイントは元の型のまま). 使えるかは, cpu では「確かめる」で, cuda と mps では起動した学習の初めに分かります. mps では速さが少し上がるだけで, メモリを減らすのは勾配の蓄積の方です"
               />
             )}
             {getIn(config, 'trainer.accumulate_grad_batches') !== undefined && (
@@ -570,7 +570,7 @@ export function ConfigForm({
                 config={config}
                 disabled={stale}
                 onEdit={onEdit}
-                hint="この数のバッチの勾配を貯めてから 1 回更新します (1 なら毎バッチ). 小さなバッチで大きなバッチと同じ更新にし, メモリを減らします. 勾配を使う 1 つの Optimizer の場合だけ使えます"
+                hint="この数のバッチの勾配を貯めてから 1 回更新します (1 なら毎バッチ). 小さなバッチで大きなバッチと同じ更新にし, メモリを減らします. closure を使う Optimizer (LBFGS など) や, 複数の Optimizer (optimizers) では使えません"
               />
             )}
           </div>
