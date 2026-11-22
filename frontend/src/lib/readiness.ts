@@ -64,10 +64,21 @@ function environmentItem(readiness: ProjectReadiness): ReadinessItem {
     }
   }
   if (readiness.missing.length > 0) {
+    // 版が古い機能は入っている版と下限を添えて, 入っていない機能と分ける
+    // (古い版のダッシュボードの応答に old_versions が無くても読む)
+    const old = readiness.old_versions ?? {}
+    const absent = readiness.missing.filter((name) => !(name in old))
+    const stale = readiness.missing
+      .filter((name) => name in old)
+      .map((name) => `${name} (${old[name]})`)
+    const texts = [
+      absent.length > 0 && `足りない機能: ${absent.join(', ')}`,
+      stale.length > 0 && `版が古い機能: ${stale.join(', ')}`,
+    ].filter(Boolean)
     return {
       label,
       state: 'missing',
-      text: `足りない機能: ${readiness.missing.join(', ')}`,
+      text: texts.join('. '),
       hint:
         readiness.commands.length > 0
           ? '「足りないものを入れる」で pip で入るものを入れます'

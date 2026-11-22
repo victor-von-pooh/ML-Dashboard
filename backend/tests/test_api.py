@@ -267,6 +267,44 @@ def test_run_detail_history_log(
     optimizers = client.get(base).json()["optimizers"]
     assert [item["name"] for item in optimizers] == ["actor", "critic"]
     assert optimizers[0]["scheduler"] == "StepLR"
+    # 書かない版の ML-Found の実験は Scheduler の引数が None
+    assert optimizers[0]["scheduler_params"] is None
+
+    # Scheduler の主な引数 (ML-Found の scheduler_params の形). 入れ子の
+    # Scheduler, partial の関数, 回数の並び, 無限大の文字をそのまま返す
+    params = {
+        "milestones": [10],
+        "schedulers": [
+            {"scheduler": "LambdaLR", "params": {"lr_lambdas": [{
+                "function": "warm", "args": [],
+                "keywords": {"num_warmup_steps": 10}
+            }]}},
+            {"scheduler": "MultiStepLR", "params": {
+                "milestones": [30, 60, 60], "gamma": 0.1
+            }}
+        ]
+    }
+    (run_dir / "run.json").write_text(json.dumps({
+        "status": "completed",
+        "optimizers": [
+            {"name": None, "optimizer": "AdamW", "modules": None,
+             "scheduler": "SequentialLR(LambdaLR, MultiStepLR)",
+             "scheduler_params": params},
+            {"name": "critic", "optimizer": "SGD", "modules": ["critic"],
+             "scheduler": "ReduceLROnPlateau",
+             "scheduler_params": {"min_lrs": [0], "eps": "inf"}},
+            {"name": "broken", "optimizer": "SGD", "modules": ["critic"],
+             "scheduler": "StepLR", "scheduler_params": "StepLR"}
+        ]
+    }))
+    optimizers = client.get(base).json()["optimizers"]
+    assert optimizers[0]["scheduler_params"] == params
+    assert optimizers[1]["scheduler_params"] == {
+        "min_lrs": [0], "eps": "inf"
+    }
+    # 辞書でない引数は, 行を残して引数だけを None
+    assert optimizers[2]["name"] == "broken"
+    assert optimizers[2]["scheduler_params"] is None
     (run_dir / "run.json").write_text(json.dumps({
         "status": "completed",
         "optimizers": [

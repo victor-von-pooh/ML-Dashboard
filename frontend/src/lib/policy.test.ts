@@ -90,11 +90,17 @@ describe('評価の割合と学習の成功の割合', () => {
     }
     expect(
       trainingSuccess(history, { monitor: 'valid/reward', mode: 'max', epoch: 1, value: 1 }),
-    ).toEqual({ best: { epoch: 1, value: 0.5 }, last: { epoch: 2, value: 0.75 } })
+    ).toEqual({ bestEpoch: 1, best: { epoch: 1, value: 0.5 }, last: { epoch: 2, value: 0.75 } })
     // ベストのエポックに値が無ければ最後の値だけ
     expect(
       trainingSuccess(history, { monitor: 'valid/reward', mode: 'max', epoch: 3, value: 1 }),
-    ).toEqual({ best: null, last: { epoch: 2, value: 0.75 } })
+    ).toEqual({ bestEpoch: 3, best: null, last: { epoch: 2, value: 0.75 } })
+    // ベストのエポックが無ければ bestEpoch も null
+    expect(trainingSuccess(history, null)).toEqual({
+      bestEpoch: null,
+      best: null,
+      last: { epoch: 2, value: 0.75 },
+    })
     expect(trainingSuccess({ ...history, rows: [{ 'valid/success': null }] }, null)).toBeNull()
     expect(trainingSuccess({ ...history, columns: [] }, null)).toBeNull()
   })
