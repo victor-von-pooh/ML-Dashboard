@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Optional
 
 from ml_dashboard.core.models import EnvSection, LogEntry
+from ml_dashboard.core.run_files import MAX_LOG_BYTES, read_plain_text
 
 # ML-Found の既定のログの書式
 DEFAULT_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -81,10 +82,11 @@ def parse_log(
     entries: list[LogEntry]
         時刻, レベル, メッセージの記録, 書式が違う行はレベル無しの記録
     """
-    if not path.is_file():
+    # リンク, 普通でないファイル, 大きすぎるファイルは読まない
+    try:
+        lines = read_plain_text(path, MAX_LOG_BYTES).splitlines()
+    except OSError:
         return []
-
-    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     pattern = build_pattern(log_format)
 
     # 書式に合う行が 1 つも無い場合は 1 行ずつの記録として扱い

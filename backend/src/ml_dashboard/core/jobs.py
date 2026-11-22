@@ -19,6 +19,7 @@ from ml_dashboard.core.projects import (
     get_output_dirs,
     read_output_dir,
 )
+from ml_dashboard.core.run_files import open_plain, replace_with_plain
 from ml_dashboard.core.runs import (
     RunNotFoundError,
     find_run_dirs,
@@ -525,11 +526,11 @@ class JobManager:
             # (中身が無ければエポックの区切りで, now ならエポックの途中でも)
             run_dir = self.find_run(job, project) if project else None
             if run_dir is not None and not force:
-                stop_path = run_dir / STOP_FILE
-                if now:
-                    stop_path.write_text("now\n", encoding="utf-8")
-                else:
-                    stop_path.touch()
+                # 先にあるリンクや FIFO は開かずに消し, 新しい普通の
+                # ファイルとして作る (実験の外を書き換えないため)
+                replace_with_plain(
+                    run_dir / STOP_FILE, b"now\n" if now else b""
+                )
 
             # 実験が無い場合と強制の場合は, このサーバーが起動したものに限り
             # シグナルを送信 (起動し直した後の pid は別のプロセスの可能性)
@@ -613,15 +614,15 @@ def output_tail(path: Path) -> str:
     text: str
         出力の末尾, ファイルが無い場合は空
     """
+    # 大きな出力でも末尾だけの読み込み (リンクと普通でないファイルは空)
     text = ""
-    if not path.is_file():
+    try:
+        with open_plain(path, None) as file:
+            size = os.fstat(file.fileno()).st_size
+            file.seek(max(0, size - OUTPUT_TAIL))
+            raw = file.read(OUTPUT_TAIL).decode("utf-8", errors="replace")
+    except OSError:
         return text
-
-    # 大きな出力でも末尾だけの読み込み
-    size = path.stat().st_size
-    with path.open("rb") as file:
-        file.seek(max(0, size - OUTPUT_TAIL))
-        raw = file.read().decode("utf-8", errors="replace")
 
     # 進捗バーが \r で同じ行を書き直した分と, 端末の制御文字の除去
     raw = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", raw)

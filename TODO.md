@@ -31,24 +31,6 @@
 - 終わりの条件: エポックを選ぶと, そのエポックの学習用と検証用の指標が見本の横に出る
 - つながり: 無し
 
-### 追加の依存の版が古い時を「無い」と分けて出す
-- 何を: backend の `RequirementCheck` に `version` と `min_version` (ML-Found の `describe_requirements` の確かめの項目. 古い ML-Found では無いので任意) を足し, `make api` で画面の型を作り直す. 確かめが通らず `version` と `min_version` がある時は「無い」「入っていません」でなく「版が古い」と, 入っている版と下限を出す. 出す所は, 入れ方のカード (`RequirementCard.tsx` と `lib/requirements.ts` の表示), 起動を止める文 (`core/requirements.py` の `describe_missing`), 起動の画面の文 (`LaunchPage.tsx`), 準備の「足りない機能」(`lib/readiness.ts`). 版を読めない時 (確かめが通り `error` に「確かめていない」) は今のまま「ある」と出す
-- なぜ: ML-Found が追加の依存の版の下限を確かめるので, 入っているのに版が古い時も今は「無い」「入っていません」と出て, 何を直すかを取り違えるため
-- 終わりの条件: `version` と `min_version` の付いた確かめの結果を差し込んだ backend のテストと画面のテストで, 版が古い時は「版が古い」と版と下限が出て, 無い時と版を読めない時は今のまま出る. 2 つの項目の無い古い ML-Found の結果でも壊れない
-- つながり: ML-Found の docs/DESIGN.md の「5. 追加の依存」 (学習の中で出る `MissingRequirementError` の文は学習のログに出るだけで, この画面は受け取らない)
-
-### 実験のディレクトリのファイルをリンクを辿らずに読み書きする
-- 何を: 実験のディレクトリのファイルを画面が自分で読む所 (`core/runs.py` の `run.json` と `progress.json` (`read_json`), `model_summary.csv`, `history.csv`, `lr_steps.csv`, `config.yaml` と `source.yaml` と `diff.yaml` (`load_yaml`), `output.log`, `core/logs.py` の `train.log`) を, リンクを辿らず普通のファイルだけを大きさの上限 (ファイルごとに決める) つきで読む共通の関数にそろえる. 止める要求の `STOP` の書き込み (`core/jobs.py`) は, 先にリンクや普通でないものがあれば, 開かずに種類を見て消してから, 新しい普通のファイルとして作る (既にあれば作らない形で開く). `task.yaml` と `samples/index.json` は ML-Found が守るので, ML-Found の固定を上げて任せる
-- なぜ: 今は FIFO を読むと画面が止まり (`model_summary.csv`, `run.json`), リンクを辿って実験の外を読み, 上限が無いので大きなファイルで記憶を使い, `STOP` がリンクなら実験の外のファイルを書き換えうるため
-- 終わりの条件: 挙げたファイルの読み込みが, リンクで外の中身を返さず, FIFO で止まらず, 上限を超えると読まない (空か理由付き) ことを backend のテストで確かめる. 先にリンクか FIFO の `STOP` がある場合も, 空の要求と `now` の要求の両方で, 外を書き換えず学習が止まることをテストで確かめる
-- つながり: ML-Found の docs/DESIGN.md の「24. 安全」
-
-### 評価の読み方を ML-Found とそろえる
-- 何を: 評価の読み込み (`core/results.py`) の大きさの上限 (`MAX_EVALUATION_BYTES`) と, リンクと普通でないファイルを読まない決まりが ML-Found の `load_evaluations` と同じかをテストで確かめる (ML-Found が値を公開すればそれを読む). ML-Found の固定を上げるときに, docs/DESIGN.md とコメントの「`load_evaluations` はリンクと普通でないファイルも辿って読む」を今の挙動に直す
-- なぜ: ML-Found の `load_evaluations` もリンク, FIFO, 20 MiB を超えるファイルを読まなくなり, 同じ上限を 2 か所に持つので, 片方だけ変えると食い違うため. 画面はファイルごとの理由を出すので, 自分の読み方は残す
-- 終わりの条件: 上限と読まない決まりが ML-Found と同じことをテストで確かめる (ML-Found の値を読めなければ, 公開を頼む項目を ML-Found の TODO に足す). 文書とコメントに「リンクと普通でないファイルも辿って読む」が残っていない
-- つながり: ML-Found の docs/FORMAT.md の「evaluations」と docs/DESIGN.md の「24. 安全」
-
 ## 条件待ち
 
 ### 学習の起動に混合精度と勾配の蓄積の欄

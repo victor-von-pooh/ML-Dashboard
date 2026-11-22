@@ -1822,6 +1822,13 @@ export interface components {
              */
             missing: string[];
             /**
+             * Old Versions
+             * @default {}
+             */
+            old_versions: {
+                [key: string]: string;
+            };
+            /**
              * Manual
              * @default []
              */
@@ -1940,6 +1947,10 @@ export interface components {
             ok?: boolean | null;
             /** Error */
             error?: string | null;
+            /** Version */
+            version?: string | null;
+            /** Min Version */
+            min_version?: string | null;
         };
         /** RequirementInstall */
         RequirementInstall: {
