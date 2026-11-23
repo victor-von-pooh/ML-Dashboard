@@ -44,6 +44,30 @@ test('領域の見本を絵と凡例で見る', async ({ page }) => {
   await expect(page.getByRole('list', { name: 'segment_plain の領域の凡例' })).toBeVisible()
 })
 
+test('見本の横に同じエポックの学習用と検証用の指標を出す', async ({ page }) => {
+  await page.goto(`/projects/${projectId}/runs/${CURRENT_RUN}`)
+  await page.getByRole('tab', { name: /見本/ }).click()
+
+  // エポック 2 の見本は, history.csv のエポック 2 の行とベストの印を添える
+  const section = page.getByRole('region', { name: 'segment の見本と同じエポックの評価' })
+  await expect(section.getByText('エポック 2 の評価')).toBeVisible()
+  await expect(section.getByText('ベストのエポック', { exact: true })).toBeVisible()
+  const loss = section.getByRole('row', { name: /loss/ })
+  await expect(loss).toContainText('0.5')
+  await expect(loss).toContainText('0.3ベスト')
+  // 監視しない学習用の損失は, 推測した向きで最も良い値
+  await expect(loss).toContainText('0.5最良 (推測)')
+  await expect(section.getByText(/モデルに選んだエポック/)).toBeVisible()
+  await expect(loss.getByText('小さいほど良い')).toBeVisible()
+
+  // 学習の後の見本は, エポックに結び付かない旨だけ
+  await expect(
+    page
+      .getByRole('region', { name: 'shape の見本と同じエポックの評価' })
+      .getByText(/学習の後の見本はエポックに結び付かない/),
+  ).toBeVisible()
+})
+
 test('点群の見本を元の座標と正規化した座標で見る', async ({ page, request }) => {
   await page.goto(`/projects/${projectId}/runs/${CURRENT_RUN}`)
   await page.getByRole('tab', { name: /見本/ }).click()

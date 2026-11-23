@@ -3,10 +3,11 @@ import clsx from 'clsx'
 import { Info } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 
-import { api, runFileUrl, type Sample, type SampleClass } from '../../api/client'
+import { api, runFileUrl, type History, type Sample, type SampleClass } from '../../api/client'
 import { Card, ErrorBox, Spinner } from '../../components/ui'
 import { cssVar } from '../../lib/colors'
 import { isCsvSample } from '../../lib/csv'
+import { indexHistory } from '../../lib/epochMetrics'
 import { useTheme } from '../../lib/themeContext'
 import {
   axisLabel,
@@ -17,6 +18,7 @@ import {
   type SampleGroup,
 } from '../../lib/results'
 import { CsvCompare, CsvSample, DownloadLink } from './CsvSample'
+import { EpochMetrics, type EpochMetricsSource } from './EpochMetrics'
 
 // 文の見本で読む大きさの上限と, 出す文字数
 const MAX_TEXT_BYTES = 2 * 1024 * 1024
@@ -269,10 +271,12 @@ function SampleCard({
   group,
   projectId,
   runId,
+  metrics,
 }: {
   group: SampleGroup
   projectId: string
   runId: string
+  metrics: EpochMetricsSource
 }) {
   const selectId = useId()
   const last = group.entries.length - 1
@@ -312,17 +316,23 @@ function SampleCard({
         )
       }
     >
-      <figure className="space-y-2">
-        <SampleContent sample={sample} projectId={projectId} runId={runId} />
-        <figcaption className="space-y-0.5 text-xs">
-          {sample.caption && <p className="text-sm text-ink">{sample.caption}</p>}
-          <p className="text-ink-3">
-            分割 <span className="font-mono text-ink-2">{sample.split ?? '—'}</span>
-            {' · '}
-            <span className="font-mono">{sample.path}</span>
-          </p>
-        </figcaption>
-      </figure>
+      {/* 見本と同じエポックの評価は, カードが広ければ見本の横, 狭ければ下に並べる */}
+      <div className="@container">
+        <div className="grid grid-cols-1 items-start gap-4 @lg:grid-cols-[minmax(0,1fr)_minmax(14rem,18rem)]">
+          <figure className="min-w-0 space-y-2">
+            <SampleContent sample={sample} projectId={projectId} runId={runId} />
+            <figcaption className="space-y-0.5 text-xs">
+              {sample.caption && <p className="text-sm text-ink">{sample.caption}</p>}
+              <p className="text-ink-3">
+                分割 <span className="font-mono text-ink-2">{sample.split ?? '—'}</span>
+                {' · '}
+                <span className="font-mono">{sample.path}</span>
+              </p>
+            </figcaption>
+          </figure>
+          <EpochMetrics name={group.name} epoch={sample.epoch} {...metrics} />
+        </div>
+      </div>
     </Card>
   )
 }
@@ -332,11 +342,26 @@ export function SamplesTab({
   samples,
   projectId,
   runId,
+  history,
+  historyFailed,
+  best,
+  validInterval = 1,
 }: {
   samples: Sample[]
   projectId: string
   runId: string
-}) {
+  history?: History
+} & Partial<Omit<EpochMetricsSource, 'index'>>) {
+  const metrics = useMemo(
+    () => ({
+      // 行の引き方と列ごとの最も良い値は, 見本のカードごとでなく 1 回だけ作る
+      index: history ? indexHistory(history, best) : undefined,
+      historyFailed,
+      best,
+      validInterval,
+    }),
+    [history, historyFailed, best, validInterval],
+  )
   const groups = useMemo(() => groupSamples(samples), [samples])
   // 最後の見本が CSV の名前 (2 つ以上あれば並べて見られる)
   const tables = useMemo(
@@ -348,7 +373,13 @@ export function SamplesTab({
       {tables.length >= 2 && <CsvCompare groups={tables} projectId={projectId} runId={runId} />}
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
         {groups.map((group) => (
-          <SampleCard key={group.name} group={group} projectId={projectId} runId={runId} />
+          <SampleCard
+            key={group.name}
+            group={group}
+            projectId={projectId}
+            runId={runId}
+            metrics={metrics}
+          />
         ))}
       </div>
       <p className="text-xs text-ink-3">

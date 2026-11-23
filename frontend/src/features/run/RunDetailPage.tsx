@@ -343,7 +343,15 @@ export function RunDetailPage() {
           ))}
         {tab === 'samples' &&
           (results.data ? (
-            <SamplesTab samples={samples} projectId={projectId} runId={data.id} />
+            <SamplesTab
+              samples={samples}
+              projectId={projectId}
+              runId={data.id}
+              history={history.data}
+              historyFailed={history.error != null && !history.data}
+              best={data.best}
+              validInterval={validInterval(data.config)}
+            />
           ) : results.error ? (
             <ErrorBox error={results.error} />
           ) : (
