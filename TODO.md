@@ -5,7 +5,11 @@
 
 ## 優先度 高
 
-無し
+### 表を作る課題の監視と評価と見本を出す
+- 何を: 表を作る課題の学習で, 監視の `valid/column_distance`, 列ごとの評価の表 (`evaluations/column_distance_valid.json` など. 種類の列の `wasserstein` は `None`), CSV のファイルの見本 (`kind: file`) を出せるかを確かめ, 足りなければ直す
+- なぜ: 表を作る課題の学習の結果を, 画面で見られるようにするため
+- 終わりの条件: 監視の `valid/column_distance`, 列ごとの評価の表, CSV の見本が画面に出る
+- つながり: ML_tester の「M1: 生成で画像の他の作るものを画面で通す」
 
 ## 優先度 中
 
