@@ -25,6 +25,7 @@ import { MetricCharts } from './MetricCharts'
 import { NotePanel } from './NotePanel'
 import { ConfigTab, EnvTab, FilesTab, LogTab, ModelTab } from './RunTabs'
 import { SamplesTab } from './SamplesTab'
+import { TrajectoriesTab } from './TrajectoriesTab'
 import { TaskPanel } from './TaskPanel'
 
 // 同じファイルの一覧からは同じ並びを返し, 描画のたびに作り直さないようにする
@@ -42,6 +43,7 @@ const TAB_IDS = [
   'evaluations',
   'samples',
   'policy',
+  'trajectories',
   'images',
   'config',
   'model',
@@ -69,7 +71,7 @@ export function RunDetailPage() {
   const run = useRun(projectId, runId)
   const running = run.data?.status === 'running'
   const history = useHistory(projectId, runId, running)
-  // task.yaml, evaluations/, samples/, policy/ (無い実験は空で, 何の実験かの欄と評価, 見本, 方策のタブを出さない)
+  // task.yaml, evaluations/, samples/, policy/, trajectories/ (無い実験は空で, 何の実験かの欄と評価, 見本, 方策, 軌跡のタブを出さない)
   const results = useResults(projectId, runId, running)
 
   // 学習が終わったら, 最後のエポックの記録と学習の後の評価と見本を読み直す
@@ -128,12 +130,14 @@ export function RunDetailPage() {
   const series = seriesOf(data.files)
   const evaluations = results.data?.evaluations ?? []
   const samples = results.data?.samples ?? []
+  const trajectories = results.data?.trajectories ?? []
   // 評価と見本は, 読み終えて無いと分かった場合だけ学習曲線に戻す (読む間は待つ)
   const missing =
     (requestedTab === 'images' && series.length === 0) ||
     (requestedTab === 'evaluations' && !results.isPending && evaluations.length === 0) ||
     (requestedTab === 'samples' && !results.isPending && samples.length === 0) ||
-    (requestedTab === 'policy' && !results.isPending && !results.data?.policy)
+    (requestedTab === 'policy' && !results.isPending && !results.data?.policy) ||
+    (requestedTab === 'trajectories' && !results.isPending && trajectories.length === 0)
   const tab: TabId = missing ? 'charts' : requestedTab
   const sampleNames = new Set(samples.map((sample) => sample.name)).size
 
@@ -308,6 +312,15 @@ export function RunDetailPage() {
           ...(results.data?.policy || (results.isPending && tab === 'policy')
             ? [{ id: 'policy' as const, label: '方策' }]
             : []),
+          ...(trajectories.length > 0 || (results.isPending && tab === 'trajectories')
+            ? [
+                {
+                  id: 'trajectories' as const,
+                  label: '軌跡',
+                  count: results.isPending ? undefined : trajectories.length,
+                },
+              ]
+            : []),
           ...(series.length > 0
             ? [{ id: 'images' as const, label: '画像の推移', count: series.length }]
             : []),
@@ -365,6 +378,14 @@ export function RunDetailPage() {
               history={history.data}
               best={data.best}
             />
+          ) : results.error ? (
+            <ErrorBox error={results.error} />
+          ) : (
+            <Spinner />
+          ))}
+        {tab === 'trajectories' &&
+          (results.data ? (
+            <TrajectoriesTab trajectories={trajectories} projectId={projectId} runId={data.id} />
           ) : results.error ? (
             <ErrorBox error={results.error} />
           ) : (

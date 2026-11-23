@@ -3,7 +3,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -12,6 +12,7 @@ from ml_dashboard.core.model_candidates import describe_models, run_key
 from ml_dashboard.core.models import (
     History,
     LogEntry,
+    PolicyEstimate,
     ProblemTrainings,
     ProjectCandidate,
     ProjectDetail,
@@ -22,6 +23,11 @@ from ml_dashboard.core.models import (
     RunResults,
     RunSummary,
     SampleCloud,
+    TargetPolicy,
+)
+from ml_dashboard.core.policy_estimate import (
+    PolicyEstimateError,
+    estimate_trajectory,
 )
 from ml_dashboard.core.problems import problem_trainings, recorded_projects
 from ml_dashboard.core.projects import (
@@ -653,6 +659,62 @@ def get_results(
     results = read_results(run_dir, project, get_store(request))
 
     return results
+
+
+@router.get(
+    RUN_PATH + "/trajectories/{trajectory}/estimate",
+    responses={
+        **NOT_FOUND,
+        422: {"description": "見積もれない軌跡 (理由の文)"}
+    }
+)
+def get_policy_estimate(
+    request: Request, project_id: str, name: str, date: str, time: str,
+    trajectory: str, policy: TargetPolicy = "uniform",
+    epsilon: float = Query(0.1, ge=0.0, le=1.0),
+    gamma: float = Query(1.0, ge=0.0, le=1.0)
+) -> PolicyEstimate:
+    """
+    記録した軌跡から, 決まった形の方策の良さを見積もる関数
+
+    Parameters
+    ----------
+    request: Request
+        リクエスト
+    project_id: str
+        プロジェクトの ID
+    name: str
+        実験の名前
+    date: str
+        日付のディレクトリ名
+    time: str
+        時刻のディレクトリ名
+    trajectory: str
+        軌跡の名前 (trajectories/<名前>.csv)
+    policy: TargetPolicy = "uniform"
+        uniform (一様) か epsilon_greedy (記録で最も多い行動の ε-greedy)
+    epsilon: float = Query(0.1, ge=0.0, le=1.0)
+        ε-greedy の ε
+    gamma: float = Query(1.0, ge=0.0, le=1.0)
+        割引率
+
+    Returns
+    ----------
+    estimate: PolicyEstimate
+        ML-Found の estimate_policy_value の結果と, 見積もった方策
+    """
+    output_dirs = get_project_output_dirs(get_project(request, project_id))
+    try:
+        run_dir = resolve_run_dir(output_dirs, f"{name}/{date}/{time}")
+        estimate = estimate_trajectory(
+            run_dir, trajectory, policy, epsilon, gamma
+        )
+    except RunNotFoundError as error:
+        raise HTTPException(404, str(error)) from error
+    except PolicyEstimateError as error:
+        raise HTTPException(422, str(error)) from error
+
+    return estimate
 
 
 @router.get(

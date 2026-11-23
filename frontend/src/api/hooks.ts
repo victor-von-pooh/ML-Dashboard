@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { api, type BatchInfo, type JobInfo, type RunNote } from './client'
+import { api, type BatchInfo, type EstimateRequest, type JobInfo, type RunNote } from './client'
 
 export const keys = {
   projects: ['projects'] as const,
@@ -14,6 +14,8 @@ export const keys = {
   history: (projectId: string, runId: string) => ['projects', projectId, 'history', runId] as const,
   log: (projectId: string, runId: string) => ['projects', projectId, 'log', runId] as const,
   results: (projectId: string, runId: string) => ['projects', projectId, 'results', runId] as const,
+  estimate: (projectId: string, runId: string, body: EstimateRequest | null) =>
+    ['projects', projectId, 'estimate', runId, body] as const,
   config: (projectId: string, path: string) => ['projects', projectId, 'config', path] as const,
   relaunch: (projectId: string, runId: string) =>
     ['projects', projectId, 'relaunch', runId] as const,
@@ -75,6 +77,15 @@ export function useResults(projectId: string, runId: string, live = false) {
     queryKey: keys.results(projectId, runId),
     queryFn: () => api.getResults(projectId, runId),
     refetchInterval: live ? LIVE_INTERVAL * 4 : false,
+  })
+}
+
+/** 記録した軌跡からの方策の見積もり. 要求を決めた (見積もるを押した) ときだけ取得する */
+export function usePolicyEstimate(projectId: string, runId: string, body: EstimateRequest | null) {
+  return useQuery({
+    queryKey: keys.estimate(projectId, runId, body),
+    queryFn: () => api.getPolicyEstimate(projectId, runId, body!),
+    enabled: body !== null,
   })
 }
 

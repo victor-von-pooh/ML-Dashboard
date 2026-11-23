@@ -73,6 +73,50 @@ test('強化学習の指標を学習曲線で見て, 方策の守りを確かめ
   expect(weights.status()).toBe(403)
 })
 
+test('記録した軌跡から方策の良さを見積もり, 当てにならない見積もりを知らせる', async ({ page }) => {
+  // 軌跡のタブ: 確率の列のある CartPole の検証の軌跡 (12 エピソード) を先に選ぶ
+  await page.goto(`/projects/${projectId}/runs/${RUN_ID}`)
+  await page.getByRole('tab', { name: /軌跡/ }).click()
+  await expect(page).toHaveURL(/tab=trajectories/)
+  const picker = page.getByLabel('軌跡', { exact: true })
+  await expect(picker).toHaveValue('valid_best')
+  await expect(page.getByText('12 (48 行)')).toBeVisible()
+  await expect(page.getByText('0 から 1 の 2 個')).toBeVisible()
+
+  // 一様: 重み付きの重点サンプリング, 3 つの見積もりと記録の方策の平均, 有効なサンプルの数
+  await page.getByRole('button', { name: '見積もる' }).click()
+  const result = page.getByRole('region', { name: '見積もり valid_best' })
+  const table = result.getByRole('table', { name: 'valid_best の見積もりの比べ' })
+  await expect(table.getByRole('row').nth(1)).toContainText('2.121')
+  await expect(table.getByRole('row').nth(2)).toContainText('2.134')
+  await expect(table.getByRole('row').nth(3)).toContainText('2.186')
+  await expect(table.getByRole('row').nth(4)).toContainText('2.667')
+  await expect(result.getByText('7.429 / 12')).toBeVisible()
+  await expect(result.getByText('ありません.')).toBeVisible()
+
+  // ε = 0 の ε-greedy: 行動 1 の他をとった 11 エピソードの重みが 0 で, 有効なサンプルの数も少ない
+  await page.getByLabel('記録で最も多い行動の ε-greedy').check()
+  await page.getByLabel('ε (0 以上 1 以下)').fill('0')
+  await expect(page.getByText(/^ε = 0 では, 記録で最も多い行動の他/)).toBeVisible()
+  await page.getByRole('button', { name: '見積もる' }).click()
+  await expect(
+    result.getByText(/記録で最も多い行動 \(1\) の他をとったエピソードの重みが 0/),
+  ).toContainText('(11 / 12 エピソード)')
+  await expect(
+    result.getByText(/有効なサンプルの数 1 がエピソードの数 12 に比べて少ない/),
+  ).toBeVisible()
+  await expect(result.getByText('11 / 12', { exact: true })).toBeVisible()
+  await expect(result.getByRole('listitem')).toHaveCount(2)
+
+  // 確率の列の無い軌跡と, 説明の無い表は理由を出して断る
+  await picker.selectOption('greedy')
+  await expect(page.getByText(/この軌跡は見積もれません: .*確率の列/)).toBeVisible()
+  await expect(page.getByRole('button', { name: '見積もる' })).toBeDisabled()
+  await picker.selectOption('handmade')
+  await expect(page.getByText(/この軌跡は見積もれません: 説明/)).toBeVisible()
+  await expect(page.getByRole('button', { name: '見積もる' })).toBeDisabled()
+})
+
 test('学習曲線の横軸を環境のステップ数にし, 比較でも選ぶ', async ({ page }) => {
   // 実験の詳細: step の extra で記録した env_steps を横軸に選べる
   await page.goto(`/projects/${projectId}/runs/${RUN_ID}`)
