@@ -61,7 +61,7 @@ test('作った表と本物の表の CSV の見本を表で見て, 並べる', a
 
   // 作った表と検証用の本物の表を左右に並べる
   await expect(page.getByText('表の見本を並べる')).toBeVisible()
-  await expect(page.getByRole('combobox', { name: '左' })).toHaveValue('0')
+  await expect(page.getByRole('combobox', { name: '左の表' })).toHaveValue('0')
   await expect(
     page.getByRole('table', { name: 'generated の学習の後 (並べた表)' }).getByRole('columnheader'),
   ).toHaveText(['age', 'income', 'city'])

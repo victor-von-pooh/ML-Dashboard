@@ -34,6 +34,16 @@ export function DownloadLink({ url, sample }: { url: string; sample: Sample }) {
   )
 }
 
+/** 表にしない大きな CSV の見本 (ダウンロードと, 表にしない旨) */
+function TooLarge({ url, sample }: { url: string; sample: Sample }) {
+  return (
+    <div className="space-y-1">
+      <DownloadLink url={url} sample={sample} />
+      <p className="text-xs text-ink-3">大きいので表にしていません (2 MiB まで)</p>
+    </div>
+  )
+}
+
 /** 見本の CSV を読む (上限を超えるファイルは読まない) */
 function useCsv(url: string, sample: Sample) {
   const large = sample.size > MAX_CSV_BYTES
@@ -118,7 +128,7 @@ function CsvGrid({
 /** CSV の見本を表で見る. 大きいファイルはダウンロードだけ */
 export function CsvSample({ url, sample, label }: { url: string; sample: Sample; label: string }) {
   const { large, table } = useCsv(url, sample)
-  if (large) return <DownloadLink url={url} sample={sample} />
+  if (large) return <TooLarge url={url} sample={sample} />
   return (
     <div className="space-y-2">
       {table.error && <ErrorBox error={table.error} />}
@@ -150,7 +160,7 @@ function CompareSide({
         <span className="font-mono text-ink">{sample.name}</span>
         {sample.caption && <span className="ml-2 text-xs text-ink-2">{sample.caption}</span>}
       </figcaption>
-      {large && <DownloadLink url={url} sample={sample} />}
+      {large && <TooLarge url={url} sample={sample} />}
       {table.error && <ErrorBox error={table.error} />}
       {!large && table.isPending && <Spinner />}
       {table.data && <CsvGrid table={table.data} label={label} columns={columns} />}
@@ -223,8 +233,8 @@ export function CsvCompare({
       title="表の見本を並べる"
       actions={
         <>
-          <SidePicker label="左" groups={groups} value={leftIndex} onChange={setLeft} />
-          <SidePicker label="右" groups={groups} value={rightIndex} onChange={setRight} />
+          <SidePicker label="左の表" groups={groups} value={leftIndex} onChange={setLeft} />
+          <SidePicker label="右の表" groups={groups} value={rightIndex} onChange={setRight} />
         </>
       }
     >
@@ -233,7 +243,7 @@ export function CsvCompare({
         <CompareSide sample={rightSample} projectId={projectId} runId={runId} columns={columns} />
       </div>
       <p className="mt-2 text-xs text-ink-3">
-        名前ごとの最後の見本を並べます. 列は左の表の順に揃え,
+        同じ名前の見本は, 最後のエポックのものを並べます. 列は左の表の順に揃え,
         片方の表に無い列と空の値は「—」にします.
       </p>
     </Card>

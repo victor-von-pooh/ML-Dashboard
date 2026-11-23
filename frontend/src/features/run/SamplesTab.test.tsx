@@ -187,7 +187,7 @@ describe('SamplesTab', () => {
     ).toEqual(['40', '380', 'nagoya'])
 
     // 左右を選び直せる (CSV の見本だけが候補)
-    const leftPicker = screen.getByRole('combobox', { name: '左' })
+    const leftPicker = screen.getByRole('combobox', { name: '左の表' })
     expect(
       within(leftPicker)
         .getAllByRole('option')
@@ -197,6 +197,19 @@ describe('SamplesTab', () => {
     expect(
       await screen.findAllByRole('table', { name: 'valid_real の学習の後 (並べた表)' }),
     ).toHaveLength(2)
+  })
+
+  it('2 MiB を超える CSV の見本は読まず, ダウンロードと表にしない旨を出す', () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const samples = [
+      sample('generated', 'file', 'samples/generated/final.csv', { size: 3 * 1024 * 1024 }),
+    ]
+    render(wrap(<SamplesTab samples={samples} projectId="p" runId="table/2026-11-22/10-00-00" />))
+    expect(screen.getByRole('link', { name: /final\.csv をダウンロード/ })).toBeInTheDocument()
+    expect(screen.getByText('大きいので表にしていません (2 MiB まで)')).toBeInTheDocument()
+    expect(screen.queryByRole('table')).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('CSV の見本が 1 つだけなら並べる欄を出さない', async () => {
