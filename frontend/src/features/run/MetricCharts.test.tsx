@@ -79,6 +79,53 @@ describe('MetricCharts', () => {
     expect(within(card('lr')).queryByText(/ほど良い/)).not.toBeInTheDocument()
   })
 
+  it('表を作る課題の valid/column_distance は小さいほど良いと出し, 最良のエポックに目印を置く', () => {
+    // ML-Quest の表の生成の骨組みの形 (損失と, 検証の列ごとの分布の近さ)
+    const table: History = {
+      columns: ['epoch', 'train/loss', 'valid/loss', 'valid/column_distance', 'lr'],
+      rows: [
+        {
+          epoch: 1,
+          'train/loss': 0.9,
+          'valid/loss': 0.8,
+          'valid/column_distance': 0.42,
+          lr: 0.001,
+        },
+        {
+          epoch: 2,
+          'train/loss': 0.6,
+          'valid/loss': 0.55,
+          'valid/column_distance': 0.18,
+          lr: 0.001,
+        },
+        {
+          epoch: 3,
+          'train/loss': 0.5,
+          'valid/loss': 0.5,
+          'valid/column_distance': 0.24,
+          lr: 0.001,
+        },
+      ],
+      lr_steps: [],
+      named_lr_steps: {},
+      x_columns: ['epoch'],
+    }
+    render(
+      <MetricCharts
+        history={table}
+        best={{ monitor: 'valid/column_distance', mode: 'min', epoch: 2, value: 0.18 }}
+        validInterval={1}
+      />,
+    )
+    const distance = within(card('column_distance'))
+    expect(distance.getByText('小さいほど良い')).toBeInTheDocument()
+    expect(distance.queryByText(/推測/)).not.toBeInTheDocument()
+    expect(distance.getByText('監視する指標')).toBeInTheDocument()
+    expect(marked.get('column_distance のエポックごとの推移')).toContainEqual(
+      expect.objectContaining({ x: 2, label: 'best 2' }),
+    )
+  })
+
   it('横軸を環境のステップ数にすると, その列で並べ, 目印もその位置に置く', () => {
     // 強化学習の実験 (step の extra で env_steps を記録. 更新ごとの学習率もある)
     const rl: History = {

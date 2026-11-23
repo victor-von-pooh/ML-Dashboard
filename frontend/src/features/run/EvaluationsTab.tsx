@@ -11,7 +11,7 @@ import { curveSeries, formatCell, numericColumns } from '../../lib/results'
 // 1 つの曲線に重ねる列の上限 (系列の色の数)
 const MAX_CURVE_SERIES = 8
 
-/** 評価の表. 列は評価の順のまま */
+/** 評価の表. 列は評価の順のまま. 向き (better) のある列は見出しに添える */
 function EvaluationTable({ evaluation }: { evaluation: Evaluation }) {
   const numeric = useMemo(() => numericColumns(evaluation), [evaluation])
   return (
@@ -29,6 +29,11 @@ function EvaluationTable({ evaluation }: { evaluation: Evaluation }) {
                 )}
               >
                 {column}
+                {evaluation.better[column] && (
+                  <span className="ml-1 font-normal text-ink-3">
+                    ({evaluation.better[column] === 'lower' ? '小さいほど良い' : '大きいほど良い'})
+                  </span>
+                )}
               </th>
             ))}
           </tr>

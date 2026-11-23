@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 画面の通しのテスト (Playwright) 用に, デモのプロジェクトで実験を 2 つ作り,
-# 強化学習と見本の確かめ用のプロジェクトを写してから
+# 強化学習, 見本, 表を作る課題の確かめ用のプロジェクトを写してから
 # ダッシュボードを起動する. 画面は pnpm build で作っておく
 set -euo pipefail
 
@@ -16,6 +16,9 @@ rsync -a --exclude outputs ../../demo/ "$WORK/demo/"
 rsync -a fixtures/rl/ "$WORK/rl/"
 # 領域と点群の見本の確かめ用のプロジェクト (見本は下で ML-Found の save_sample で書く)
 rsync -a fixtures/samples/ "$WORK/samples/"
+# 表を作る課題の確かめ用のプロジェクト (評価と見本は下で ML-Found の
+# save_evaluation と save_sample で書く)
+rsync -a fixtures/tables/ "$WORK/tables/"
 
 # 書き出したプロジェクトの一覧の確かめ用に, ML-Pathfinder の置き場と, そこに
 # 記録した (まだ登録していない) 学習のプロジェクトと, 記録の無い問題の設定.
@@ -48,6 +51,9 @@ done
 
 # 領域と点群の見本 (新しい版の一覧の見本も)
 uv run python "$WORK/../make_samples.py" "$WORK/samples"
+
+# 表を作る課題の列ごとの分布の近さの評価と, 作った表と本物の表の CSV の見本
+uv run python "$WORK/../make_tables.py" "$WORK/tables"
 
 # ML-Quest で書く問題の設定 (exported を記録した e2e の売上, 記録の無い
 # e2e の解約, 学習しない e2e の写真)

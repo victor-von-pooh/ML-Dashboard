@@ -541,6 +541,74 @@ def test_cloud_sample_files(
     assert "大きすぎます" in response.json()["detail"]
 
 
+def test_table_generation_results(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    ML-Quest の表の生成の骨組みの形の, 列ごとの分布の近さの評価と CSV の
+    見本を, 値の無い欄と向きを保って返すことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    from ml_found import save_evaluation, save_sample
+
+    # 列ごとの行 (種類の列の wasserstein は None) と, 全ての列の平均の行
+    run_dir = project_dir / "outputs" / RESULTS_RUN
+    rows = [
+        {"column": "age", "type": "number", "distance": 0.16,
+         "wasserstein": 0.21, "train_distance": 0.08},
+        {"column": "city", "type": "category", "distance": 0.18,
+         "wasserstein": None, "train_distance": 0.05},
+        {"column": "(全ての列の平均)", "type": None, "distance": 0.17,
+         "wasserstein": None, "train_distance": 0.065},
+    ]
+    save_evaluation(run_dir, "column_distance_valid", rows, "valid",
+                    epoch=2,
+                    better={"distance": "lower", "wasserstein": "lower"})
+    table = run_dir.parent / "generated.csv"
+    table.write_text("age,city\n25,tokyo\n", encoding="utf-8")
+    save_sample(run_dir, "generated", table, kind="file")
+    project_id = register(client, project_dir)
+    data = client.get(results_url(project_id, RESULTS_RUN)).json()
+
+    # 評価は列の順と値の無い欄 (null) と向きをそのまま
+    evaluation = next(
+        item for item in data["evaluations"]
+        if item["name"] == "column_distance_valid"
+    )
+    assert evaluation["columns"] == [
+        "column", "type", "distance", "wasserstein", "train_distance"
+    ]
+    assert evaluation["rows"] == rows
+    assert evaluation["better"] == {
+        "distance": "lower", "wasserstein": "lower"
+    }
+    assert evaluation["epoch"] == 2
+
+    # CSV の見本は file の種類で, 画面が文字で読める形で返す
+    sample = next(
+        item for item in data["samples"] if item["name"] == "generated"
+    )
+    assert sample["kind"] == "file"
+    assert sample["path"] == "samples/generated/final.csv"
+    response = client.get(
+        f"/api/projects/{project_id}/runs/{RESULTS_RUN}/files/"
+        f"{sample['path']}"
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/plain")
+    assert response.text == "age,city\n25,tokyo\n"
+
+
 def test_parse_ascii_ply() -> None:
     """
     ascii の PLY の読み方 (性質の順, 読めない点, 頂点の無いファイル) を

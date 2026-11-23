@@ -276,6 +276,20 @@ describe('指標の良い向き', () => {
     expect(guessDirection('valid/chamfered')).not.toBe('min')
   })
 
+  it('表を作る課題の列ごとの分布の近さ (column_distance) は小さいほど良い', () => {
+    expect(guessDirection('valid/column_distance')).toBe('min')
+    expect(guessDirection('distance')).toBe('min')
+    // 監視する指標なら ML-Found の向き, 監視が損失の実験でも名前から小さいほど良い
+    expect(
+      columnDirection('valid/column_distance', [{ monitor: 'valid/column_distance', mode: 'min' }]),
+    ).toEqual({ direction: 'min', guessed: false })
+    expect(
+      columnDirection('valid/column_distance', [{ monitor: 'valid/loss', mode: 'min' }]),
+    ).toEqual({ direction: 'min', guessed: true })
+    // 部分一致の名前は小さいほど良いにしない
+    expect(guessDirection('valid/distances_kept')).toBeNull()
+  })
+
   it('監視する指標は ML-Found の向き, 他は推測, 学習率と推測できない列は null', () => {
     const best = { monitor: 'valid/fid', mode: 'min' as const }
     expect(columnDirection('valid/fid', [best])).toEqual({ direction: 'min', guessed: false })
