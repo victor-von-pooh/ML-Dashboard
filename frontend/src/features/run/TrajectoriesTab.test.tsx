@@ -28,7 +28,7 @@ const refused: TrajectoryInfo = {
   name: 'greedy',
   file: 'trajectories/greedy.csv',
   with_action_prob: false,
-  reason: '記録した方策が行動を選んだ確率の列 (action_prob) が無いので見積もれません',
+  reason: '記録した方策が行動を選んだ確率の列が無いので見積もれません',
 }
 
 const estimate: PolicyEstimate = {
@@ -50,7 +50,6 @@ const estimate: PolicyEstimate = {
   zero_weight_episodes: 1,
   underflow_episodes: 0,
   low_ess: false,
-  low_ess_ratio: 0.1,
   notes: ['見積もる方策が選ばない行動 (確率 0) を記録した方策が 1 歩でとりました'],
 }
 
@@ -79,6 +78,7 @@ describe('TrajectoriesTab', () => {
 
     // 見積もれる軌跡を先に選び, 一様では ε を選べない
     expect(screen.getByLabelText('軌跡')).toHaveValue('valid_best')
+    expect(screen.getByText('0 から 1 の 2 個')).toBeInTheDocument()
     expect(screen.getByLabelText('ε (0 以上 1 以下)')).toBeDisabled()
     fireEvent.click(screen.getByLabelText('記録で最も多い行動の ε-greedy'))
     fireEvent.change(screen.getByLabelText('ε (0 以上 1 以下)'), { target: { value: '0' } })
@@ -111,7 +111,7 @@ describe('TrajectoriesTab', () => {
   it('見積もれない軌跡は理由を出し, ボタンを押せない', () => {
     vi.stubGlobal('fetch', vi.fn())
     renderTab([refused])
-    expect(screen.getByText(/この軌跡は見積もれません: .*action_prob/)).toBeInTheDocument()
+    expect(screen.getByText(/この軌跡は見積もれません: .*確率の列/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '見積もる' })).toBeDisabled()
   })
 

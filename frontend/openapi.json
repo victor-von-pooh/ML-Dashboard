@@ -3510,10 +3510,6 @@
             "type": "boolean",
             "title": "Low Ess"
           },
-          "low_ess_ratio": {
-            "type": "number",
-            "title": "Low Ess Ratio"
-          },
           "notes": {
             "items": {
               "type": "string"
@@ -3536,8 +3532,7 @@
           "effective_sample_size",
           "zero_weight_episodes",
           "underflow_episodes",
-          "low_ess",
-          "low_ess_ratio"
+          "low_ess"
         ],
         "title": "PolicyEstimate"
       },

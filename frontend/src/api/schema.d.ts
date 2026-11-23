@@ -1765,8 +1765,6 @@ export interface components {
             underflow_episodes: number;
             /** Low Ess */
             low_ess: boolean;
-            /** Low Ess Ratio */
-            low_ess_ratio: number;
             /**
              * Notes
              * @default []

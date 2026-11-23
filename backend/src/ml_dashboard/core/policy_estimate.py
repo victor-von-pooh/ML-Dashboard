@@ -210,7 +210,6 @@ def estimate_trajectory(
             f"{type(error).__name__}: {error}"
         ) from error
     from ml_found.rl import estimate_policy_value
-    from ml_found.rl.off_policy import LOW_ESS_RATIO
 
     # 確率の列の無い表, Discrete でない行動, 説明の無い表は断る
     info = read_trajectory_info(path.parent, name)
@@ -235,24 +234,21 @@ def estimate_trajectory(
     except ValueError as error:
         raise PolicyEstimateError(str(error)) from error
 
-    # 有効なサンプルの数が少ないかは ML-Found の知らせと同じ決め方
+    # 有限でない値は null にして返す
     ess = finite_or_none(result["effective_sample_size"]) or 0.0
-    value = finite_or_none(result["value"])
-    episodes = int(result["episodes"])
     estimate = PolicyEstimate(
         name=name, policy=policy, epsilon=epsilon, gamma=gamma,
         action_start=start, action_count=n, best_action=best,
-        value=value,
+        value=finite_or_none(result["value"]),
         ordinary=finite_or_none(result["ordinary"]),
         per_decision=finite_or_none(result["per_decision"]),
         behavior_value=finite_or_none(result["behavior_value"]),
-        episodes=episodes, steps=int(result["steps"]),
+        episodes=int(result["episodes"]), steps=int(result["steps"]),
         effective_sample_size=ess,
         max_weight_share=finite_or_none(result["max_weight_share"]),
         zero_weight_episodes=int(result["zero_weight_episodes"]),
         underflow_episodes=int(result["underflow_episodes"]),
-        low_ess=value is not None and ess < LOW_ESS_RATIO * episodes,
-        low_ess_ratio=float(LOW_ESS_RATIO),
+        low_ess=bool(result["low_ess"]),
         notes=[str(note) for note in result["notes"]]
     )
 

@@ -1612,21 +1612,22 @@ def trajectory_refusal(info: dict[str, Any]) -> Optional[str]:
     reason = None
     if not probed:
         reason = (
-            "記録した方策が行動を選んだ確率の列 (action_prob) が無いので"
-            "見積もれません. 確率で行動を選ぶ方策 (act が action_prob を"
-            "返す方策) で記録した軌跡が要ります"
+            "記録した方策が行動を選んだ確率の列が無いので見積もれません. "
+            "確率で行動を選ぶ方策で記録した軌跡が要ります"
         )
     elif not (
         isinstance(space, dict) and space.get("type") == "discrete"
         and is_count(space.get("n"), 1) and is_count(space.get("start"))
     ):
+        # 空間の種類は, 画面に出すので型の名前でなく言葉にする
         kind = space.get("type") if isinstance(space, dict) else None
+        shown = "連続の値" if kind == "box" else "分からない形"
         reason = (
-            "行動が番号で選ぶ空間 (Discrete) でない軌跡は見積もりません "
-            f"(行動の空間: {shown_name(str(kind)) if kind else '不明'})"
+            "行動を番号で選ぶ軌跡でないので見積もりません "
+            f"(この軌跡の行動は{shown})"
         )
     elif info.get("action_columns") != ["action"]:
-        reason = "行動の列が action の 1 つでない軌跡は見積もりません"
+        reason = "行動が 1 つの列でない軌跡は見積もりません"
 
     return reason
 
@@ -1671,8 +1672,10 @@ def read_trajectory_info(folder: Path, name: str) -> TrajectoryInfo:
     trajectory: TrajectoryInfo
         説明の主な項目と, 見積もりに使えない理由
     """
-    from ml_found.rl import TRAJECTORY_FORMAT_VERSION
-    from ml_found.rl.trajectory import MAX_TRAJECTORY_INFO_BYTES
+    from ml_found.rl import (
+        MAX_TRAJECTORY_INFO_BYTES,
+        TRAJECTORY_FORMAT_VERSION,
+    )
 
     # 表がリンクか普通でないファイルなら読まない
     file = f"{TRAJECTORIES_DIR}/{name}.csv"

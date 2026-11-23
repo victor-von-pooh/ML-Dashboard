@@ -592,9 +592,9 @@ class PolicyEstimate(BaseModel):
     max_weight_share: Optional[float] = None
     zero_weight_episodes: int
     underflow_episodes: int
-    # 有効なサンプルの数がエピソードの数の low_ess_ratio より少ないか
+    # 有効なサンプルの数がエピソードの数に比べて少なく, 見積もりが当て
+    # にならないか (ML-Found の low_ess)
     low_ess: bool
-    low_ess_ratio: float
     notes: list[str] = []
 
 

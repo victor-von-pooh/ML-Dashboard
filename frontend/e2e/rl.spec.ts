@@ -81,8 +81,9 @@ test('記録した軌跡から方策の良さを見積もり, 当てにならな
   const picker = page.getByLabel('軌跡', { exact: true })
   await expect(picker).toHaveValue('valid_best')
   await expect(page.getByText('12 (48 行)')).toBeVisible()
+  await expect(page.getByText('0 から 1 の 2 個')).toBeVisible()
 
-  // 一様: 重み付きの見積もり, 3 つの見積もりと記録の方策の平均, 有効なサンプルの数
+  // 一様: 重み付きの重点サンプリング, 3 つの見積もりと記録の方策の平均, 有効なサンプルの数
   await page.getByRole('button', { name: '見積もる' }).click()
   const result = page.getByRole('region', { name: '見積もり valid_best' })
   const table = result.getByRole('table', { name: 'valid_best の見積もりの比べ' })
@@ -102,14 +103,14 @@ test('記録した軌跡から方策の良さを見積もり, 当てにならな
     result.getByText(/記録で最も多い行動 \(1\) の他をとったエピソードの重みが 0/),
   ).toContainText('(11 / 12 エピソード)')
   await expect(
-    result.getByText(/有効なサンプルの数 1 がエピソードの数 12 の 10\.0% より少ない/),
+    result.getByText(/有効なサンプルの数 1 がエピソードの数 12 に比べて少ない/),
   ).toBeVisible()
   await expect(result.getByText('11 / 12', { exact: true })).toBeVisible()
   await expect(result.getByRole('listitem')).toHaveCount(2)
 
   // 確率の列の無い軌跡と, 説明の無い表は理由を出して断る
   await picker.selectOption('greedy')
-  await expect(page.getByText(/この軌跡は見積もれません: .*action_prob/)).toBeVisible()
+  await expect(page.getByText(/この軌跡は見積もれません: .*確率の列/)).toBeVisible()
   await expect(page.getByRole('button', { name: '見積もる' })).toBeDisabled()
   await picker.selectOption('handmade')
   await expect(page.getByText(/この軌跡は見積もれません: 説明/)).toBeVisible()

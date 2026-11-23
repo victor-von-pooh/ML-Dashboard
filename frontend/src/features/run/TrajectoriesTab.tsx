@@ -14,6 +14,7 @@ import { formatMetric } from '../../lib/format'
 import { formatShare } from '../../lib/policy'
 import {
   comparisonRows,
+  describeActionSpace,
   describeSource,
   describeTarget,
   estimateWarnings,
@@ -50,7 +51,7 @@ function TrajectoryDetails({ trajectory }: { trajectory: TrajectoryInfo }) {
               {trajectory.episodes ?? '不明'} ({trajectory.rows ?? '?'} 行)
             </dd>
             <dt className="text-ink-3">行動の空間</dt>
-            <dd className="font-mono text-xs">{space ? JSON.stringify(space) : '不明'}</dd>
+            <dd>{describeActionSpace(space)}</dd>
           </>
         )}
       </dl>
@@ -65,7 +66,7 @@ function TrajectoryDetails({ trajectory }: { trajectory: TrajectoryInfo }) {
   )
 }
 
-/** 見積もりの結果: 重み付きの見積もり, 3 つの見積もりの比べ, 重みのばらつきの印, notes */
+/** 見積もりの結果: 重み付きの重点サンプリング, 3 つの見積もりの比べ, 重みのばらつきの印, ML-Found の知らせ */
 function EstimateResult({ estimate }: { estimate: PolicyEstimate }) {
   const warnings = estimateWarnings(estimate)
   return (
@@ -82,7 +83,7 @@ function EstimateResult({ estimate }: { estimate: PolicyEstimate }) {
       ))}
       <dl className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {[
-          ['重み付きの見積もり', formatMetric(estimate.value)],
+          ['重み付きの重点サンプリング', formatMetric(estimate.value)],
           [
             '有効なサンプルの数',
             `${formatMetric(estimate.effective_sample_size)} / ${estimate.episodes}`,
@@ -109,10 +110,7 @@ function EstimateResult({ estimate }: { estimate: PolicyEstimate }) {
           <tbody>
             {comparisonRows(estimate).map((row) => (
               <tr key={row.key} className="border-b border-line last:border-b-0">
-                <td className="px-4 py-1.5 whitespace-nowrap">
-                  {row.label}
-                  <span className="ml-2 font-mono text-xs text-ink-3">{row.key}</span>
-                </td>
+                <td className="px-4 py-1.5 whitespace-nowrap">{row.label}</td>
                 <td className="tabular px-4 py-1.5 text-right">{formatMetric(row.value)}</td>
                 <td className="px-4 py-1.5 text-xs text-ink-2">{row.note}</td>
               </tr>
@@ -127,9 +125,7 @@ function EstimateResult({ estimate }: { estimate: PolicyEstimate }) {
         </p>
       )}
       <div>
-        <h3 className="text-sm font-medium">
-          ML-Found の知らせ <span className="font-mono text-xs text-ink-3">notes</span>
-        </h3>
+        <h3 className="text-sm font-medium">ML-Found の知らせ</h3>
         {estimate.notes.length === 0 ? (
           <p className="mt-1 text-sm text-ink-2">ありません.</p>
         ) : (
@@ -187,8 +183,8 @@ export function TrajectoriesTab({
       <p className="flex items-start gap-2 text-sm text-ink-2">
         <Info className="mt-0.5 size-4 shrink-0 text-ink-3" aria-hidden />
         記録した軌跡から, 環境で動かさずに別の方策の良さ (エピソードの割り引いた報酬の和の期待値)
-        を重点サンプリングで見積もります (ML-Found の estimate_policy_value). 番号で選ぶ行動
-        (Discrete) の, 記録した方策が行動を選んだ確率 (action_prob) を持つ軌跡だけを使えます.
+        を重点サンプリングで見積もります. 行動を番号で選び,
+        記録した方策が行動を選んだ確率を持つ軌跡だけを使えます.
       </p>
       <Card title="見積もる">
         <form

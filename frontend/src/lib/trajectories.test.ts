@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { PolicyEstimate } from '../api/client'
 import {
   comparisonRows,
+  describeActionSpace,
   describeSource,
   describeTarget,
   estimateWarnings,
@@ -28,7 +29,6 @@ const estimate: PolicyEstimate = {
   zero_weight_episodes: 0,
   underflow_episodes: 0,
   low_ess: false,
-  low_ess_ratio: 0.1,
   notes: [],
 }
 
@@ -46,8 +46,16 @@ describe('trajectories', () => {
   it('見積もる方策と記録した評価を言葉にする', () => {
     expect(describeTarget('uniform', 1, null)).toContain('一様')
     expect(describeTarget('epsilon_greedy', 0.1, 1)).toContain('記録で最も多い行動 1')
-    expect(describeSource('evaluation_loader')).toContain('EvaluationLoader')
+    expect(describeSource('evaluation_loader')).toBe('学習中の検証')
+    expect(describeTarget('epsilon_greedy', 0.1, 1)).toContain('行動の数を n として')
     expect(describeSource(null)).toBe('不明')
+  })
+
+  it('行動の空間を番号の範囲と数で言う', () => {
+    expect(describeActionSpace({ type: 'discrete', n: 2, start: 0 })).toBe('0 から 1 の 2 個')
+    expect(describeActionSpace({ type: 'discrete', n: 3, start: 1 })).toBe('1 から 3 の 3 個')
+    expect(describeActionSpace({ type: 'box', shape: [1] })).toBe('連続の値')
+    expect(describeActionSpace(null)).toBe('不明')
   })
 
   it('3 つの見積もりと記録の方策の平均を並べる', () => {
@@ -68,7 +76,7 @@ describe('trajectories', () => {
       max_weight_share: 0.84,
       low_ess: true,
     })
-    expect(low).toContain('有効なサンプルの数 1.42 がエピソードの数 20 の 10.0% より少ない')
+    expect(low).toContain('有効なサンプルの数 1.42 がエピソードの数 20 に比べて少ない')
     expect(low).toContain('84.0%')
 
     const greedy = {
@@ -84,6 +92,6 @@ describe('trajectories', () => {
     expect(estimateWarnings({ ...greedy, epsilon: 0.1 })).toEqual([])
     expect(
       estimateWarnings({ ...greedy, epsilon: 0, value: null, zero_weight_episodes: 2 })[0],
-    ).toContain('重み付きの見積もりは決まりません')
+    ).toContain('重み付きの重点サンプリングの値は決まりません')
   })
 })

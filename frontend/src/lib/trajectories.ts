@@ -4,9 +4,19 @@ import { formatShare } from './policy'
 
 /** 軌跡を記録した評価 (ML-Found の trajectories/<名前>.json の source) */
 export function describeSource(source: string | null | undefined): string {
-  if (source === 'evaluation_loader') return '学習中の検証 (EvaluationLoader)'
-  if (source === 'evaluate_policy') return '方策の一式の守り付きの評価 (evaluate_policy)'
+  if (source === 'evaluation_loader') return '学習中の検証'
+  if (source === 'evaluate_policy') return '方策の一式の守り付きの評価'
   return source ?? '不明'
+}
+
+/** 行動の空間を「0 から 1 の 2 個」の形にする. 番号で選ぶ空間でなければ, そうと言う */
+export function describeActionSpace(space: Record<string, unknown> | null | undefined): string {
+  if (!space) return '不明'
+  if (space.type !== 'discrete') return space.type === 'box' ? '連続の値' : '分からない形'
+  const n = typeof space.n === 'number' ? space.n : null
+  const start = typeof space.start === 'number' ? space.start : 0
+  if (n === null) return '番号で選ぶ行動 (数は不明)'
+  return `${start} から ${start + n - 1} の ${n} 個`
 }
 
 /** 0 以上 1 以下の数の欄の値を読む. 読めなければ null */
@@ -24,7 +34,7 @@ export function describeTarget(
 ): string {
   if (policy === 'uniform') return '一様 (全ての行動を同じ確率で選ぶ)'
   const action = best == null ? '記録で最も多い行動' : `記録で最も多い行動 ${best}`
-  return `ε-greedy (ε = ${epsilon}. ${action} を 1 - ε + ε / n, 他の行動を ε / n で選ぶ)`
+  return `ε-greedy (ε = ${epsilon}. 行動の数を n として, ${action} を 1 - ε + ε / n, 他の行動を ε / n で選ぶ)`
 }
 
 export interface EstimateRow {
@@ -69,11 +79,11 @@ export function estimateWarnings(estimate: PolicyEstimate): string[] {
   const warnings: string[] = []
   if (estimate.value == null) {
     warnings.push(
-      '全てのエピソードの重みが 0 なので, 重み付きの見積もりは決まりません. 見積もる方策に近い方策で記録した軌跡が要ります.',
+      '全てのエピソードの重みが 0 なので, 重み付きの重点サンプリングの値は決まりません. 見積もる方策に近い方策で記録した軌跡が要ります.',
     )
   } else if (estimate.low_ess) {
     warnings.push(
-      `有効なサンプルの数 ${formatMetric(estimate.effective_sample_size)} がエピソードの数 ${estimate.episodes} の ${formatShare(estimate.low_ess_ratio)} より少ないので, 見積もりは当てになりません (一部のエピソードの重みが大きく, 最も大きい重みの割合は ${formatShare(estimate.max_weight_share)}).`,
+      `有効なサンプルの数 ${formatMetric(estimate.effective_sample_size)} がエピソードの数 ${estimate.episodes} に比べて少ないので, 見積もりは当てになりません (一部のエピソードの重みが大きく, 最も大きい重みの割合は ${formatShare(estimate.max_weight_share)}).`,
     )
   }
   if (

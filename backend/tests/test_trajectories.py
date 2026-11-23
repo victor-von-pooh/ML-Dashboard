@@ -178,7 +178,6 @@ def test_uniform_estimate(client: TestClient, project_dir: Path) -> None:
     assert result["steps"] == 6
     assert result["zero_weight_episodes"] == 0
     assert result["low_ess"] is False
-    assert result["low_ess_ratio"] == pytest.approx(0.1)
 
     # 割引率を変えると割り引いた報酬の和 (1 + 0.5) になる
     result = estimate(
@@ -299,7 +298,7 @@ def test_refuses_unusable_trajectories(
     }
     assert list(reasons) == ["box", "greedy", "plain"]
     expected = {
-        "greedy": "action_prob", "box": "Discrete", "plain": "説明"
+        "greedy": "確率の列", "box": "連続の値", "plain": "説明"
     }
     for name, word in expected.items():
         reason = reasons[name]
