@@ -26,6 +26,7 @@ from ml_dashboard.core.models import (
     SampleClass,
     SampleCloud,
     TaskOrigin,
+    TrajectoryInfo,
 )
 from ml_dashboard.core.projects import (
     Project,
@@ -62,6 +63,15 @@ POLICY_SPEC = "policy.json"
 
 # 1 つの評価で返す行の上限 (多い場合は先頭だけ)
 MAX_EVALUATION_ROWS = 2000
+
+# 評価の軌跡の表と説明 (ML-Found の docs/FORMAT.md の「trajectories」)
+TRAJECTORIES_DIR = "trajectories"
+
+# 説明の無いか読めない軌跡を見積もらない理由
+NO_TRAJECTORY_INFO = (
+    "説明 (<名前>.json) が無いか読めない表は, 行動の空間が分からないので"
+    "見積もりません"
+)
 
 # evaluations/ がリンクの実験の注意 (評価の無い実験と見分けるため)
 EVALUATIONS_LINK_NOTICE = (
@@ -109,8 +119,8 @@ ORIGIN_TYPES = ("process", "annotation", "measurement", "synthetic", "unknown")
 
 def has_results(run_dir: Path) -> bool:
     """
-    実験が task.yaml, evaluations/, samples/index.json のどれかを持つかを
-    判定する関数
+    実験が task.yaml, evaluations/, samples/index.json, policy/policy.json,
+    trajectories/ のどれかを持つかを判定する関数
 
     Parameters
     ----------
@@ -127,6 +137,7 @@ def has_results(run_dir: Path) -> bool:
         or is_plain_dir(run_dir / EVALUATIONS_DIR)
         or has_samples_index(run_dir)
         or has_policy(run_dir)
+        or is_plain_dir(run_dir / TRAJECTORIES_DIR)
     )
 
     return found
@@ -1577,6 +1588,179 @@ def read_policy(run_dir: Path) -> Optional[RunPolicy]:
     return policy
 
 
+def trajectory_refusal(info: dict[str, Any]) -> Optional[str]:
+    """
+    軌跡の説明から, 方策の見積もりに使えない理由を返す関数
+
+    Parameters
+    ----------
+    info: dict[str, Any]
+        trajectories/<名前>.json の中身
+
+    Returns
+    ----------
+    reason: Optional[str]
+        確率の列が無い, 行動が Discrete でない, 行動の列が action の 1 つ
+        でない, のどれか. 使えれば None
+    """
+    # 確率の列は with_action_prob か, 無ければ列から決める (FORMAT の決まり)
+    columns = info.get("columns")
+    probed = info.get("with_action_prob")
+    if not isinstance(probed, bool):
+        probed = isinstance(columns, list) and "action_prob" in columns
+    space = info.get("action_space")
+    reason = None
+    if not probed:
+        reason = (
+            "記録した方策が行動を選んだ確率の列 (action_prob) が無いので"
+            "見積もれません. 確率で行動を選ぶ方策 (act が action_prob を"
+            "返す方策) で記録した軌跡が要ります"
+        )
+    elif not (
+        isinstance(space, dict) and space.get("type") == "discrete"
+        and is_count(space.get("n"), 1) and is_count(space.get("start"))
+    ):
+        kind = space.get("type") if isinstance(space, dict) else None
+        reason = (
+            "行動が番号で選ぶ空間 (Discrete) でない軌跡は見積もりません "
+            f"(行動の空間: {shown_name(str(kind)) if kind else '不明'})"
+        )
+    elif info.get("action_columns") != ["action"]:
+        reason = "行動の列が action の 1 つでない軌跡は見積もりません"
+
+    return reason
+
+
+def is_count(value: Any, low: Optional[int] = None) -> bool:
+    """
+    真偽値でない整数で, 下限以上かを判定する関数
+
+    Parameters
+    ----------
+    value: Any
+        判定する値
+    low: Optional[int] = None
+        下限, 無ければ確かめない
+
+    Returns
+    ----------
+    found: bool
+        整数で下限以上かどうか
+    """
+    found = (
+        isinstance(value, int) and not isinstance(value, bool)
+        and (low is None or value >= low)
+    )
+
+    return found
+
+
+def read_trajectory_info(folder: Path, name: str) -> TrajectoryInfo:
+    """
+    軌跡の表 1 つの説明 (trajectories/<名前>.json) を読む関数
+
+    Parameters
+    ----------
+    folder: Path
+        trajectories/ のディレクトリ
+    name: str
+        軌跡の名前
+
+    Returns
+    ----------
+    trajectory: TrajectoryInfo
+        説明の主な項目と, 見積もりに使えない理由
+    """
+    from ml_found.rl import TRAJECTORY_FORMAT_VERSION
+    from ml_found.rl.trajectory import MAX_TRAJECTORY_INFO_BYTES
+
+    # 表がリンクか普通でないファイルなら読まない
+    file = f"{TRAJECTORIES_DIR}/{name}.csv"
+    if not is_plain_file(folder / f"{name}.csv"):
+        trajectory = TrajectoryInfo(
+            name=name, file=file, has_info=False,
+            reason="シンボリックリンクか普通でないファイルの表は読みません"
+        )
+        return trajectory
+
+    # 版が 1 以上の整数でない説明は, 説明の無い表として扱う (FORMAT)
+    raw = read_plain_file(
+        folder / f"{name}.json", None, MAX_TRAJECTORY_INFO_BYTES
+    )
+    info: Any = None
+    if raw is not None:
+        try:
+            info = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
+            info = None
+    if not isinstance(info, dict) or not is_count(
+        info.get("format_version"), 1
+    ):
+        trajectory = TrajectoryInfo(
+            name=name, file=file, has_info=False, reason=NO_TRAJECTORY_INFO
+        )
+        return trajectory
+
+    # 知っている版より新しい説明は, 読める項目だけを使って知らせる
+    version = info["format_version"]
+    probed = info.get("with_action_prob")
+    space = info.get("action_space")
+    trajectory = TrajectoryInfo(
+        name=name, file=file, has_info=True, format_version=version,
+        source=text_or_none(info.get("source")),
+        env=text_or_none(info.get("env")),
+        epoch=int_or_none(info.get("epoch")),
+        description=text_or_none(info.get("description")),
+        episodes=int_or_none(info.get("episodes")),
+        rows=int_or_none(info.get("rows")),
+        complete=(
+            info.get("complete")
+            if isinstance(info.get("complete"), bool) else None
+        ),
+        with_action_prob=probed if isinstance(probed, bool) else None,
+        action_space=space if isinstance(space, dict) else None,
+        reason=trajectory_refusal(info),
+        notice=(
+            f"説明の版 {version} は知っている版 "
+            f"{TRAJECTORY_FORMAT_VERSION} より新しい ML-Found の出力なので, "
+            "一部が正しく表示されない場合があります"
+            if version > TRAJECTORY_FORMAT_VERSION else None
+        )
+    )
+
+    return trajectory
+
+
+def read_trajectories(run_dir: Path) -> list[TrajectoryInfo]:
+    """
+    trajectories/ の軌跡の表を名前の順に並べる関数
+
+    Parameters
+    ----------
+    run_dir: Path
+        実験のディレクトリ
+
+    Returns
+    ----------
+    trajectories: list[TrajectoryInfo]
+        名前の決まりに合う表 (一時ファイルを除く *.csv). trajectories/ が
+        無いか, リンクなら空
+    """
+    folder = run_dir / TRAJECTORIES_DIR
+    trajectories: list[TrajectoryInfo] = []
+    if not is_plain_dir(folder):
+        return trajectories
+    for path in sorted(folder.glob("*.csv")):
+        name = path.name[:-len(".csv")]
+        if not EVALUATION_NAME.fullmatch(name):
+            continue
+        if path.is_dir() and not path.is_symlink():
+            continue
+        trajectories.append(read_trajectory_info(folder, name))
+
+    return trajectories
+
+
 def read_results(
     run_dir: Path, project: Project, store: ProjectStore
 ) -> RunResults:
@@ -1615,7 +1799,8 @@ def read_results(
     except Exception as error:
         results = RunResults(notices=[
             "ML-Found を読み込めないので, task.yaml, evaluations/, samples/, "
-            f"policy/ を出せません: {type(error).__name__}: {error}"
+            "policy/, trajectories/ を出せません: "
+            f"{type(error).__name__}: {error}"
         ])
         return results
 
@@ -1626,6 +1811,7 @@ def read_results(
         samples=read_samples(run_dir, notices),
         policy=read_policy(run_dir),
         policy_outcomes=outcomes,
+        trajectories=read_trajectories(run_dir),
         notices=notices
     )
 

@@ -393,6 +393,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/runs/{name}/{date}/{time}/trajectories/{trajectory}/estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Policy Estimate
+         * @description 記録した軌跡から, 決まった形の方策の良さを見積もる関数
+         *
+         *     Parameters
+         *     ----------
+         *     request: Request
+         *         リクエスト
+         *     project_id: str
+         *         プロジェクトの ID
+         *     name: str
+         *         実験の名前
+         *     date: str
+         *         日付のディレクトリ名
+         *     time: str
+         *         時刻のディレクトリ名
+         *     trajectory: str
+         *         軌跡の名前 (trajectories/<名前>.csv)
+         *     policy: TargetPolicy = "uniform"
+         *         uniform (一様) か epsilon_greedy (記録で最も多い行動の ε-greedy)
+         *     epsilon: float = Query(0.1, ge=0.0, le=1.0)
+         *         ε-greedy の ε
+         *     gamma: float = Query(1.0, ge=0.0, le=1.0)
+         *         割引率
+         *
+         *     Returns
+         *     ----------
+         *     estimate: PolicyEstimate
+         *         ML-Found の estimate_policy_value の結果と, 見積もった方策
+         */
+        get: operations["get_policy_estimate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}/runs/{name}/{date}/{time}/samples/cloud": {
         parameters: {
             query?: never;
@@ -1678,6 +1724,55 @@ export interface components {
             /** Ratio */
             ratio?: number | null;
         };
+        /** PolicyEstimate */
+        PolicyEstimate: {
+            /** Name */
+            name: string;
+            /**
+             * Policy
+             * @enum {string}
+             */
+            policy: "uniform" | "epsilon_greedy";
+            /** Epsilon */
+            epsilon: number;
+            /** Gamma */
+            gamma: number;
+            /** Action Start */
+            action_start: number;
+            /** Action Count */
+            action_count: number;
+            /** Best Action */
+            best_action?: number | null;
+            /** Value */
+            value?: number | null;
+            /** Ordinary */
+            ordinary?: number | null;
+            /** Per Decision */
+            per_decision?: number | null;
+            /** Behavior Value */
+            behavior_value?: number | null;
+            /** Episodes */
+            episodes: number;
+            /** Steps */
+            steps: number;
+            /** Effective Sample Size */
+            effective_sample_size: number;
+            /** Max Weight Share */
+            max_weight_share?: number | null;
+            /** Zero Weight Episodes */
+            zero_weight_episodes: number;
+            /** Underflow Episodes */
+            underflow_episodes: number;
+            /** Low Ess */
+            low_ess: boolean;
+            /** Low Ess Ratio */
+            low_ess_ratio: number;
+            /**
+             * Notes
+             * @default []
+             */
+            notes: string[];
+        };
         /** PolicyFallback */
         PolicyFallback: {
             /** Kind */
@@ -2314,6 +2409,11 @@ export interface components {
              */
             policy_outcomes: components["schemas"]["PolicyOutcome"][];
             /**
+             * Trajectories
+             * @default []
+             */
+            trajectories: components["schemas"]["TrajectoryInfo"][];
+            /**
              * Notices
              * @default []
              */
@@ -2474,6 +2574,41 @@ export interface components {
             name?: string | null;
             /** Settings */
             settings?: unknown;
+        };
+        /** TrajectoryInfo */
+        TrajectoryInfo: {
+            /** Name */
+            name: string;
+            /** File */
+            file: string;
+            /** Has Info */
+            has_info: boolean;
+            /** Format Version */
+            format_version?: number | null;
+            /** Source */
+            source?: string | null;
+            /** Env */
+            env?: string | null;
+            /** Epoch */
+            epoch?: number | null;
+            /** Description */
+            description?: string | null;
+            /** Episodes */
+            episodes?: number | null;
+            /** Rows */
+            rows?: number | null;
+            /** Complete */
+            complete?: boolean | null;
+            /** With Action Prob */
+            with_action_prob?: boolean | null;
+            /** Action Space */
+            action_space?: {
+                [key: string]: unknown;
+            } | null;
+            /** Reason */
+            reason?: string | null;
+            /** Notice */
+            notice?: string | null;
         };
         /** ValidateRequest */
         ValidateRequest: {
@@ -2996,6 +3131,50 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    get_policy_estimate: {
+        parameters: {
+            query?: {
+                policy?: "uniform" | "epsilon_greedy";
+                epsilon?: number;
+                gamma?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                name: string;
+                date: string;
+                time: string;
+                trajectory: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyEstimate"];
+                };
+            };
+            /** @description プロジェクトか実験が見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 見積もれない軌跡 (理由の文) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

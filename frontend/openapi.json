@@ -608,6 +608,116 @@
         }
       }
     },
+    "/api/projects/{project_id}/runs/{name}/{date}/{time}/trajectories/{trajectory}/estimate": {
+      "get": {
+        "summary": "Get Policy Estimate",
+        "description": "記録した軌跡から, 決まった形の方策の良さを見積もる関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproject_id: str\n    プロジェクトの ID\nname: str\n    実験の名前\ndate: str\n    日付のディレクトリ名\ntime: str\n    時刻のディレクトリ名\ntrajectory: str\n    軌跡の名前 (trajectories/<名前>.csv)\npolicy: TargetPolicy = \"uniform\"\n    uniform (一様) か epsilon_greedy (記録で最も多い行動の ε-greedy)\nepsilon: float = Query(0.1, ge=0.0, le=1.0)\n    ε-greedy の ε\ngamma: float = Query(1.0, ge=0.0, le=1.0)\n    割引率\n\nReturns\n----------\nestimate: PolicyEstimate\n    ML-Found の estimate_policy_value の結果と, 見積もった方策",
+        "operationId": "get_policy_estimate",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "date",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Date"
+            }
+          },
+          {
+            "name": "time",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Time"
+            }
+          },
+          {
+            "name": "trajectory",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Trajectory"
+            }
+          },
+          {
+            "name": "policy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "uniform",
+                "epsilon_greedy"
+              ],
+              "type": "string",
+              "default": "uniform",
+              "title": "Policy"
+            }
+          },
+          {
+            "name": "epsilon",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "default": 0.1,
+              "title": "Epsilon"
+            }
+          },
+          {
+            "name": "gamma",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "default": 1.0,
+              "title": "Gamma"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyEstimate"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "プロジェクトか実験が見つからない"
+          },
+          "422": {
+            "description": "見積もれない軌跡 (理由の文)"
+          }
+        }
+      }
+    },
     "/api/projects/{project_id}/runs/{name}/{date}/{time}/samples/cloud": {
       "get": {
         "summary": "Get Sample Cloud",
@@ -3280,6 +3390,157 @@
         ],
         "title": "PolicyEndShare"
       },
+      "PolicyEstimate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "policy": {
+            "type": "string",
+            "enum": [
+              "uniform",
+              "epsilon_greedy"
+            ],
+            "title": "Policy"
+          },
+          "epsilon": {
+            "type": "number",
+            "title": "Epsilon"
+          },
+          "gamma": {
+            "type": "number",
+            "title": "Gamma"
+          },
+          "action_start": {
+            "type": "integer",
+            "title": "Action Start"
+          },
+          "action_count": {
+            "type": "integer",
+            "title": "Action Count"
+          },
+          "best_action": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Best Action"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "ordinary": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ordinary"
+          },
+          "per_decision": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Decision"
+          },
+          "behavior_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Behavior Value"
+          },
+          "episodes": {
+            "type": "integer",
+            "title": "Episodes"
+          },
+          "steps": {
+            "type": "integer",
+            "title": "Steps"
+          },
+          "effective_sample_size": {
+            "type": "number",
+            "title": "Effective Sample Size"
+          },
+          "max_weight_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Weight Share"
+          },
+          "zero_weight_episodes": {
+            "type": "integer",
+            "title": "Zero Weight Episodes"
+          },
+          "underflow_episodes": {
+            "type": "integer",
+            "title": "Underflow Episodes"
+          },
+          "low_ess": {
+            "type": "boolean",
+            "title": "Low Ess"
+          },
+          "low_ess_ratio": {
+            "type": "number",
+            "title": "Low Ess Ratio"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "policy",
+          "epsilon",
+          "gamma",
+          "action_start",
+          "action_count",
+          "episodes",
+          "steps",
+          "effective_sample_size",
+          "zero_weight_episodes",
+          "underflow_episodes",
+          "low_ess",
+          "low_ess_ratio"
+        ],
+        "title": "PolicyEstimate"
+      },
       "PolicyFallback": {
         "properties": {
           "kind": {
@@ -5502,6 +5763,14 @@
             "title": "Policy Outcomes",
             "default": []
           },
+          "trajectories": {
+            "items": {
+              "$ref": "#/components/schemas/TrajectoryInfo"
+            },
+            "type": "array",
+            "title": "Trajectories",
+            "default": []
+          },
           "notices": {
             "items": {
               "type": "string"
@@ -6112,6 +6381,162 @@
           "type"
         ],
         "title": "TaskOrigin"
+      },
+      "TrajectoryInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "has_info": {
+            "type": "boolean",
+            "title": "Has Info"
+          },
+          "format_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Format Version"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "env": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Env"
+          },
+          "epoch": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Epoch"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "episodes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episodes"
+          },
+          "rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows"
+          },
+          "complete": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Complete"
+          },
+          "with_action_prob": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "With Action Prob"
+          },
+          "action_space": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Space"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "notice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "file",
+          "has_info"
+        ],
+        "title": "TrajectoryInfo"
       },
       "ValidateRequest": {
         "properties": {

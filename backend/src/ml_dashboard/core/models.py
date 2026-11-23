@@ -545,15 +545,70 @@ class PolicyOutcome(BaseModel):
     guarded_ratio: Optional[float] = None
 
 
+class TrajectoryInfo(BaseModel):
+    # 評価の軌跡の表 (ML-Found の trajectories/<名前>.csv) と説明の主な
+    # 項目. reason は方策の見積もりに使えない理由 (使えれば None)
+    name: str
+    file: str
+    has_info: bool
+    format_version: Optional[int] = None
+    source: Optional[str] = None
+    env: Optional[str] = None
+    epoch: Optional[int] = None
+    description: Optional[str] = None
+    episodes: Optional[int] = None
+    rows: Optional[int] = None
+    complete: Optional[bool] = None
+    with_action_prob: Optional[bool] = None
+    action_space: Optional[dict[str, Any]] = None
+    reason: Optional[str] = None
+    # 知っている版より新しい説明の知らせ
+    notice: Optional[str] = None
+
+
+# 見積もる方策の形 (一様, 記録で最も多い行動の ε-greedy)
+TargetPolicy = Literal["uniform", "epsilon_greedy"]
+
+
+class PolicyEstimate(BaseModel):
+    # 記録した軌跡からの方策の見積もり (ML-Found の estimate_policy_value
+    # の結果と, 見積もった方策)
+    name: str
+    policy: TargetPolicy
+    epsilon: float
+    gamma: float
+    # 行動の空間 [action_start, action_start + action_count) と, ε-greedy
+    # の最も確率の高い行動 (記録で最も多い行動. 一様では None)
+    action_start: int
+    action_count: int
+    best_action: Optional[int] = None
+    value: Optional[float] = None
+    ordinary: Optional[float] = None
+    per_decision: Optional[float] = None
+    behavior_value: Optional[float] = None
+    episodes: int
+    steps: int
+    effective_sample_size: float
+    max_weight_share: Optional[float] = None
+    zero_weight_episodes: int
+    underflow_episodes: int
+    # 有効なサンプルの数がエピソードの数の low_ess_ratio より少ないか
+    low_ess: bool
+    low_ess_ratio: float
+    notes: list[str] = []
+
+
 class RunResults(BaseModel):
     # 実験の任意のファイル (task.yaml, evaluations/, samples/,
-    # policy/policy.json). 無い実験は None と空のリスト
+    # policy/policy.json, trajectories/). 無い実験は None と空のリスト
     task: Optional[RunTask] = None
     evaluations: list[Evaluation] = []
     samples: list[Sample] = []
     policy: Optional[RunPolicy] = None
     # 守り付きの評価の割合 (評価の並びと同じ順. 無ければ空)
     policy_outcomes: list[PolicyOutcome] = []
+    # 評価の軌跡の表 (trajectories/. 名前の順. 無ければ空)
+    trajectories: list[TrajectoryInfo] = []
     # 読めなかったファイルなど (画面に注意として出す)
     notices: list[str] = []
 

@@ -40,6 +40,17 @@ export type PolicySpace = Schemas['PolicySpace']
 export type PolicyGuards = Schemas['PolicyGuards']
 export type PolicyOutcome = Schemas['PolicyOutcome']
 export type PolicyEndShare = Schemas['PolicyEndShare']
+export type TrajectoryInfo = Schemas['TrajectoryInfo']
+export type PolicyEstimate = Schemas['PolicyEstimate']
+export type TargetPolicy = PolicyEstimate['policy']
+
+/** 方策の見積もりの要求 (軌跡の名前, 見積もる方策, ε, 割引率) */
+export interface EstimateRequest {
+  trajectory: string
+  policy: TargetPolicy
+  epsilon: number
+  gamma: number
+}
 export type Requirement = Schemas['Requirement']
 export type RequirementReport = Schemas['RequirementReport']
 export type RequiresStatus = Schemas['RequiresStatus']
@@ -185,6 +196,13 @@ export const api = {
   getSampleCloud: (projectId: string, runId: string, path: string) =>
     request<SampleCloud>(
       `/api/projects/${encodeURIComponent(projectId)}/runs/${encodeRunId(runId)}/samples/cloud?path=${encodeURIComponent(path)}`,
+    ),
+  /** 記録した軌跡から, 決まった形の方策の良さを見積もる (見積もれない軌跡は 422 と理由) */
+  getPolicyEstimate: (projectId: string, runId: string, body: EstimateRequest) =>
+    request<PolicyEstimate>(
+      `/api/projects/${encodeURIComponent(projectId)}/runs/${encodeRunId(runId)}/trajectories/${encodeURIComponent(body.trajectory)}/estimate?${new URLSearchParams(
+        { policy: body.policy, epsilon: String(body.epsilon), gamma: String(body.gamma) },
+      ).toString()}`,
     ),
   getLog: (projectId: string, runId: string) =>
     request<LogEntry[]>(

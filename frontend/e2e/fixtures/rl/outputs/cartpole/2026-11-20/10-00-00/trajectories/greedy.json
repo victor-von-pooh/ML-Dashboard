@@ -1,0 +1,55 @@
+{
+  "format_version": 1,
+  "name": "greedy",
+  "file": "greedy.csv",
+  "source": "evaluation_loader",
+  "env": "CartPole-v1",
+  "epoch": 3,
+  "description": "最もスコアの高い行動で選んだ検証の軌跡",
+  "columns": [
+    "episode",
+    "step",
+    "obs_0",
+    "obs_1",
+    "obs_2",
+    "obs_3",
+    "action",
+    "reward",
+    "terminated",
+    "truncated",
+    "seed"
+  ],
+  "types": {
+    "episode": "integer",
+    "step": "integer",
+    "obs_0": "number",
+    "obs_1": "number",
+    "obs_2": "number",
+    "obs_3": "number",
+    "action": "integer",
+    "reward": "number",
+    "terminated": "boolean",
+    "truncated": "boolean",
+    "seed": "integer"
+  },
+  "observation_columns": ["obs_0", "obs_1", "obs_2", "obs_3"],
+  "action_columns": ["action"],
+  "observation_space": {
+    "type": "box",
+    "shape": [4],
+    "low": [-4.800000190734863, null, -0.41999998688697815, null],
+    "high": [4.800000190734863, null, 0.41999998688697815, null]
+  },
+  "action_space": {
+    "type": "discrete",
+    "n": 2,
+    "start": 0
+  },
+  "guarded": false,
+  "with_action_prob": false,
+  "episodes": 12,
+  "rows": 48,
+  "complete": true,
+  "dropped_episodes": 0,
+  "created_at": "2026-11-24T02:30:45+09:00"
+}
