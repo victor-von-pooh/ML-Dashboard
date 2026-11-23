@@ -224,4 +224,63 @@ describe('SamplesTab', () => {
     ).toBeInTheDocument()
     expect(screen.queryByText('表の見本を並べる')).toBeNull()
   })
+
+  it('選んだエポックの学習用と検証用の指標を見本の横に出し, ベストのエポックに印を付ける', () => {
+    const samples = [
+      sample('pred', 'text', 'samples/pred/epoch_0001.txt', { epoch: 1, size: 10_000_000 }),
+      sample('pred', 'text', 'samples/pred/epoch_0002.txt', { epoch: 2, size: 10_000_000 }),
+      sample('pred', 'text', 'samples/pred/epoch_0003.txt', { epoch: 3, size: 10_000_000 }),
+    ]
+    const history = {
+      columns: ['epoch', 'train/loss', 'valid/loss'],
+      rows: [
+        { epoch: 1, 'train/loss': 0.9, 'valid/loss': 0.6 },
+        { epoch: 2, 'train/loss': 0.5, 'valid/loss': 0.3 },
+        { epoch: 3, 'train/loss': 0.4, 'valid/loss': null },
+      ],
+      lr_steps: [],
+      named_lr_steps: {},
+      x_columns: [],
+    }
+    render(
+      wrap(
+        <SamplesTab
+          samples={samples}
+          projectId="p"
+          runId="r"
+          history={history}
+          best={{ monitor: 'valid/loss', mode: 'min', epoch: 2, value: 0.3 }}
+          validInterval={2}
+        />,
+      ),
+    )
+    // 開いたときは最後のエポック (検証しないエポック)
+    const section = screen.getByRole('region', { name: 'pred の見本と同じエポックの評価' })
+    expect(within(section).getByText('エポック 3 の評価')).toBeInTheDocument()
+    expect(within(section).getByText('検証なし')).toBeInTheDocument()
+    expect(within(section).getByText(/2 エポックおき/)).toBeInTheDocument()
+    expect(within(section).getByText('ベストはエポック 2 (valid/loss)')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: '1' } })
+    expect(within(section).getByText('エポック 2 の評価')).toBeInTheDocument()
+    expect(within(section).getByText('ベストのエポック')).toBeInTheDocument()
+    const row = within(section).getByRole('row', { name: /loss/ })
+    expect(row).toHaveTextContent('0.5')
+    expect(row).toHaveTextContent('0.3最良')
+    expect(within(row).getByText('小さいほど良い')).toBeInTheDocument()
+    expect(within(row).getByText('監視する指標')).toBeInTheDocument()
+  })
+
+  it('学習の後の見本はエポックの指標を並べない旨を出す', () => {
+    render(
+      wrap(
+        <SamplesTab
+          samples={[sample('pred', 'text', 'samples/pred/final.txt', { size: 10_000_000 })]}
+          projectId="p"
+          runId="r"
+        />,
+      ),
+    )
+    expect(screen.getByText(/学習の後の見本はエポックに結び付かない/)).toBeInTheDocument()
+  })
 })
