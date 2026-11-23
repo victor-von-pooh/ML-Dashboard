@@ -207,9 +207,10 @@ export type Direction = 'max' | 'min'
 
 // 名前から向きを推測する指標 (小さいほど良いものを先に判定)
 const LOWER_IS_BETTER = /loss|err|mae|mse|rmse|nelbo|kl|recon|residual|boundary|perplexity|time/i
-// 語として現れる場合だけ小さいほど良い指標. fid は生成の画像の FID, chamfer は点群の
-// Chamfer 距離 (部分一致では confidence や fidelity まで小さいほど良いと取り違えるため)
-const LOWER_WORDS = /(^|[/_.-])(fid|chamfer)($|[/_.-])/i
+// 語として現れる場合だけ小さいほど良い指標. 部分一致では confidence や fidelity まで
+// 小さいほど良いと取り違えるため. fid は生成の画像の FID. chamfer は点群の Chamfer 距離.
+// distance は距離 (例えば作った表と本物の表の列ごとの分布の近さ column_distance)
+const LOWER_WORDS = /(^|[/_.-])(fid|chamfer|distance)($|[/_.-])/i
 const HIGHER_IS_BETTER = /acc|auc|^ap$|\/ap$|f1|precision|recall|r2|score|iou|psnr|ssim/i
 
 /** 指標の名前から良い向きを推測する. 分からなければ null */

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -129,5 +129,99 @@ describe('SamplesTab', () => {
     expect(await screen.findByText(/元の座標に戻せません/)).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'cloud の点群を上から見た図' })).toBeInTheDocument()
     expect(screen.queryByRole('group', { name: 'cloud の点群の座標' })).toBeNull()
+  })
+
+  it('CSV の見本は表で出し, 作った表と本物の表を列を揃えて並べられる', async () => {
+    // ML-Quest の表の生成の骨組みの形 (作った表と, 見比べる検証用の本物の表)
+    const files: Record<string, string> = {
+      'generated/final.csv': 'age,income,city\n25,400.5,tokyo\n31,,osaka\n',
+      'valid_real/final.csv': 'city,age,income\nnagoya,40,380\n',
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const found = Object.entries(files).find(([path]) => url.endsWith(path))
+        return new Response(found?.[1] ?? '', { status: found ? 200 : 404 })
+      }),
+    )
+    const samples = [
+      sample('generated', 'file', 'samples/generated/final.csv', { caption: '作った表 2 行' }),
+      sample('valid_real', 'file', 'samples/valid_real/final.csv', { split: 'valid' }),
+      sample('weights', 'file', 'samples/weights/final.bin'),
+    ]
+    render(wrap(<SamplesTab samples={samples} projectId="p" runId="table/2026-11-22/10-00-00" />))
+
+    // 見本ごとの表 (列はファイルの順. 空の値は「—」. 数の列は右に寄せる)
+    const generated = await screen.findByRole('table', { name: 'generated の学習の後 (表)' })
+    const headers = within(generated).getAllByRole('columnheader')
+    expect(headers.map((header) => header.textContent)).toEqual(['age', 'income', 'city'])
+    const cells = within(generated)
+      .getAllByRole('row')
+      .slice(1)
+      .map((row) =>
+        within(row)
+          .getAllByRole('cell')
+          .map((cell) => cell.textContent),
+      )
+    expect(cells).toEqual([
+      ['25', '400.5', 'tokyo'],
+      ['31', '—', 'osaka'],
+    ])
+    expect(headers[0]).toHaveClass('text-right')
+    expect(headers[2]).not.toHaveClass('text-right')
+    expect(screen.getByRole('link', { name: /final\.bin をダウンロード/ })).toBeInTheDocument()
+
+    // 並べた表は, 右の表も左の表の列の順に揃える
+    const right = await screen.findByRole('table', { name: 'valid_real の学習の後 (並べた表)' })
+    await waitFor(() =>
+      expect(
+        within(right)
+          .getAllByRole('columnheader')
+          .map((header) => header.textContent),
+      ).toEqual(['age', 'income', 'city']),
+    )
+    expect(
+      within(within(right).getAllByRole('row')[1]!)
+        .getAllByRole('cell')
+        .map((cell) => cell.textContent),
+    ).toEqual(['40', '380', 'nagoya'])
+
+    // 左右を選び直せる (CSV の見本だけが候補)
+    const leftPicker = screen.getByRole('combobox', { name: '左の表' })
+    expect(
+      within(leftPicker)
+        .getAllByRole('option')
+        .map((item) => item.textContent),
+    ).toEqual(['generated', 'valid_real'])
+    fireEvent.change(leftPicker, { target: { value: '1' } })
+    expect(
+      await screen.findAllByRole('table', { name: 'valid_real の学習の後 (並べた表)' }),
+    ).toHaveLength(2)
+  })
+
+  it('2 MiB を超える CSV の見本は読まず, ダウンロードと表にしない旨を出す', () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const samples = [
+      sample('generated', 'file', 'samples/generated/final.csv', { size: 3 * 1024 * 1024 }),
+    ]
+    render(wrap(<SamplesTab samples={samples} projectId="p" runId="table/2026-11-22/10-00-00" />))
+    expect(screen.getByRole('link', { name: /final\.csv をダウンロード/ })).toBeInTheDocument()
+    expect(screen.getByText('大きいので表にしていません (2 MiB まで)')).toBeInTheDocument()
+    expect(screen.queryByRole('table')).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('CSV の見本が 1 つだけなら並べる欄を出さない', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('a\n1\n', { status: 200 })),
+    )
+    const samples = [sample('generated', 'file', 'samples/generated/final.csv')]
+    render(wrap(<SamplesTab samples={samples} projectId="p" runId="table/2026-11-22/10-00-00" />))
+    expect(
+      await screen.findByRole('table', { name: 'generated の学習の後 (表)' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('表の見本を並べる')).toBeNull()
   })
 })

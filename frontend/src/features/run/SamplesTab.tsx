@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { Download, Info } from 'lucide-react'
+import { Info } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import { api, runFileUrl, type Sample, type SampleClass } from '../../api/client'
 import { Card, ErrorBox, Spinner } from '../../components/ui'
 import { cssVar } from '../../lib/colors'
-import { formatBytes } from '../../lib/format'
+import { isCsvSample } from '../../lib/csv'
 import { useTheme } from '../../lib/themeContext'
 import {
   axisLabel,
@@ -16,6 +16,7 @@ import {
   type Point3,
   type SampleGroup,
 } from '../../lib/results'
+import { CsvCompare, CsvSample, DownloadLink } from './CsvSample'
 
 // 文の見本で読む大きさの上限と, 出す文字数
 const MAX_TEXT_BYTES = 2 * 1024 * 1024
@@ -29,20 +30,6 @@ async function fetchText(url: string): Promise<string> {
   const response = await fetch(url)
   if (!response.ok) throw new Error(`読めませんでした (${response.status})`)
   return response.text()
-}
-
-function DownloadLink({ url, sample }: { url: string; sample: Sample }) {
-  const file = sample.path.slice(sample.path.lastIndexOf('/') + 1)
-  return (
-    <a
-      href={url}
-      download={file}
-      className="inline-flex items-center gap-1 text-sm text-accent-text hover:underline"
-    >
-      <Download className="size-4" aria-hidden />
-      {file} をダウンロード ({formatBytes(sample.size)})
-    </a>
-  )
 }
 
 function TextSample({ url, sample }: { url: string; sample: Sample }) {
@@ -246,6 +233,8 @@ function SampleContent({
 }) {
   const url = runFileUrl(projectId, runId, sample.path)
   const label = `${sample.name} の${sampleEpochLabel(sample.epoch)}`
+  // CSV のファイル (表を作る課題の作った表と本物の表など) は表で見る
+  if (isCsvSample(sample)) return <CsvSample url={url} sample={sample} label={`${label} (表)`} />
   switch (sample.kind) {
     case 'image':
       return <ImageView url={url} label={label} />
@@ -349,8 +338,14 @@ export function SamplesTab({
   runId: string
 }) {
   const groups = useMemo(() => groupSamples(samples), [samples])
+  // 最後の見本が CSV の名前 (2 つ以上あれば並べて見られる)
+  const tables = useMemo(
+    () => groups.filter((group) => isCsvSample(group.entries.at(-1)!)),
+    [groups],
+  )
   return (
     <div className="space-y-3">
+      {tables.length >= 2 && <CsvCompare groups={tables} projectId={projectId} runId={runId} />}
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
         {groups.map((group) => (
           <SampleCard key={group.name} group={group} projectId={projectId} runId={runId} />
