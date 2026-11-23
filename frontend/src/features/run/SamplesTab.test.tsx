@@ -266,7 +266,10 @@ describe('SamplesTab', () => {
     expect(within(section).getByText('ベストのエポック')).toBeInTheDocument()
     const row = within(section).getByRole('row', { name: /loss/ })
     expect(row).toHaveTextContent('0.5')
-    expect(row).toHaveTextContent('0.3最良')
+    expect(row).toHaveTextContent('0.3ベスト')
+    // 監視しない学習用の損失 (エポック 3 が最も小さい) には印を付けない
+    expect(row).not.toHaveTextContent('最良')
+    expect(within(section).getByText(/モデルに選んだエポック/)).toBeInTheDocument()
     expect(within(row).getByText('小さいほど良い')).toBeInTheDocument()
     expect(within(row).getByText('監視する指標')).toBeInTheDocument()
   })
@@ -282,5 +285,7 @@ describe('SamplesTab', () => {
       ),
     )
     expect(screen.getByText(/学習の後の見本はエポックに結び付かない/)).toBeInTheDocument()
+    expect(screen.getByText(/上の「最終」の欄/)).toBeInTheDocument()
+    expect(screen.queryByRole('table', { name: /同じエポック/ })).toBeNull()
   })
 })

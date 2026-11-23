@@ -1,15 +1,20 @@
 import { Trophy } from 'lucide-react'
 import { useMemo } from 'react'
 
-import type { BestValue, History } from '../../api/client'
+import type { BestValue } from '../../api/client'
 import { DirectionBadge } from '../../components/ui'
-import { epochMetrics, PHASE_LABELS, type EpochCell } from '../../lib/epochMetrics'
+import {
+  epochMetrics,
+  PHASE_LABELS,
+  type EpochCell,
+  type HistoryIndex,
+} from '../../lib/epochMetrics'
 import { formatMetric } from '../../lib/format'
 
 /** 見本の横に並べる, 見本と同じエポックの評価 */
 export interface EpochMetricsSource {
-  /** history.csv (読む間と読めなかった場合は undefined) */
-  history?: History
+  /** エポックで引ける history.csv (読む間と読めなかった場合は undefined) */
+  index?: HistoryIndex
   /** history.csv を読めなかったか */
   historyFailed?: boolean
   best?: BestValue | null
@@ -37,10 +42,10 @@ function Cell({ cell, interval }: { cell: EpochCell | undefined; interval: numbe
     <td className="tabular px-2 py-1 text-right align-top whitespace-nowrap text-ink">
       <span className="flex flex-col items-end">
         {formatMetric(cell.value)}
-        {cell.best && (
+        {cell.mark && (
           <span className="inline-flex items-center gap-0.5 text-[11px] text-warning-text">
             <Trophy className="size-3 text-warning" aria-hidden />
-            最良
+            {cell.mark === 'best' ? 'ベスト' : '最良 (推測)'}
           </span>
         )}
       </span>
@@ -52,14 +57,14 @@ function Cell({ cell, interval }: { cell: EpochCell | undefined; interval: numbe
 export function EpochMetrics({
   name,
   epoch,
-  history,
+  index,
   historyFailed = false,
   best,
   validInterval,
 }: EpochMetricsSource & { name: string; epoch: number | null | undefined }) {
   const table = useMemo(
-    () => (history && epoch != null ? epochMetrics(history, epoch, best, validInterval) : null),
-    [history, epoch, best, validInterval],
+    () => (index && epoch != null ? epochMetrics(index, epoch, best, validInterval) : null),
+    [index, epoch, best, validInterval],
   )
   const heading = (
     <h4 className="text-xs font-medium text-ink-2">
@@ -72,7 +77,8 @@ export function EpochMetrics({
       <section aria-label={`${name} の見本と同じエポックの評価`} className="space-y-1">
         {heading}
         <p className="text-xs text-ink-3">
-          学習の後の見本はエポックに結び付かないので, 指標を並べません. 最終の値は上の欄にあります.
+          学習の後の見本はエポックに結び付かないので, 指標を並べません.
+          最後のエポックの監視する指標と検証用の値は, 上の「最終」の欄にあります.
         </p>
       </section>
     )
@@ -93,7 +99,7 @@ export function EpochMetrics({
             </span>
           ))}
       </div>
-      {!history ? (
+      {!index ? (
         <p className="text-xs text-ink-3">
           {historyFailed
             ? 'history.csv を読めませんでした. 学習曲線のタブで理由を確かめられます.'
@@ -148,7 +154,10 @@ export function EpochMetrics({
             </table>
           </div>
           <p className="text-[11px] text-ink-3">
-            「最良」は記録した全てのエポックの中で最も良い値 (向きの分かる指標だけ).
+            「ベストのエポック」の印, 「ベストはエポック N」の文と監視する指標の「ベスト」は,
+            ML-Found がモデルに選んだエポック (run.json のベスト) を指します.
+            {table.guessed &&
+              ' 「最良 (推測)」は監視しない指標の, 記録した全てのエポックの中で最も良い値です (向きは指標の名前から推測).'}
             {table.skipped &&
               ` 検証は ${validInterval} エポックおきなので, 検証しないエポックの検証用の値は「検証なし」です.`}
             {table.missing && ' — は history.csv に値の無い列です.'}

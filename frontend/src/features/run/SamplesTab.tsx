@@ -3,10 +3,11 @@ import clsx from 'clsx'
 import { Info } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 
-import { api, runFileUrl, type Sample, type SampleClass } from '../../api/client'
+import { api, runFileUrl, type History, type Sample, type SampleClass } from '../../api/client'
 import { Card, ErrorBox, Spinner } from '../../components/ui'
 import { cssVar } from '../../lib/colors'
 import { isCsvSample } from '../../lib/csv'
+import { indexHistory } from '../../lib/epochMetrics'
 import { useTheme } from '../../lib/themeContext'
 import {
   axisLabel,
@@ -349,9 +350,16 @@ export function SamplesTab({
   samples: Sample[]
   projectId: string
   runId: string
-} & Partial<EpochMetricsSource>) {
+  history?: History
+} & Partial<Omit<EpochMetricsSource, 'index'>>) {
   const metrics = useMemo(
-    () => ({ history, historyFailed, best, validInterval }),
+    () => ({
+      // 行の引き方と列ごとの最も良い値は, 見本のカードごとでなく 1 回だけ作る
+      index: history ? indexHistory(history, best) : undefined,
+      historyFailed,
+      best,
+      validInterval,
+    }),
     [history, historyFailed, best, validInterval],
   )
   const groups = useMemo(() => groupSamples(samples), [samples])
