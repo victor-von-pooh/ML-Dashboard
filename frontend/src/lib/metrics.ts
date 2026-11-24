@@ -211,7 +211,8 @@ const LOWER_IS_BETTER = /loss|err|mae|mse|rmse|nelbo|kl|recon|residual|boundary|
 // 小さいほど良いと取り違えるため. fid は生成の画像の FID. chamfer は点群の Chamfer 距離.
 // distance は距離 (例えば作った表と本物の表の列ごとの分布の近さ column_distance)
 const LOWER_WORDS = /(^|[/_.-])(fid|chamfer|distance)($|[/_.-])/i
-const HIGHER_IS_BETTER = /acc|auc|^ap$|\/ap$|f1|precision|recall|r2|score|iou|psnr|ssim/i
+// ndcg と mrr は並べる課題の指標 (recall_at_k は recall で大きいほど良い)
+const HIGHER_IS_BETTER = /acc|auc|^ap$|\/ap$|f1|precision|recall|r2|score|iou|psnr|ssim|ndcg|mrr/i
 
 /** 指標の名前から良い向きを推測する. 分からなければ null */
 export function guessDirection(name: string): Direction | null {

@@ -1,0 +1,22 @@
+# 推薦 (ML-Quest の並べるの骨組み) の画面の確かめ用のプロジェクト. 学習はせず, 置いた実験を見る.
+# 監視は valid/loss にし, Recall@K と NDCG の向きを名前から推測することを確かめる
+experiment:
+  name: ranking
+  output_dir: outputs
+  seed: 0
+  device: cpu
+trainer:
+  epochs: 3
+  monitor: valid/loss
+  mode: min
+data:
+  dataset: data/reactions.csv
+  batch_size: 256
+  valid: 0.1
+  test: 0.1
+rank:
+  user: member
+  item: item_id
+  time: ts
+  reaction: qty
+  k: 10

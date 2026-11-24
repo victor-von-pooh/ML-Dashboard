@@ -1,0 +1,18 @@
+format_version: 1
+role: rank
+output: ranking
+what: 会員ごとに勧める品
+target:
+  kind: null
+  origin:
+    type: unknown
+    name: null
+    settings: null
+method: scratch
+base:
+  experiment: null
+  weights: null
+dataset:
+  path: null
+  name: null
+  format_version: null

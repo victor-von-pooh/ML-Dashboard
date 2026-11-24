@@ -60,6 +60,9 @@ describe('analysis', () => {
     // 名前からの推測は学習曲線と同じ表 (fid は語として現れる場合だけ小さいほど良い)
     expect(metricDirection(runs, 'final:valid/fid')).toBe('min')
     expect(metricDirection(runs, 'final:valid/fidelity_acc')).toBe('max')
+    // 並べる課題の指標は大きいほど良い
+    expect(metricDirection(runs, 'final:valid/ndcg')).toBe('max')
+    expect(metricDirection(runs, 'final:valid/recall_at_k')).toBe('max')
   })
 
   it('値ごとの最良値と平均を, 良い順に並べる', () => {

@@ -1,0 +1,20 @@
+experiment:
+  name: ranking
+  output_dir: outputs
+  seed: 0
+  device: cpu
+trainer:
+  epochs: 3
+  monitor: valid/loss
+  mode: min
+data:
+  dataset: data/reactions.csv
+  batch_size: 256
+  valid: 0.1
+  test: 0.1
+rank:
+  user: member
+  item: item_id
+  time: ts
+  reaction: qty
+  k: 10

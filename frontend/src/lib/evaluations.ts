@@ -1,4 +1,4 @@
-import type { EvaluationValue, GuardCheck, RunEvaluations } from '../api/client'
+import type { Evaluation, EvaluationValue, GuardCheck, RunEvaluations } from '../api/client'
 
 // 一覧と比較に並べる評価の列の上限 (表の幅を保つため. docs/DESIGN.md の「一覧と比較の評価」)
 export const MAX_LIST_COLUMNS = 3
@@ -213,4 +213,39 @@ export function guardDetail(guard: GuardCheck): string {
   return lines.length > 0
     ? lines.join('\n')
     : 'テスト用の守る指標は, 全て比べる相手より落ちていません'
+}
+
+// 比べる相手との表の形の差の列の終わり (ML-Found の docs/FORMAT.md)
+const DIFF_SUFFIX = '_diff'
+
+/**
+ * 比べる相手との差の列 (<指標>_diff で, <指標> の列も表にあるもの) の値を,
+ * 一覧の評価の値と同じ形にする. 差の列でない, 数でない, 向き (better) の無い値は null
+ */
+export function diffValue(
+  evaluation: Evaluation,
+  column: string,
+  value: unknown,
+): EvaluationValue | null {
+  const metric = column.slice(0, -DIFF_SUFFIX.length)
+  const better = evaluation.better[column]
+  if (
+    !column.endsWith(DIFF_SUFFIX) ||
+    metric === '' ||
+    !evaluation.columns.includes(metric) ||
+    typeof value !== 'number' ||
+    !Number.isFinite(value) ||
+    !better
+  ) {
+    return null
+  }
+  return {
+    evaluation: evaluation.name,
+    column,
+    value,
+    guard: evaluation.guard,
+    diff: true,
+    better,
+    baseline: evaluation.baseline,
+  }
 }
