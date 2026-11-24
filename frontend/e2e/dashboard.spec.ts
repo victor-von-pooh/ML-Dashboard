@@ -152,7 +152,7 @@ test('2 つの実験を比べ, config の違いと同じエポックの画像を
   await expect(page.getByText('optimizer.name')).toBeVisible()
   // テスト用の評価の値と守る指標の印も並ぶ
   const evaluations = page.locator('section', {
-    has: page.getByRole('heading', { name: 'テスト用の評価' }),
+    has: page.getByRole('heading', { name: 'テスト用の評価 (群分けは全ての行で数えた値)' }),
   })
   await expect(evaluations.getByRole('row').filter({ hasText: '落ちた' })).toHaveCount(2)
   // 評価の列の並べ替えは URL に残り, 読み直しても同じ

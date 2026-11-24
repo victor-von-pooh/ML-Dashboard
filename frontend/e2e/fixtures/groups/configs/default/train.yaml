@@ -1,5 +1,5 @@
 # 群分け (ML-Quest の群分けの骨組み) の画面の確かめ用のプロジェクト. 学習はせず,
-# 置いた実験を見る. 群の数 (group.k) だけを変えた 2 つの実験を比べる
+# 置いた実験を見る. 群の数 (group.k) と実験の名前を変えた 2 つの実験を比べる
 experiment:
   name: group_3
   output_dir: outputs

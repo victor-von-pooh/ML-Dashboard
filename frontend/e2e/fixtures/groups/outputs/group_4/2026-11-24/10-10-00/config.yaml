@@ -1,5 +1,5 @@
 experiment:
-  name: group_3
+  name: group_4
   output_dir: outputs
   seed: 0
   device: cpu

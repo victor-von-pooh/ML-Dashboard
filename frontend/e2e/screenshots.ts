@@ -151,7 +151,7 @@ try {
     throw new Error('spiral, spiral_sgd, spiral_small の実験がありません')
   const query = new URLSearchParams(picked.map((id): [string, string] => ['run', id!]))
   await page.goto(`/projects/${projectId}/compare?${query.toString()}`)
-  await page.getByRole('heading', { name: 'テスト用の評価' }).waitFor()
+  await page.getByRole('heading', { name: 'テスト用の評価 (群分けは全ての行で数えた値)' }).waitFor()
   await page
     .getByRole('img', { name: /boundary/ })
     .first()

@@ -6,7 +6,7 @@ import { expect, test } from '@playwright/test'
 // e2e/make_groups.py で書いた確かめ用のプロジェクト (群の数 3 と 4 の実験)
 const GROUPS_DIR = path.resolve(import.meta.dirname, '.work', 'groups')
 const THREE = 'group_3/2026-11-24/10-00-00'
-const FOUR = 'group_3/2026-11-24/10-10-00'
+const FOUR = 'group_4/2026-11-24/10-10-00'
 
 let projectId = ''
 
@@ -54,7 +54,11 @@ test('評価のタブで, 群の安定性の差に良し悪しの印を付け, �
   // 群の要約: 群ごとの行と最後の全体の行
   const summary = page.locator('section').filter({ hasText: 'group_summary' })
   await expect(summary.getByRole('columnheader', { name: /^行の数\s*rows$/ })).toBeVisible()
-  await expect(summary.getByRole('columnheader', { name: /^群の安定性/ })).toBeVisible()
+  await expect(summary.getByRole('columnheader', { name: /^群\s*group$/ })).toBeVisible()
+  await expect(summary.getByRole('columnheader', { name: /^割合\s*share$/ })).toBeVisible()
+  await expect(
+    summary.getByRole('columnheader', { name: /^安定性\s*stability \(大きいほど良い\)$/ }),
+  ).toBeVisible()
   const rows = summary.getByRole('row')
   await expect(rows).toHaveCount(5)
   await expect(rows.nth(4).getByRole('cell').first()).toHaveText('全体')
@@ -64,7 +68,8 @@ test('群の数を変えた実験を一覧と比較で並べ, 群の安定性の
   page,
 }) => {
   await page.goto(`/projects/${projectId}`)
-  // 全ての行で数えた群の安定性が一覧の列に出る (群の数 4 は調整ランド指数が悪い)
+  // 全ての行で数えた群の安定性が一覧の列に出る (群の数 3 は調整ランド指数が
+  // そのままと同じで, 群の数 4 は悪い)
   await expect(page.getByRole('columnheader', { name: /group_stability/ }).first()).toBeVisible()
   const four = page.getByRole('row', { name: FOUR })
   await expect(four).toContainText('group.k')
@@ -83,7 +88,7 @@ test('群の数を変えた実験を一覧と比較で並べ, 群の安定性の
   await expect(page.getByRole('heading', { name: '実験の比較' })).toBeVisible()
   await expect(page.getByText('group.k').first()).toBeVisible()
   const evaluations = page.locator('section', {
-    has: page.getByRole('heading', { name: 'テスト用の評価' }),
+    has: page.getByRole('heading', { name: 'テスト用の評価 (群分けは全ての行で数えた値)' }),
   })
   await expect(
     evaluations.getByRole('columnheader', { name: /調整ランド指数の平均 \(比べる相手との差\)/ }),

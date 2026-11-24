@@ -22,7 +22,7 @@ import {
 import type { EvaluationValue, GuardCheck } from '../../api/client'
 import { useStableId } from '../../lib/a11y'
 import { formatMetric } from '../../lib/format'
-import { metricNote } from '../../lib/metrics'
+import { metricLabel } from '../../lib/metrics'
 import { GUARD_LABELS, diffTone, guardDetail, type EvaluationColumn } from '../../lib/evaluations'
 
 const GUARD_STYLE: Record<GuardCheck['state'], { icon: LucideIcon; className: string }> = {
@@ -225,17 +225,22 @@ export function EvaluationCell({
   )
 }
 
-/** 評価の列の見出しの中身 (名前の分かる指標の日本語の説明, 列の名前と, 評価の名前) */
+/**
+ * 評価の列の見出しの中身. 名前の分かる列は日本語の名前を主にして列の名前を小さく添え,
+ * その下に評価の名前
+ */
 export function ColumnLabel({ column }: { column: EvaluationColumn }) {
-  const note = metricNote(column.column, column.evaluation)
+  const name = metricLabel(column.column, column.evaluation)
   return (
-    <span className="inline-flex flex-col items-end leading-tight">
-      {note && (
-        <span className="max-w-40 text-right text-[10px] font-normal whitespace-normal text-ink-2">
-          {note}
-        </span>
+    <span className="inline-flex flex-col items-end leading-tight" title={name?.note ?? undefined}>
+      {name ? (
+        <>
+          <span className="max-w-40 text-right whitespace-normal">{name.label}</span>
+          <span className="font-mono text-[10px] font-normal text-ink-3">{column.column}</span>
+        </>
+      ) : (
+        <span className="font-mono">{column.column}</span>
       )}
-      <span className="font-mono">{column.column}</span>
       <span className="sr-only"> (</span>
       <span className="font-mono text-[10px] font-normal text-ink-3">{column.evaluation}</span>
       <span className="sr-only">)</span>
@@ -305,6 +310,7 @@ export function EvaluationColumnPicker({
         <ul className="max-h-64 overflow-auto" aria-label="評価の列">
           {shown.map((column) => {
             const checked = chosenKeys.includes(column.key)
+            const name = metricLabel(column.column, column.evaluation)
             return (
               <li key={column.key}>
                 <label
@@ -322,11 +328,7 @@ export function EvaluationColumnPicker({
                   />
                   <span className="min-w-0">
                     <span className="block font-mono break-all">{column.key}</span>
-                    {metricNote(column.column, column.evaluation) && (
-                      <span className="block text-[10px] text-ink-3">
-                        {metricNote(column.column, column.evaluation)}
-                      </span>
-                    )}
+                    {name && <span className="block text-[10px] text-ink-3">{name.label}</span>}
                   </span>
                   {column.guard && (
                     <span className="ml-auto inline-flex shrink-0 items-center gap-0.5 text-[10px] text-accent-text">

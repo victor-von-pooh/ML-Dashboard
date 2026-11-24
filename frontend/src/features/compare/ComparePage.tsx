@@ -595,7 +595,7 @@ function EvaluationCompare({
 
   return (
     <Card
-      title="テスト用の評価 (テスト用に分けない群分けは全ての行)"
+      title="テスト用の評価 (群分けは全ての行で数えた値)"
       padded={false}
       actions={
         columns.length > 0 ? (

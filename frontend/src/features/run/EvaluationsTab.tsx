@@ -7,7 +7,7 @@ import { LineChart, type ChartSeries } from '../../components/LineChart'
 import { Card } from '../../components/ui'
 import { seriesVar } from '../../lib/colors'
 import { diffValue } from '../../lib/evaluations'
-import { metricNote } from '../../lib/metrics'
+import { metricLabel } from '../../lib/metrics'
 import { curveSeries, formatCell, numericColumns } from '../../lib/results'
 import { EvaluationCell } from '../runs/EvaluationColumns'
 
@@ -15,9 +15,9 @@ import { EvaluationCell } from '../runs/EvaluationColumns'
 const MAX_CURVE_SERIES = 8
 
 /**
- * 評価の表. 列は評価の順のまま. 向き (better) のある列は見出しに添え, 名前の分かる指標
- * には日本語の説明を添える. 比べる相手との差の列は一覧と同じく良し悪しを色とアイコンと
- * 文字で出す
+ * 評価の表. 列は評価の順のまま. 向き (better) のある列は見出しに添え, 名前の分かる列は
+ * 日本語の名前を主にして英字の名前を小さく添える. 比べる相手との差の列は, 一覧と同じく
+ * 良し悪しを色とアイコンと文字で出す
  */
 function EvaluationTable({ evaluation }: { evaluation: Evaluation }) {
   const numeric = useMemo(() => numericColumns(evaluation), [evaluation])
@@ -27,7 +27,9 @@ function EvaluationTable({ evaluation }: { evaluation: Evaluation }) {
         <thead className="sticky top-0 bg-surface-2 text-left text-xs text-ink-2">
           <tr>
             {evaluation.columns.map((column) => {
-              const note = metricNote(column, evaluation.name)
+              const name = metricLabel(column, evaluation.name)
+              const better = evaluation.better[column]
+              const direction = better && (better === 'lower' ? '小さいほど良い' : '大きいほど良い')
               return (
                 <th
                   key={column}
@@ -36,18 +38,23 @@ function EvaluationTable({ evaluation }: { evaluation: Evaluation }) {
                     'px-3 py-1.5 align-bottom font-medium whitespace-nowrap',
                     numeric.has(column) && 'text-right',
                   )}
+                  title={name?.note ?? undefined}
                 >
-                  {note && (
-                    <span className="block max-w-56 text-[11px] font-normal whitespace-normal text-ink-2">
-                      {note}
-                    </span>
-                  )}
-                  {column}
-                  {evaluation.better[column] && (
-                    <span className="ml-1 font-normal text-ink-3">
-                      ({evaluation.better[column] === 'lower' ? '小さいほど良い' : '大きいほど良い'}
-                      )
-                    </span>
+                  {name ? (
+                    <>
+                      <span className="block">{name.label}</span>
+                      <span className="block text-[10px] font-normal text-ink-3">
+                        <span className="font-mono">{column}</span>
+                        {direction && ` (${direction})`}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      {column}
+                      {direction && (
+                        <span className="ml-1 font-normal text-ink-3">({direction})</span>
+                      )}
+                    </>
                   )}
                 </th>
               )

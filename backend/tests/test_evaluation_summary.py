@@ -331,6 +331,58 @@ def test_group_values(client: TestClient, project_dir: Path) -> None:
     assert metric_better("ari_min", "valid/loss", "min") == "higher"
 
 
+def test_all_split_guard_and_order(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    全ての行の守る指標の表もテスト用と同じく判定に入り, テスト用と全ての行の
+    評価が, 守る指標の表を先に評価の名前の順で並ぶことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 他の課題のテスト用の評価, 全ての行の群の安定性, 全ての行の守る指標の
+    # 表 (落ちた) と, 列にしない検証用
+    run_dir = project_dir / "outputs" / EVALUATED_RUN
+    write_evaluation(run_dir, "baseline_test",
+                     [{"accuracy": 0.9, "accuracy_diff": 0.1}])
+    write_evaluation(
+        run_dir, "group_stability",
+        [{"k": 3, "ari": 0.9, "ari_baseline": 1.0, "ari_diff": -0.1}],
+        split="all", better={"ari": "higher"}
+    )
+    write_evaluation(
+        run_dir, "all_guard",
+        [{"recall": 0.7, "recall_diff": -0.05}], split="all", guard=True
+    )
+    write_evaluation(run_dir, "a_valid", [{"accuracy": 0.95}],
+                     split="valid")
+
+    # 守る指標の表が先, 次に評価の名前の順 (分割には依らない)
+    evaluations = list_summaries(client, project_dir)[EVALUATED_RUN]
+    assert [
+        (item["evaluation"], item["column"])
+        for item in evaluations["values"]
+    ] == [
+        ("all_guard", "recall"), ("all_guard", "recall_diff"),
+        ("baseline_test", "accuracy"), ("baseline_test", "accuracy_diff"),
+        ("group_stability", "ari"), ("group_stability", "ari_diff"),
+    ]
+    assert evaluations["values"][0]["guard"] is True
+    assert evaluations["guard"] == {
+        "state": "dropped", "dropped": ["all_guard: recall (差 -0.05)"],
+        "unknown": []
+    }
+
+
 def test_metric_better() -> None:
     """
     指標の名前と監視する指標から向きを決めることを確かめる関数

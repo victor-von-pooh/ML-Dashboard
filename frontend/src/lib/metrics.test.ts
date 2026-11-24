@@ -10,6 +10,7 @@ import {
   flattenConfig,
   groupMetrics,
   guessDirection,
+  metricLabel,
   metricNote,
   hasAxis,
   identicalSeries,
@@ -318,12 +319,22 @@ describe('指標の良い向き', () => {
 
   it('群分けの指標と列に日本語の説明を添える', () => {
     expect(metricNote('valid/silhouette')).toBe('シルエット係数 (群のまとまり. -1 から 1)')
-    expect(metricNote('ari_min')).toBe('調整ランド指数の最も低い値 (作り直した群との一致)')
+    expect(metricNote('ari_min')).toBe('調整ランド指数の最小 (作り直した群との一致の最も低い値)')
     expect(metricNote('ari_diff')).toBe('調整ランド指数の平均 (比べる相手との差)')
     expect(metricNote('silhouette_baseline')).toBe('シルエット係数 (比べる相手の値)')
     // 評価に固有の列は, その評価の名前を渡したときだけ
     expect(metricNote('k', 'group_stability')).toBe('群の数')
-    expect(metricNote('stability', 'group_summary')).toMatch(/^群の安定性/)
+    expect(metricNote('stability', 'group_summary')).toMatch(/^安定性 \(/)
+    // 表の見出しは日本語の名前を主にし, 説明は別に持つ
+    expect(metricLabel('rows', 'group_summary')).toEqual({ label: '行の数', note: null })
+    expect(metricLabel('group', 'group_summary')).toEqual({
+      label: '群',
+      note: '群の番号. 全体は全ての行',
+    })
+    expect(metricLabel('ari_diff')).toEqual({
+      label: '調整ランド指数の平均 (比べる相手との差)',
+      note: null,
+    })
     expect(metricNote('k', 'ranking_test')).toBeNull()
     expect(metricNote('rows')).toBeNull()
     expect(metricNote('valid/loss')).toBeNull()
