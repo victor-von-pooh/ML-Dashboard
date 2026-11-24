@@ -1,0 +1,19 @@
+experiment:
+  name: group_3
+  output_dir: outputs
+  seed: 0
+  device: cpu
+trainer:
+  epochs: 3
+  monitor: valid/silhouette
+  mode: max
+data:
+  dataset: data/customers.csv
+  batch_size: 128
+  valid: 0.2
+group:
+  columns: [spend, visits, region]
+  id: customer
+  k: 3
+  stability: seed
+  repeats: 3

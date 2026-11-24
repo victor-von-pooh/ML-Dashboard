@@ -3,7 +3,12 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { EvaluationValue } from '../../api/client'
 import { collectColumns } from '../../lib/evaluations'
-import { EvaluationCell, EvaluationColumnPicker, GuardBadge } from './EvaluationColumns'
+import {
+  ColumnLabel,
+  EvaluationCell,
+  EvaluationColumnPicker,
+  GuardBadge,
+} from './EvaluationColumns'
 
 const diff: EvaluationValue = {
   evaluation: 'baseline_test',
@@ -118,6 +123,26 @@ describe('EvaluationCell', () => {
     render(<EvaluationCell value={{ ...diff, better: null }} />)
     expect(screen.queryByText('悪い')).not.toBeInTheDocument()
     expect(screen.getByText('-0.05')).toBeInTheDocument()
+  })
+})
+
+describe('ColumnLabel', () => {
+  it('群分けの指標は列の名前の上に日本語の説明を添え, 知らない列は名前だけ', () => {
+    const column = {
+      key: 'group_stability:silhouette_diff',
+      evaluation: 'group_stability',
+      column: 'silhouette_diff',
+      guard: false,
+      diff: true,
+      better: 'higher' as const,
+      baseline: '列の特徴をそのまま k-means で分けた群',
+    }
+    const { container, rerender } = render(<ColumnLabel column={column} />)
+    expect(container.textContent).toBe(
+      'シルエット係数 (比べる相手との差)silhouette_diff (group_stability)',
+    )
+    rerender(<ColumnLabel column={{ ...column, key: 'x:accuracy', column: 'accuracy' }} />)
+    expect(container.textContent).toBe('accuracy (group_stability)')
   })
 })
 

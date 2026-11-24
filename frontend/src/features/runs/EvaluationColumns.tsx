@@ -22,6 +22,7 @@ import {
 import type { EvaluationValue, GuardCheck } from '../../api/client'
 import { useStableId } from '../../lib/a11y'
 import { formatMetric } from '../../lib/format'
+import { metricLabel } from '../../lib/metrics'
 import { GUARD_LABELS, diffTone, guardDetail, type EvaluationColumn } from '../../lib/evaluations'
 
 const GUARD_STYLE: Record<GuardCheck['state'], { icon: LucideIcon; className: string }> = {
@@ -224,11 +225,22 @@ export function EvaluationCell({
   )
 }
 
-/** 評価の列の見出しの中身 (列の名前と, 評価の名前) */
+/**
+ * 評価の列の見出しの中身. 名前の分かる列は日本語の名前を主にして列の名前を小さく添え,
+ * その下に評価の名前
+ */
 export function ColumnLabel({ column }: { column: EvaluationColumn }) {
+  const name = metricLabel(column.column, column.evaluation)
   return (
-    <span className="inline-flex flex-col items-end leading-tight">
-      <span className="font-mono">{column.column}</span>
+    <span className="inline-flex flex-col items-end leading-tight" title={name?.note ?? undefined}>
+      {name ? (
+        <>
+          <span className="max-w-40 text-right whitespace-normal">{name.label}</span>
+          <span className="font-mono text-[10px] font-normal text-ink-3">{column.column}</span>
+        </>
+      ) : (
+        <span className="font-mono">{column.column}</span>
+      )}
       <span className="sr-only"> (</span>
       <span className="font-mono text-[10px] font-normal text-ink-3">{column.evaluation}</span>
       <span className="sr-only">)</span>
@@ -292,11 +304,13 @@ export function EvaluationColumnPicker({
           className="mb-2 h-8 w-full rounded-md border border-line bg-surface px-2 text-xs outline-none focus:border-accent"
         />
         <p className="mb-1 text-[11px] text-ink-3">
-          テスト用の評価の値. {limit} 列まで並べられます
+          テスト用の評価の値 (群分けのようにテスト用に分けない課題は, 全ての行で数えた値). {limit}{' '}
+          列まで並べられます
         </p>
         <ul className="max-h-64 overflow-auto" aria-label="評価の列">
           {shown.map((column) => {
             const checked = chosenKeys.includes(column.key)
+            const name = metricLabel(column.column, column.evaluation)
             return (
               <li key={column.key}>
                 <label
@@ -312,7 +326,10 @@ export function EvaluationColumnPicker({
                     onChange={() => toggle(column.key)}
                     className="accent-[var(--accent)]"
                   />
-                  <span className="font-mono break-all">{column.key}</span>
+                  <span className="min-w-0">
+                    <span className="block font-mono break-all">{column.key}</span>
+                    {name && <span className="block text-[10px] text-ink-3">{name.label}</span>}
+                  </span>
                   {column.guard && (
                     <span className="ml-auto inline-flex shrink-0 items-center gap-0.5 text-[10px] text-accent-text">
                       <ShieldCheck className="size-3" aria-hidden />

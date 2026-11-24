@@ -159,4 +159,54 @@ describe('EvaluationsTab', () => {
     const other = within(screen.getAllByRole('table')[1]!).getAllByRole('cell')
     expect(other.map((cell) => cell.textContent)).toEqual(['0.1000', '0.2000'])
   })
+  it('群分けの群の安定性は, 見出しを日本語の名前にし, 列の特徴をそのまま分けた群との差に良し悪しの印を付ける', () => {
+    // ML-Quest の群分けの骨組みが書く evaluations/group_stability.json の形
+    const better = 'higher' as const
+    const stability: Evaluation = {
+      name: 'group_stability',
+      split: 'all',
+      kind: 'table',
+      x: null,
+      columns: ['k', 'method', 'repeats', 'ari', 'ari_baseline', 'ari_diff', 'silhouette_diff'],
+      rows: [
+        {
+          k: 3,
+          method: 'seed',
+          repeats: 5,
+          ari: 0.98,
+          ari_baseline: 1,
+          ari_diff: -0.02,
+          silhouette_diff: 0.01,
+        },
+      ],
+      description: null,
+      baseline: '列の特徴をそのまま k-means で分けた群',
+      guard: false,
+      better: { ari: better, ari_baseline: better, ari_diff: better, silhouette_diff: better },
+      epoch: 3,
+      created_at: null,
+      total_rows: 1,
+    }
+    render(<EvaluationsTab evaluations={[stability]} />)
+    const headers = screen.getAllByRole('columnheader').map((cell) => cell.textContent)
+    expect(headers[0]).toBe('群の数k')
+    // 日本語の名前を主にし, 英字の名前と向きを小さく添える
+    expect(headers[3]).toBe('調整ランド指数の平均ari (大きいほど良い)')
+    expect(headers[5]).toBe('調整ランド指数の平均 (比べる相手との差)ari_diff (大きいほど良い)')
+    expect(screen.getAllByRole('columnheader')[3]).toHaveAttribute(
+      'title',
+      '作り直した群との一致. 1 は同じ群, 0 は偶然と同じ',
+    )
+    // silhouette の列が表に無い差の列は数だけ
+    const cells = within(screen.getAllByRole('row')[1]!).getAllByRole('cell')
+    expect(cells.map((cell) => cell.textContent)).toEqual([
+      '3',
+      'seed',
+      '5',
+      '0.9800',
+      '1',
+      '-0.02000悪い',
+      '0.01000',
+    ])
+  })
 })

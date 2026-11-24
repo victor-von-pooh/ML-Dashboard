@@ -202,7 +202,8 @@ class RunSource(BaseModel):
 
 
 class EvaluationValue(BaseModel):
-    # 一覧と比較に出すテスト用の評価の 1 つの値 (1 行の表の数の列)
+    # 一覧と比較に出すテスト用 (と全ての行) の評価の 1 つの値 (1 行の表の
+    # 数の列)
     evaluation: str
     column: str
     value: Optional[float]
@@ -217,16 +218,16 @@ class EvaluationValue(BaseModel):
 
 
 class GuardCheck(BaseModel):
-    # テスト用の守る指標の表の判定. dropped は落ちた指標と一番悪い差,
-    # unknown は判断できなかった理由
+    # テスト用 (と全ての行) の守る指標の表の判定. dropped は落ちた指標と
+    # 一番悪い差, unknown は判断できなかった理由
     state: GuardState
     dropped: list[str] = []
     unknown: list[str] = []
 
 
 class RunEvaluations(BaseModel):
-    # 一覧と比較に出すテスト用の評価の値と守る指標の判定 (守る指標の表が
-    # 無ければ guard は None). 読めない場合の理由
+    # 一覧と比較に出すテスト用 (と全ての行) の評価の値と守る指標の判定
+    # (守る指標の表が無ければ guard は None). 読めない場合の理由
     values: list[EvaluationValue] = []
     guard: Optional[GuardCheck] = None
     notice: Optional[str] = None

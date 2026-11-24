@@ -211,13 +211,18 @@ const LOWER_IS_BETTER = /loss|err|mae|mse|rmse|nelbo|kl|recon|residual|boundary|
 // 小さいほど良いと取り違えるため. fid は生成の画像の FID. chamfer は点群の Chamfer 距離.
 // distance は距離 (例えば作った表と本物の表の列ごとの分布の近さ column_distance)
 const LOWER_WORDS = /(^|[/_.-])(fid|chamfer|distance)($|[/_.-])/i
-// ndcg と mrr は並べる課題の指標 (recall_at_k は recall で大きいほど良い)
-const HIGHER_IS_BETTER = /acc|auc|^ap$|\/ap$|f1|precision|recall|r2|score|iou|psnr|ssim|ndcg|mrr/i
+// ndcg と mrr は並べる課題の指標 (recall_at_k は recall で大きいほど良い). silhouette
+// は群分けのシルエット係数
+const HIGHER_IS_BETTER =
+  /acc|auc|^ap$|\/ap$|f1|precision|recall|r2|score|iou|psnr|ssim|ndcg|mrr|silhouette/i
+// 語として現れる場合だけ大きいほど良い指標. ari は群分けの調整ランド指数 (部分一致では
+// variance まで含むため)
+const HIGHER_WORDS = /(^|[/_.-])ari($|[/_.-])/i
 
 /** 指標の名前から良い向きを推測する. 分からなければ null */
 export function guessDirection(name: string): Direction | null {
   if (LOWER_IS_BETTER.test(name) || LOWER_WORDS.test(name)) return 'min'
-  if (HIGHER_IS_BETTER.test(name)) return 'max'
+  if (HIGHER_IS_BETTER.test(name) || HIGHER_WORDS.test(name)) return 'max'
   return null
 }
 
@@ -247,4 +252,68 @@ export function columnDirection(
 /** 良い向きの表示 */
 export function directionLabel(direction: Direction): string {
   return direction === 'max' ? '大きいほど良い' : '小さいほど良い'
+}
+
+// 指標の名前 (最後の / の後) の日本語の名前と, 添える説明
+const METRIC_LABELS: Record<string, MetricLabel> = {
+  ari: { label: '調整ランド指数の平均', note: '作り直した群との一致. 1 は同じ群, 0 は偶然と同じ' },
+  ari_min: { label: '調整ランド指数の最小', note: '作り直した群との一致の最も低い値' },
+  silhouette: { label: 'シルエット係数', note: '群のまとまり. -1 から 1' },
+}
+// 比べる相手の列の終わりと, 日本語の名前に添える言葉
+const COMPARE_SUFFIXES: [string, string][] = [
+  ['_baseline', '比べる相手の値'],
+  ['_diff', '比べる相手との差'],
+]
+// 評価ごとの列の日本語の名前 (群の数や行の数のように, 同じ名前が評価で別の意味になる列)
+const EVALUATION_LABELS: Record<string, Record<string, MetricLabel>> = {
+  group_stability: {
+    k: { label: '群の数', note: null },
+    method: { label: '作り直し方', note: 'seed は種を変え, sample は標本を変える' },
+    repeats: { label: '作り直した回数', note: null },
+  },
+  group_summary: {
+    group: { label: '群', note: '群の番号. 全体は全ての行' },
+    rows: { label: '行の数', note: null },
+    share: { label: '割合', note: '全ての行に対する行の割合' },
+    stability: {
+      label: '安定性',
+      note: '作り直した群のうち最も重なる群との Jaccard 係数の平均',
+    },
+  },
+}
+
+/** 指標か評価の列の日本語の名前と, 添える説明 (無ければ null) */
+export interface MetricLabel {
+  label: string
+  note: string | null
+}
+
+/**
+ * 指標か評価の列の名前の日本語の名前. 評価の名前を渡すと, その評価に固有の列も引く.
+ * <指標>_baseline と <指標>_diff は指標の名前に「比べる相手の値」などを添える.
+ * 知らない名前は null
+ */
+export function metricLabel(name: string, evaluation?: string): MetricLabel | null {
+  const metric = name.slice(name.lastIndexOf('/') + 1)
+  const own =
+    evaluation && Object.hasOwn(EVALUATION_LABELS, evaluation)
+      ? EVALUATION_LABELS[evaluation]
+      : undefined
+  if (own && Object.hasOwn(own, metric)) return own[metric] ?? null
+  if (Object.hasOwn(METRIC_LABELS, metric)) return METRIC_LABELS[metric] ?? null
+  for (const [suffix, word] of COMPARE_SUFFIXES) {
+    const base = metric.slice(0, -suffix.length)
+    if (metric.endsWith(suffix) && Object.hasOwn(METRIC_LABELS, base)) {
+      return { label: `${METRIC_LABELS[base]!.label} (${word})`, note: null }
+    }
+  }
+  return null
+}
+
+/** 日本語の名前と説明を 1 つの文にする (グラフの見出しに添える). 知らない名前は null */
+export function metricNote(name: string, evaluation?: string): string | null {
+  const found = metricLabel(name, evaluation)
+  if (!found) return null
+  return found.note ? `${found.label} (${found.note})` : found.label
 }
