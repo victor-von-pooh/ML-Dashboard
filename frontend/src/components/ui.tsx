@@ -20,7 +20,7 @@ import {
 } from 'react'
 
 import type { RunStatus } from '../api/client'
-import { directionLabel, type ColumnDirection } from '../lib/metrics'
+import { directionLabel, metricNote, type ColumnDirection } from '../lib/metrics'
 
 export function Card({
   title,
@@ -315,6 +315,17 @@ export function PageHeader({
       </div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}
     </div>
+  )
+}
+
+/** グラフの見出しの指標の名前. 名前の分かる指標は日本語の説明を添える */
+export function MetricTitle({ name }: { name: string }) {
+  const note = metricNote(name)
+  return (
+    <span className="inline-flex flex-wrap items-baseline gap-x-2">
+      <span className="font-mono">{name}</span>
+      {note && <span className="text-xs font-normal text-ink-2">{note}</span>}
+    </span>
   )
 }
 

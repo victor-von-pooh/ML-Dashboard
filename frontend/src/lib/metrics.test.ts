@@ -10,6 +10,7 @@ import {
   flattenConfig,
   groupMetrics,
   guessDirection,
+  metricNote,
   hasAxis,
   identicalSeries,
   integerAxis,
@@ -301,6 +302,33 @@ describe('指標の良い向き', () => {
         guessed: true,
       })
     }
+  })
+
+  it('群分けのシルエット係数と調整ランド指数は大きいほど良い', () => {
+    expect(guessDirection('valid/silhouette')).toBe('max')
+    expect(guessDirection('ari')).toBe('max')
+    expect(guessDirection('ari_min_diff')).toBe('max')
+    // ari は語として現れる場合だけ (variance などを含めない)
+    expect(guessDirection('valid/variance')).toBeNull()
+    expect(columnDirection('valid/silhouette', [{ monitor: 'valid/loss', mode: 'min' }])).toEqual({
+      direction: 'max',
+      guessed: true,
+    })
+  })
+
+  it('群分けの指標と列に日本語の説明を添える', () => {
+    expect(metricNote('valid/silhouette')).toBe('シルエット係数 (群のまとまり. -1 から 1)')
+    expect(metricNote('ari_min')).toBe('調整ランド指数の最も低い値 (作り直した群との一致)')
+    expect(metricNote('ari_diff')).toBe('調整ランド指数の平均 (比べる相手との差)')
+    expect(metricNote('silhouette_baseline')).toBe('シルエット係数 (比べる相手の値)')
+    // 評価に固有の列は, その評価の名前を渡したときだけ
+    expect(metricNote('k', 'group_stability')).toBe('群の数')
+    expect(metricNote('stability', 'group_summary')).toMatch(/^群の安定性/)
+    expect(metricNote('k', 'ranking_test')).toBeNull()
+    expect(metricNote('rows')).toBeNull()
+    expect(metricNote('valid/loss')).toBeNull()
+    expect(metricNote('constructor')).toBeNull()
+    expect(metricNote('k', 'constructor')).toBeNull()
   })
 
   it('監視する指標は ML-Found の向き, 他は推測, 学習率と推測できない列は null', () => {

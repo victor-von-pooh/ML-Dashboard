@@ -267,6 +267,70 @@ def test_ranking_values(client: TestClient, project_dir: Path) -> None:
     assert metric_better("ndcg", "valid/loss", "min") == "higher"
 
 
+def test_group_values(client: TestClient, project_dir: Path) -> None:
+    """
+    ML-Quest の群分けの骨組みの形の, 全ての行で数えた群の安定性 (列の特徴を
+    そのまま分けた群との差) を一覧が値と差で返し, 行が 2 つ以上の群の要約と
+    検証用の評価は列にしないことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 骨組みの evaluations/group_stability.json と同じ列と向き
+    run_dir = project_dir / "outputs" / EVALUATED_RUN
+    row: dict[str, Any] = {"k": 3, "method": "seed", "repeats": 5}
+    for name, (value, base) in {
+        "ari": (0.98, 1.0), "ari_min": (0.95, 1.0),
+        "silhouette": (0.73, 0.72),
+    }.items():
+        row[name] = value
+        row[f"{name}_baseline"] = base
+        row[f"{name}_diff"] = value - base
+    write_evaluation(
+        run_dir, "group_stability", [row], split="all",
+        baseline="列の特徴をそのまま k-means で分けた群",
+        better={"ari": "higher", "ari_min": "higher", "silhouette": "higher"}
+    )
+    # 群の要約 (群ごとの行と全体の行) と, 検証用の評価
+    write_evaluation(
+        run_dir, "group_summary",
+        [{"group": 0, "rows": 80, "share": 0.5, "stability": 0.9},
+         {"group": "全体", "rows": 160, "share": 1.0, "stability": None}],
+        split="all", baseline=None, better={"stability": "higher"}
+    )
+    write_evaluation(run_dir, "group_valid", [{"silhouette": 0.7}],
+                     split="valid", baseline=None)
+
+    # 群の数, 数え方, 回数と, そのままの値は列にせず, 指標と差だけを並べる
+    evaluations = list_summaries(client, project_dir)[EVALUATED_RUN]
+    values = [
+        (item["evaluation"], item["column"], item["diff"], item["better"])
+        for item in evaluations["values"]
+    ]
+    assert values == [
+        ("group_stability", "ari", False, "higher"),
+        ("group_stability", "ari_diff", True, "higher"),
+        ("group_stability", "ari_min", False, "higher"),
+        ("group_stability", "ari_min_diff", True, "higher"),
+        ("group_stability", "silhouette", False, "higher"),
+        ("group_stability", "silhouette_diff", True, "higher"),
+    ]
+    assert evaluations["values"][1]["value"] == pytest.approx(-0.02)
+    assert evaluations["guard"] is None
+
+    # better を書いていなくても名前から大きいほど良い
+    assert metric_better("silhouette", None, None) == "higher"
+    assert metric_better("ari_min", "valid/loss", "min") == "higher"
+
+
 def test_metric_better() -> None:
     """
     指標の名前と監視する指標から向きを決めることを確かめる関数

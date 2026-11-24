@@ -24,8 +24,9 @@ from ml_dashboard.core.results import (
     to_evaluation,
 )
 
-# 一覧と比較に出す評価の分割 (検証用はモデルの選びに使ったので, テスト用)
-LIST_SPLIT = "test"
+# 一覧と比較に出す評価の分割 (検証用はモデルの選びに使ったので, テスト用.
+# 群分けのようにテスト用に分けない課題は, 全ての行で数えた評価 all)
+LIST_SPLITS = frozenset({"test", "all"})
 
 # 1 つの実験で一覧に返す評価の値の上限
 MAX_LIST_VALUES = 100
@@ -48,7 +49,7 @@ HIGHER_BETTER = frozenset({
     "precision", "recall", "sensitivity", "specificity", "iou", "miou",
     "jaccard", "dice", "r2", "bleu", "rouge", "meteor", "chrf", "psnr",
     "ssim", "ndcg", "mrr", "hit", "hits", "kappa", "mcc",
-    "reward", "return", "success", "coverage",
+    "reward", "return", "success", "coverage", "silhouette", "ari",
 })
 # 向きを打ち消すか変える語 (neg_log_loss は大きいほど良く, accuracy_gap は
 # 小さいほど良い). 含む名前は名前の語では向きを決めない
@@ -199,7 +200,7 @@ def evaluation_values(
     Parameters
     ----------
     evaluation: Evaluation
-        テスト用の評価
+        テスト用か全ての行の評価
     monitor: Optional[str]
         実験の監視する指標
     mode: Optional[Mode]
@@ -358,7 +359,7 @@ def build_summary(
     mode: Optional[Mode]
 ) -> RunEvaluations:
     """
-    テスト用の評価の値と守る指標の判定を求める関数
+    テスト用と全ての行の評価の値と守る指標の判定を求める関数
 
     Parameters
     ----------
@@ -376,12 +377,12 @@ def build_summary(
     summary: RunEvaluations
         値 (守る指標の表を先に), 守る指標の判定, 出せなかったファイルの理由
     """
-    # 形と名前の合う評価のうち, テスト用だけの行 (守る指標の表を先に名前の
-    # 順)
+    # 形と名前の合う評価のうち, テスト用と全ての行の評価だけの行 (守る指標
+    # の表を先に名前の順)
     tests: list[tuple[Evaluation, dict[str, Any]]] = []
     checked, skipped = load_checked_evaluations(run_dir, files)
     for _, data in checked:
-        if data.get("split") != LIST_SPLIT:
+        if data.get("split") not in LIST_SPLITS:
             continue
         evaluation = to_evaluation(data)
         if evaluation is not None:
@@ -421,7 +422,8 @@ def summarize_evaluations(
     run_dir: Path, monitor: Optional[str], mode: Optional[Mode]
 ) -> Optional[RunEvaluations]:
     """
-    一覧と比較に出すテスト用の評価を, 覚えた結果を使い直して求める関数
+    一覧と比較に出すテスト用と全ての行の評価を, 覚えた結果を使い直して求める
+    関数
 
     Parameters
     ----------

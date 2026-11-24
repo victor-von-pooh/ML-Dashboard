@@ -1,0 +1,21 @@
+# 群分け (ML-Quest の群分けの骨組み) の画面の確かめ用のプロジェクト. 学習はせず,
+# 置いた実験を見る. 群の数 (group.k) だけを変えた 2 つの実験を比べる
+experiment:
+  name: group_3
+  output_dir: outputs
+  seed: 0
+  device: cpu
+trainer:
+  epochs: 3
+  monitor: valid/silhouette
+  mode: max
+data:
+  dataset: data/customers.csv
+  batch_size: 128
+  valid: 0.2
+group:
+  columns: [spend, visits, region]
+  id: customer
+  k: 3
+  stability: seed
+  repeats: 3

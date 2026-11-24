@@ -7,6 +7,7 @@ import { LineChart, type ChartSeries } from '../../components/LineChart'
 import { Card } from '../../components/ui'
 import { seriesVar } from '../../lib/colors'
 import { diffValue } from '../../lib/evaluations'
+import { metricNote } from '../../lib/metrics'
 import { curveSeries, formatCell, numericColumns } from '../../lib/results'
 import { EvaluationCell } from '../runs/EvaluationColumns'
 
@@ -14,8 +15,9 @@ import { EvaluationCell } from '../runs/EvaluationColumns'
 const MAX_CURVE_SERIES = 8
 
 /**
- * 評価の表. 列は評価の順のまま. 向き (better) のある列は見出しに添え, 比べる相手との
- * 差の列は一覧と同じく良し悪しを色とアイコンと文字で出す
+ * 評価の表. 列は評価の順のまま. 向き (better) のある列は見出しに添え, 名前の分かる指標
+ * には日本語の説明を添える. 比べる相手との差の列は一覧と同じく良し悪しを色とアイコンと
+ * 文字で出す
  */
 function EvaluationTable({ evaluation }: { evaluation: Evaluation }) {
   const numeric = useMemo(() => numericColumns(evaluation), [evaluation])
@@ -24,23 +26,32 @@ function EvaluationTable({ evaluation }: { evaluation: Evaluation }) {
       <table className="w-full text-sm">
         <thead className="sticky top-0 bg-surface-2 text-left text-xs text-ink-2">
           <tr>
-            {evaluation.columns.map((column) => (
-              <th
-                key={column}
-                scope="col"
-                className={clsx(
-                  'px-3 py-1.5 font-medium whitespace-nowrap',
-                  numeric.has(column) && 'text-right',
-                )}
-              >
-                {column}
-                {evaluation.better[column] && (
-                  <span className="ml-1 font-normal text-ink-3">
-                    ({evaluation.better[column] === 'lower' ? '小さいほど良い' : '大きいほど良い'})
-                  </span>
-                )}
-              </th>
-            ))}
+            {evaluation.columns.map((column) => {
+              const note = metricNote(column, evaluation.name)
+              return (
+                <th
+                  key={column}
+                  scope="col"
+                  className={clsx(
+                    'px-3 py-1.5 align-bottom font-medium whitespace-nowrap',
+                    numeric.has(column) && 'text-right',
+                  )}
+                >
+                  {note && (
+                    <span className="block max-w-56 text-[11px] font-normal whitespace-normal text-ink-2">
+                      {note}
+                    </span>
+                  )}
+                  {column}
+                  {evaluation.better[column] && (
+                    <span className="ml-1 font-normal text-ink-3">
+                      ({evaluation.better[column] === 'lower' ? '小さいほど良い' : '大きいほど良い'}
+                      )
+                    </span>
+                  )}
+                </th>
+              )
+            })}
           </tr>
         </thead>
         <tbody>

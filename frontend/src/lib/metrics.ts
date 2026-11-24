@@ -211,13 +211,18 @@ const LOWER_IS_BETTER = /loss|err|mae|mse|rmse|nelbo|kl|recon|residual|boundary|
 // 小さいほど良いと取り違えるため. fid は生成の画像の FID. chamfer は点群の Chamfer 距離.
 // distance は距離 (例えば作った表と本物の表の列ごとの分布の近さ column_distance)
 const LOWER_WORDS = /(^|[/_.-])(fid|chamfer|distance)($|[/_.-])/i
-// ndcg と mrr は並べる課題の指標 (recall_at_k は recall で大きいほど良い)
-const HIGHER_IS_BETTER = /acc|auc|^ap$|\/ap$|f1|precision|recall|r2|score|iou|psnr|ssim|ndcg|mrr/i
+// ndcg と mrr は並べる課題の指標 (recall_at_k は recall で大きいほど良い). silhouette
+// は群分けのシルエット係数
+const HIGHER_IS_BETTER =
+  /acc|auc|^ap$|\/ap$|f1|precision|recall|r2|score|iou|psnr|ssim|ndcg|mrr|silhouette/i
+// 語として現れる場合だけ大きいほど良い指標. ari は群分けの調整ランド指数 (部分一致では
+// variance まで含むため)
+const HIGHER_WORDS = /(^|[/_.-])ari($|[/_.-])/i
 
 /** 指標の名前から良い向きを推測する. 分からなければ null */
 export function guessDirection(name: string): Direction | null {
   if (LOWER_IS_BETTER.test(name) || LOWER_WORDS.test(name)) return 'min'
-  if (HIGHER_IS_BETTER.test(name)) return 'max'
+  if (HIGHER_IS_BETTER.test(name) || HIGHER_WORDS.test(name)) return 'max'
   return null
 }
 
@@ -247,4 +252,52 @@ export function columnDirection(
 /** 良い向きの表示 */
 export function directionLabel(direction: Direction): string {
   return direction === 'max' ? '大きいほど良い' : '小さいほど良い'
+}
+
+// 指標の名前 (最後の / の後) に添える日本語の説明
+const METRIC_NOTES: Record<string, string> = {
+  ari: '調整ランド指数の平均 (作り直した群との一致. 1 は同じ群, 0 は偶然と同じ)',
+  ari_min: '調整ランド指数の最も低い値 (作り直した群との一致)',
+  silhouette: 'シルエット係数 (群のまとまり. -1 から 1)',
+}
+// 比べる相手の列の終わりと, 説明に添える言葉
+const COMPARE_SUFFIXES: [string, string][] = [
+  ['_baseline', '比べる相手の値'],
+  ['_diff', '比べる相手との差'],
+]
+// 評価ごとの列の説明 (群の数や行の数のように, 同じ名前が評価で別の意味になる列)
+const EVALUATION_NOTES: Record<string, Record<string, string>> = {
+  group_stability: {
+    k: '群の数',
+    method: '作り直し方 (seed は種を変え, sample は標本を変える)',
+    repeats: '作り直した回数',
+  },
+  group_summary: {
+    group: '群の番号 (全体は全ての行)',
+    rows: '行の数',
+    share: '行の割合',
+    stability: '群の安定性 (作り直した群のうち最も重なる群との Jaccard 係数の平均)',
+  },
+}
+
+/**
+ * 指標か評価の列の名前に添える日本語の説明. 評価の名前を渡すと, その評価に固有の列も
+ * 引く. <指標>_baseline と <指標>_diff は指標の短い名前に添える. 知らない名前は null
+ */
+export function metricNote(name: string, evaluation?: string): string | null {
+  const metric = name.slice(name.lastIndexOf('/') + 1)
+  const own =
+    evaluation && Object.hasOwn(EVALUATION_NOTES, evaluation)
+      ? EVALUATION_NOTES[evaluation]
+      : undefined
+  if (own && Object.hasOwn(own, metric)) return own[metric] ?? null
+  if (Object.hasOwn(METRIC_NOTES, metric)) return METRIC_NOTES[metric] ?? null
+  for (const [suffix, word] of COMPARE_SUFFIXES) {
+    const base = metric.slice(0, -suffix.length)
+    if (metric.endsWith(suffix) && Object.hasOwn(METRIC_NOTES, base)) {
+      // 括弧の前の短い名前
+      return `${METRIC_NOTES[base]!.split(' (')[0]} (${word})`
+    }
+  }
+  return null
 }

@@ -10,6 +10,7 @@ import { LineChart } from '../../components/LineChart'
 import {
   Card,
   DirectionBadge,
+  MetricTitle,
   EmptyState,
   ErrorBox,
   PageHeader,
@@ -431,7 +432,7 @@ export function ComparePage() {
               {charts.map(({ column, series, missing, identical, sparse, direction }) => (
                 <Card
                   key={column}
-                  title={<span className="font-mono">{column}</span>}
+                  title={<MetricTitle name={column} />}
                   actions={direction ? <DirectionBadge value={direction} /> : undefined}
                 >
                   <LineChart
@@ -533,7 +534,7 @@ export function ComparePage() {
   )
 }
 
-/** テスト用の評価の値と守る指標の印を実験ごとに並べる. 列の見出しで並べ替える */
+/** テスト用 (群分けは全ての行) の評価の値と守る指標の印を実験ごとに並べる. 列の見出しで並べ替える */
 function EvaluationCompare({
   slots,
   label,
@@ -594,7 +595,7 @@ function EvaluationCompare({
 
   return (
     <Card
-      title="テスト用の評価"
+      title="テスト用の評価 (テスト用に分けない群分けは全ての行)"
       padded={false}
       actions={
         columns.length > 0 ? (

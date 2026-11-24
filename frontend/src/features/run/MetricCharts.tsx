@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 
 import type { BestValue, History } from '../../api/client'
 import { LineChart, type ChartMarker, type ChartSeries } from '../../components/LineChart'
-import { Card, DirectionBadge } from '../../components/ui'
+import { Card, DirectionBadge, MetricTitle } from '../../components/ui'
 import {
   EPOCH_AXIS,
   axisAt,
@@ -172,7 +172,7 @@ export function MetricCharts({
         {charts.map(({ group, series, sparse, direction }) => (
           <Card
             key={group.name}
-            title={<span className="font-mono">{group.name}</span>}
+            title={<MetricTitle name={group.name} />}
             actions={
               direction || (best && group.keys.includes(best.monitor)) ? (
                 <>
