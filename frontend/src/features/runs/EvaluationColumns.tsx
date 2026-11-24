@@ -189,14 +189,23 @@ const TONE: Record<
   same: { icon: Equal, label: '同じ', className: 'text-ink-3' },
 }
 
-/** 評価の値. 比べる相手との差は, 向きが分かれば良し悪しを色とアイコンと文字で出す */
-export function EvaluationCell({ value }: { value: EvaluationValue | undefined }) {
+/**
+ * 評価の値. 比べる相手との差は, 向きが分かれば良し悪しを色とアイコンと文字で出す.
+ * 数の書き方は format (既定は一覧と比較の書き方)
+ */
+export function EvaluationCell({
+  value,
+  format = formatMetric,
+}: {
+  value: EvaluationValue | undefined
+  format?: (value: number) => string
+}) {
   if (value?.value == null) return <span className="text-ink-3">—</span>
   const tone = diffTone(value)
   if (!tone) {
     return (
       <span title={value.diff && !value.better ? '指標の向きが分からない差' : undefined}>
-        {formatMetric(value.value)}
+        {format(value.value)}
       </span>
     )
   }
@@ -208,7 +217,7 @@ export function EvaluationCell({ value }: { value: EvaluationValue | undefined }
       title={value.baseline ? `${value.baseline} との差` : '比べる相手との差'}
     >
       {sign}
-      {formatMetric(value.value)}
+      {format(value.value)}
       <Icon className="size-3.5" aria-hidden />
       <span className="text-[11px]">{label}</span>
     </span>

@@ -6,12 +6,17 @@ import type { Evaluation } from '../../api/client'
 import { LineChart, type ChartSeries } from '../../components/LineChart'
 import { Card } from '../../components/ui'
 import { seriesVar } from '../../lib/colors'
+import { diffValue } from '../../lib/evaluations'
 import { curveSeries, formatCell, numericColumns } from '../../lib/results'
+import { EvaluationCell } from '../runs/EvaluationColumns'
 
 // 1 つの曲線に重ねる列の上限 (系列の色の数)
 const MAX_CURVE_SERIES = 8
 
-/** 評価の表. 列は評価の順のまま. 向き (better) のある列は見出しに添える */
+/**
+ * 評価の表. 列は評価の順のまま. 向き (better) のある列は見出しに添え, 比べる相手との
+ * 差の列は一覧と同じく良し悪しを色とアイコンと文字で出す
+ */
 function EvaluationTable({ evaluation }: { evaluation: Evaluation }) {
   const numeric = useMemo(() => numericColumns(evaluation), [evaluation])
   return (
@@ -43,6 +48,7 @@ function EvaluationTable({ evaluation }: { evaluation: Evaluation }) {
             <tr key={index} className="border-t border-line">
               {evaluation.columns.map((column) => {
                 const value = row[column]
+                const diff = diffValue(evaluation, column, value)
                 return (
                   <td
                     key={column}
@@ -52,7 +58,7 @@ function EvaluationTable({ evaluation }: { evaluation: Evaluation }) {
                       value == null && 'text-ink-3',
                     )}
                   >
-                    {formatCell(value)}
+                    {diff ? <EvaluationCell value={diff} format={formatCell} /> : formatCell(value)}
                   </td>
                 )
               })}

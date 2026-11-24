@@ -290,6 +290,19 @@ describe('指標の良い向き', () => {
     expect(guessDirection('valid/distances_kept')).toBeNull()
   })
 
+  it('並べる課題の Recall@K と NDCG は大きいほど良い', () => {
+    expect(guessDirection('valid/recall_at_k')).toBe('max')
+    expect(guessDirection('valid/ndcg')).toBe('max')
+    expect(guessDirection('valid/mrr')).toBe('max')
+    // 監視が損失の実験でも名前から大きいほど良い (推測)
+    for (const key of ['valid/recall_at_k', 'valid/ndcg']) {
+      expect(columnDirection(key, [{ monitor: 'valid/loss', mode: 'min' }])).toEqual({
+        direction: 'max',
+        guessed: true,
+      })
+    }
+  })
+
   it('監視する指標は ML-Found の向き, 他は推測, 学習率と推測できない列は null', () => {
     const best = { monitor: 'valid/fid', mode: 'min' as const }
     expect(columnDirection('valid/fid', [best])).toEqual({ direction: 'min', guessed: false })

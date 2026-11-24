@@ -83,4 +83,80 @@ describe('EvaluationsTab', () => {
     ).toEqual(['city', 'category', '0.1800', '—', '0.05000'])
     expect(within(rows[3]!).getAllByRole('cell')[1]).toHaveTextContent('—')
   })
+
+  it('並べる課題の人気順との差は, 一覧と同じく符号と良し悪しの印を付ける', () => {
+    // ML-Quest の並べるの骨組みが書く evaluations/ranking_test.json の形
+    const better = 'higher' as const
+    const ranking: Evaluation = {
+      name: 'ranking_test',
+      split: 'test',
+      kind: 'table',
+      x: null,
+      columns: [
+        'users',
+        'k',
+        'recall_at_k',
+        'recall_at_k_baseline',
+        'recall_at_k_diff',
+        'ndcg',
+        'ndcg_baseline',
+        'ndcg_diff',
+      ],
+      rows: [
+        {
+          users: 27,
+          k: 10,
+          recall_at_k: 0.5679,
+          recall_at_k_baseline: 0.4383,
+          recall_at_k_diff: 0.1296,
+          ndcg: 0.2,
+          ndcg_baseline: 0.25,
+          ndcg_diff: -0.05,
+        },
+      ],
+      description: 'テスト用の反応で数えた上位 10 件の Recall@K と NDCG',
+      baseline: '人気順 (学習用の反応の多い順)',
+      guard: false,
+      better: {
+        recall_at_k: better,
+        recall_at_k_baseline: better,
+        recall_at_k_diff: better,
+        ndcg: better,
+        ndcg_baseline: better,
+        ndcg_diff: better,
+      },
+      epoch: 3,
+      created_at: null,
+      total_rows: 1,
+    }
+    render(<EvaluationsTab evaluations={[ranking]} />)
+    const cells = within(screen.getAllByRole('row')[1]!).getAllByRole('cell')
+    expect(cells.map((cell) => cell.textContent)).toEqual([
+      '27',
+      '10',
+      '0.5679',
+      '0.4383',
+      '+0.1296良い',
+      '0.2000',
+      '0.2500',
+      '-0.05000悪い',
+    ])
+    expect(within(cells[4]!).getByTitle('人気順 (学習用の反応の多い順) との差')).toBeVisible()
+    // 向きの無い差の列と, <指標> の列が表に無い差の列は数だけ
+    render(
+      <EvaluationsTab
+        evaluations={[
+          {
+            ...ranking,
+            name: 'other',
+            columns: ['ndcg_diff', 'mrr_diff'],
+            rows: [{ ndcg_diff: 0.1, mrr_diff: 0.2 }],
+            better: { mrr_diff: better },
+          },
+        ]}
+      />,
+    )
+    const other = within(screen.getAllByRole('table')[1]!).getAllByRole('cell')
+    expect(other.map((cell) => cell.textContent)).toEqual(['0.1000', '0.2000'])
+  })
 })

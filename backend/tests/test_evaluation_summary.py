@@ -216,6 +216,57 @@ def test_guard_kept_and_unknown(
     ]
 
 
+def test_ranking_values(client: TestClient, project_dir: Path) -> None:
+    """
+    ML-Quest の並べるの骨組みの形の評価 (人気順との差) を, 一覧が値と差と
+    大きいほど良い向きで返すことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 骨組みの evaluations/ranking_test.json と同じ列と向き
+    run_dir = project_dir / "outputs" / EVALUATED_RUN
+    row = {
+        "users": 27, "k": 10, "recall_at_k": 0.57,
+        "recall_at_k_baseline": 0.44, "recall_at_k_diff": 0.13,
+        "ndcg": 0.2, "ndcg_baseline": 0.25, "ndcg_diff": -0.05,
+    }
+    better = {
+        column: "higher" for column in row if column not in ("users", "k")
+    }
+    write_evaluation(run_dir, "ranking_test", [row],
+                     baseline="人気順 (学習用の反応の多い順)", better=better)
+
+    # 利用者の数と K と人気順の値は列にせず, 指標と差だけを並べる
+    evaluations = list_summaries(client, project_dir)[EVALUATED_RUN]
+    values = [
+        (item["column"], item["value"], item["diff"], item["better"])
+        for item in evaluations["values"]
+    ]
+    assert values == [
+        ("recall_at_k", 0.57, False, "higher"),
+        ("recall_at_k_diff", 0.13, True, "higher"),
+        ("ndcg", 0.2, False, "higher"),
+        ("ndcg_diff", -0.05, True, "higher"),
+    ]
+    assert {item["baseline"] for item in evaluations["values"]} == {
+        "人気順 (学習用の反応の多い順)"
+    }
+    assert evaluations["guard"] is None
+
+    # better を書いていなくても名前から大きいほど良い
+    assert metric_better("recall_at_k", None, None) == "higher"
+    assert metric_better("ndcg", "valid/loss", "min") == "higher"
+
+
 def test_metric_better() -> None:
     """
     指標の名前と監視する指標から向きを決めることを確かめる関数
