@@ -1,0 +1,19 @@
+experiment:
+  name: anomaly_autoencoder
+  output_dir: outputs
+  seed: 0
+  device: cpu
+trainer:
+  epochs: 3
+  monitor: valid/average_precision
+  mode: max
+data:
+  dataset: outputs/dataset
+  source: null
+  batch_size: 128
+model:
+  spec: models/model.yaml
+anomaly:
+  score: autoencoder
+  k: 10
+  capacity: 20

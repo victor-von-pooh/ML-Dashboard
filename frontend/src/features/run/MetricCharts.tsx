@@ -42,12 +42,15 @@ export function MetricCharts({
   best,
   earlyStoppedEpoch,
   validInterval = 1,
+  untrained = false,
 }: {
   history: History
   best?: BestValue | null
   earlyStoppedEpoch?: number | null
   /** ML-Found の検証の間隔 (trainer.valid_every_n_epochs) */
   validInterval?: number
+  /** run.json と history.csv が無く評価だけを持つ実験 (学習しない作り) か */
+  untrained?: boolean
 }) {
   const [logScale, setLogScale] = useState(false)
   // 横軸の列 (エポックか, エポックごとに増え続ける列). 候補から消えた列はエポックに戻す
@@ -129,7 +132,9 @@ export function MetricCharts({
   if (history.rows.length === 0) {
     return (
       <p className="py-10 text-center text-sm text-ink-3">
-        記録された指標がありません. 最初のエポックを終える前に止まったか, 学習中です.
+        {untrained
+          ? '学習の記録 (run.json と history.csv) が無い実験です. 学習しない作り (異常の検知の距離に基づく度合いなど) の結果は評価のタブで見ます.'
+          : '記録された指標がありません. 最初のエポックを終える前に止まったか, 学習中です.'}
       </p>
     )
   }

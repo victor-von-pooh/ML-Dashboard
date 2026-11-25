@@ -209,4 +209,62 @@ describe('EvaluationsTab', () => {
       '0.01000',
     ])
   })
+  it('異常の検知の評価は, 先頭に読み方と度合いの決め方, K, 人が確かめる件数の上限を出し, 評価の日本語の名前を添える', () => {
+    // ML-Quest の異常の検知の骨組みが書く evaluations/anomaly_test.json の形
+    const anomaly: Evaluation = {
+      ...table,
+      name: 'anomaly_test',
+      split: 'test',
+      columns: ['rows', 'anomalies', 'k', 'precision_at_k', 'average_precision'],
+      rows: [{ rows: 200, anomalies: 9, k: 10, precision_at_k: 0.7, average_precision: 0.741 }],
+      description: null,
+      baseline: null,
+      guard: false,
+      better: { precision_at_k: 'higher', average_precision: 'higher' },
+      total_rows: 1,
+    }
+    render(
+      <EvaluationsTab
+        evaluations={[anomaly]}
+        config={{ anomaly: { score: 'distance', k: 10, capacity: 20 } }}
+      />,
+    )
+    const note = screen.getByRole('region', { name: '異常の検知の評価の読み方' })
+    expect(within(note).getByText('学習用の正常の行の中心からの距離')).toBeInTheDocument()
+    expect(within(note).getByText('10 件')).toBeInTheDocument()
+    expect(within(note).getByText('20 件')).toBeInTheDocument()
+    expect(screen.getByText('上位 K 件の適合率と PR-AUC')).toBeInTheDocument()
+    const headers = screen.getAllByRole('columnheader').map((cell) => cell.textContent)
+    expect(headers).toEqual([
+      '行の数rows',
+      '異常の行の数anomalies',
+      '上位の件数 Kk',
+      '上位 K 件の適合率precision_at_k (大きいほど良い)',
+      'PR-AUCaverage_precision (大きいほど良い)',
+    ])
+  })
+  it('config に anomaly の項目が無ければ読み方だけを出し, 異常の検知でない評価には出さない', () => {
+    // 上位の行の要約 (行の id の列は名前のまま)
+    const top: Evaluation = {
+      ...table,
+      name: 'anomaly_top_unlabeled',
+      columns: ['rank', 'sensor_id', 'score', 'column', 'column_share'],
+      rows: [{ rank: 1, sensor_id: 's-1', score: 6.2, column: 'pressure', column_share: 0.88 }],
+      guard: false,
+      total_rows: 1,
+    }
+    const { rerender } = render(<EvaluationsTab evaluations={[top]} config={{}} />)
+    const note = screen.getByRole('region', { name: '異常の検知の評価の読み方' })
+    expect(within(note).queryByText('上位の件数 K')).toBeNull()
+    expect(screen.getByText('上位の行の要約')).toBeInTheDocument()
+    expect(screen.getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual([
+      '順位rank',
+      'sensor_id',
+      '異常の度合いscore',
+      '最も外れた列column',
+      'その列の分の割合column_share',
+    ])
+    rerender(<EvaluationsTab evaluations={[table]} config={{ anomaly: { k: 10 } }} />)
+    expect(screen.queryByRole('region', { name: '異常の検知の評価の読み方' })).toBeNull()
+  })
 })

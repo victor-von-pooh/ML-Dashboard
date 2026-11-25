@@ -1,0 +1,9 @@
+format_version: 1
+script: train.py
+default: configs/default/train.yaml
+experiment: configs/experiment/train.yaml
+overrides: []
+model_spec:
+  path: models/model.yaml
+  sha256: 3f2a8c1d9e4b7a6052c1d8e9f0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3
+  status: copied

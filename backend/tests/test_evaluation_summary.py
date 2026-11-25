@@ -331,6 +331,88 @@ def test_group_values(client: TestClient, project_dir: Path) -> None:
     assert metric_better("ari_min", "valid/loss", "min") == "higher"
 
 
+def test_anomaly_values(client: TestClient, project_dir: Path) -> None:
+    """
+    ML-Quest の異常の検知の骨組みの形の, テスト用の上位 K 件の適合率と
+    PR-AUC を一覧が返し, better が無くても名前から大きいほど良いとし, 行の数,
+    異常の行の数, K には向きを付けないことと, 度合いの分布 (曲線), 上位の行の
+    要約 (行が 2 つ以上の表), 検証用の評価を列にしないことを確かめる関数.
+    run.json と history.csv の無い実験 (学習しない距離に基づく度合い) も, 状態
+    を不明として評価を返すことを確かめる
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 骨組みの evaluations/anomaly_<分割>.json と同じ列 (向きを書かない古い形
+    # でも名前から読めるかを見るため, better は書かない)
+    run_dir = project_dir / "outputs" / EVALUATED_RUN
+    row = {"rows": 200, "anomalies": 9, "k": 10, "precision_at_k": 0.7,
+           "average_precision": 0.741}
+    write_evaluation(run_dir, "anomaly_test", [row], baseline=None)
+    write_evaluation(run_dir, "anomaly_valid", [row], split="valid",
+                     baseline=None)
+    write_evaluation(
+        run_dir, "anomaly_scores_unlabeled",
+        [{"quantile": 0.0, "score": 0.1}, {"quantile": 1.0, "score": 3.0}],
+        split="unlabeled", kind="curve", baseline=None
+    )
+    write_evaluation(
+        run_dir, "anomaly_top_unlabeled",
+        [{"rank": 1, "id": "a", "score": 3.0, "column": "x",
+          "column_share": 0.9},
+         {"rank": 2, "id": "b", "score": 2.0, "column": "y",
+          "column_share": 0.6}],
+        split="unlabeled", baseline=None
+    )
+    expected = [
+        ("anomaly_test", "rows", None),
+        ("anomaly_test", "anomalies", None),
+        ("anomaly_test", "k", None),
+        ("anomaly_test", "precision_at_k", "higher"),
+        ("anomaly_test", "average_precision", "higher"),
+    ]
+    evaluations = list_summaries(client, project_dir)[EVALUATED_RUN]
+    values = [
+        (item["evaluation"], item["column"], item["better"])
+        for item in evaluations["values"]
+    ]
+    assert values == expected
+
+    # 学習しない実験: run.json, history.csv, train.log の完了の行が無い
+    distance = project_dir / "outputs" / "demo" / "2026-11-08" / "12-00-00"
+    distance.mkdir(parents=True)
+    (distance / "config.yaml").write_text(
+        "experiment:\n  name: demo\n  output_dir: outputs\n"
+    )
+    (distance / "train.log").write_text("")
+    write_evaluation(distance, "anomaly_test", [row], baseline=None)
+    project_id = client.get("/api/projects").json()[0]["id"]
+    response = client.get(f"/api/projects/{project_id}/runs")
+    assert response.status_code == 200
+    found = {run["id"]: run for run in response.json()}
+    run = found["demo/2026-11-08/12-00-00"]
+    assert run["status"] == "unknown"
+    assert run["epochs"] == 0
+    assert run["best"] is None
+    assert [
+        (item["evaluation"], item["column"], item["better"])
+        for item in run["evaluations"]["values"]
+    ] == expected
+    detail = client.get(
+        f"/api/projects/{project_id}/runs/demo/2026-11-08/12-00-00"
+    )
+    assert detail.status_code == 200
+    assert detail.json()["model"] is None
+
+
 def test_all_split_guard_and_order(
     client: TestClient, project_dir: Path
 ) -> None:

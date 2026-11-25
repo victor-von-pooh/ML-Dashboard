@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { ShieldCheck } from 'lucide-react'
+import { Info, ShieldCheck } from 'lucide-react'
 import { useMemo } from 'react'
 
 import type { Evaluation } from '../../api/client'
@@ -7,7 +7,7 @@ import { LineChart, type ChartSeries } from '../../components/LineChart'
 import { Card } from '../../components/ui'
 import { seriesVar } from '../../lib/colors'
 import { diffValue } from '../../lib/evaluations'
-import { metricLabel } from '../../lib/metrics'
+import { evaluationTitle, isAnomalyEvaluation, metricLabel } from '../../lib/metrics'
 import { curveSeries, formatCell, numericColumns } from '../../lib/results'
 import { EvaluationCell } from '../runs/EvaluationColumns'
 
@@ -152,10 +152,99 @@ function Captions({ evaluation }: { evaluation: Evaluation }) {
   )
 }
 
-/** データ全体の評価 (ML-Found の evaluations/). 守る指標を先頭に (並びはバックエンド) */
-export function EvaluationsTab({ evaluations }: { evaluations: Evaluation[] }) {
+// 異常の検知の度合いの決め方 (config の anomaly.score) の日本語の名前
+const ANOMALY_SCORES: Record<string, string> = {
+  autoencoder: '自己符号化器の再構成の誤差',
+  distance: '学習用の正常の行の中心からの距離',
+}
+
+/** config の anomaly の項目 (ML-Quest の異常の検知の骨組みの score, k, capacity) */
+function anomalySettings(config: Record<string, unknown> | null | undefined): {
+  score: string | null
+  k: number | null
+  capacity: number | null
+} {
+  const section = config?.anomaly
+  const values =
+    section && typeof section === 'object' && !Array.isArray(section)
+      ? (section as Record<string, unknown>)
+      : {}
+  const count = (value: unknown) =>
+    typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null
+  const score = typeof values.score === 'string' ? values.score : null
+  return {
+    score: score ? (ANOMALY_SCORES[score] ?? score) : null,
+    k: count(values.k),
+    capacity: count(values.capacity),
+  }
+}
+
+/**
+ * 異常の検知の評価の読み方と, 度合いの決め方, K, 人が 1 回に確かめる件数の上限 (config
+ * の anomaly. 書いていない項目は出さない)
+ */
+function AnomalyNote({ config }: { config: Record<string, unknown> | null | undefined }) {
+  const { score, k, capacity } = anomalySettings(config)
+  const items: [string, string][] = [
+    ...(score ? [['度合いの決め方', score] as [string, string]] : []),
+    ...(k != null ? [['上位の件数 K', `${k} 件`] as [string, string]] : []),
+    ...(capacity != null
+      ? [['人が 1 回に確かめる件数の上限', `${capacity} 件`] as [string, string]]
+      : []),
+  ]
+  return (
+    <section
+      aria-label="異常の検知の評価の読み方"
+      className="rounded-lg border border-line bg-surface-2 px-4 py-3 text-sm"
+    >
+      <h3 className="mb-2 flex items-center gap-1.5 font-semibold text-ink">
+        <Info className="size-4 text-ink-3" aria-hidden />
+        異常の検知の評価
+      </h3>
+      {items.length > 0 && (
+        <dl className="mb-2 flex flex-wrap gap-x-6 gap-y-1">
+          {items.map(([label, value]) => (
+            <div key={label} className="flex gap-2">
+              <dt className="text-ink-3">{label}</dt>
+              <dd className="tabular text-ink">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <ul className="list-disc space-y-1 pl-5 text-xs text-ink-2">
+        <li>
+          異常の行のある分割 (anomaly_&lt;分割&gt;) は, 度合いの高い K 行のうち異常の行の割合 (上位
+          K 件の適合率) と, 度合いの順の並びの良さ (PR-AUC) を出します. どちらも大きいほど良く,
+          異常の割合が小さいと上位 K 件の適合率は低く出ます.
+        </li>
+        <li>
+          異常の正解の無い分割は, 度合いの分布 (anomaly_scores_&lt;分割&gt;. 横軸は分位) と,
+          度合いの高い順の上位 K 行の要約 (anomaly_top_&lt;分割&gt;. 最も外れた列とその割合)
+          を出します. 一覧と比較の列にはならないので, ここで見ます.
+        </li>
+        <li>
+          推論の段階では, 度合いの高い順に人が 1 回に確かめる件数の上限まで人の確認に回します.
+        </li>
+      </ul>
+    </section>
+  )
+}
+
+/**
+ * データ全体の評価 (ML-Found の evaluations/). 守る指標を先頭に (並びはバックエンド).
+ * 異常の検知の評価を持つ実験は, 先頭に読み方と K と人が確かめる件数の上限を出す
+ */
+export function EvaluationsTab({
+  evaluations,
+  config,
+}: {
+  evaluations: Evaluation[]
+  config?: Record<string, unknown> | null
+}) {
+  const anomaly = evaluations.some((evaluation) => isAnomalyEvaluation(evaluation.name))
   return (
     <div className="space-y-4">
+      {anomaly && <AnomalyNote config={config} />}
       {evaluations.map((evaluation) => (
         <Card
           key={evaluation.name}
@@ -163,6 +252,11 @@ export function EvaluationsTab({ evaluations }: { evaluations: Evaluation[] }) {
           title={
             <span className="flex items-center gap-2">
               <span className="font-mono">{evaluation.name}</span>
+              {evaluationTitle(evaluation.name) && (
+                <span className="text-sm font-normal text-ink-2">
+                  {evaluationTitle(evaluation.name)}
+                </span>
+              )}
               <span className="text-xs font-normal text-ink-3">
                 {evaluation.kind === 'curve' ? '曲線' : '表'}
               </span>
