@@ -213,6 +213,10 @@ function AnomalyNote({ config }: { config: Record<string, unknown> | null | unde
       )}
       <ul className="list-disc space-y-1 pl-5 text-xs text-ink-2">
         <li>
+          度合い (異常の度合い) は行ごとの異常らしさで, 大きいほど学習用の正常の行から外れています.
+          確率ではありません.
+        </li>
+        <li>
           異常の行のある分割 (anomaly_&lt;分割&gt;) は, 度合いの高い K 行のうち異常の行の割合 (上位
           K 件の適合率) と, 度合いの順の並びの良さ (PR-AUC) を出します. どちらも大きいほど良く,
           異常の割合が小さいと上位 K 件の適合率は低く出ます.

@@ -17,6 +17,7 @@ import { tabPanelProps, useStableId } from '../../lib/a11y'
 import { formatDateTime, formatDuration, formatMetric } from '../../lib/format'
 import { groupImageSeries } from '../../lib/images'
 import { validInterval } from '../../lib/metrics'
+import { nextStage } from '../../lib/nextStage'
 import type { RunFile } from '../../api/client'
 import { EvaluationsTab } from './EvaluationsTab'
 import { PolicyTab } from './PolicyTab'
@@ -129,19 +130,14 @@ export function RunDetailPage() {
   // 開いた場合 (共有したリンクなど) は学習曲線を表示
   const series = seriesOf(data.files)
   const evaluations = results.data?.evaluations ?? []
-  // 次の段階への案内. モデルの定義か推論の一式を持つ完了した実験. run.json の無い実験
-  // (学習しない距離に基づく度合いなど) は状態が不明なので, 一式 (評価の後に作る) を
-  // 持てば終えたものとする
+  // 次の段階への案内 (モデルの定義か推論の一式を持つ完了した実験)
+  const { show: showNextStage, hasBundle } = nextStage(data)
   const hasFile = (path: string) => data.files.some((file) => file.path === path)
-  const hasBundle = data.files.some((file) => file.path.startsWith('inference/'))
-  const finished =
-    data.status === 'completed' || (data.status === 'unknown' && hasBundle && !hasFile('run.json'))
   // 学習の記録が無く評価だけを持つ実験 (学習曲線の代わりに評価のタブへ案内する)
   const untrained =
     !hasFile('run.json') &&
     !hasFile('history.csv') &&
     data.files.some((file) => file.path.startsWith('evaluations/'))
-  const nextStage = finished && (data.model != null || hasBundle)
   const samples = results.data?.samples ?? []
   const trajectories = results.data?.trajectories ?? []
   // 評価と見本は, 読み終えて無いと分かった場合だけ学習曲線に戻す (読む間は待つ)
@@ -208,7 +204,7 @@ export function RunDetailPage() {
           もう一度起動できません: {relaunch.data.reason}
         </p>
       )}
-      {nextStage && (
+      {showNextStage && (
         <NextStageNote
           hasBundle={hasBundle}
           hasModel={data.model != null}

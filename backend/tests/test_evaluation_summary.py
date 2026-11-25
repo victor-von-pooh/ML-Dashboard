@@ -351,8 +351,8 @@ def test_anomaly_values(client: TestClient, project_dir: Path) -> None:
     ----------
     None
     """
-    # 骨組みの evaluations/anomaly_<分割>.json と同じ列 (向きを書かない古い形
-    # でも名前から読めるかを見るため, better は書かない)
+    # 骨組みの evaluations/anomaly_<分割>.json と同じ列. 向きを書かない古い形
+    # (better 無し) で名前から読む確かめ
     run_dir = project_dir / "outputs" / EVALUATED_RUN
     row = {"rows": 200, "anomalies": 9, "k": 10, "precision_at_k": 0.7,
            "average_precision": 0.741}

@@ -262,7 +262,7 @@ describe('EvaluationsTab', () => {
       'sensor_id',
       '異常の度合いscore',
       '最も外れた列column',
-      'その列の分の割合column_share',
+      'その列が占める割合column_share',
     ])
     rerender(<EvaluationsTab evaluations={[table]} config={{ anomaly: { k: 10 } }} />)
     expect(screen.queryByRole('region', { name: '異常の検知の評価の読み方' })).toBeNull()

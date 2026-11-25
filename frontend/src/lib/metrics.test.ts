@@ -353,7 +353,7 @@ describe('指標の良い向き', () => {
     expect(metricLabel('quantile', 'anomaly_scores_test')?.label).toBe('分位')
     expect(metricLabel('score', 'anomaly_scores_test')?.label).toBe('異常の度合い')
     expect(metricLabel('column', 'anomaly_top_unlabeled')?.label).toBe('最も外れた列')
-    expect(metricLabel('column_share', 'anomaly_top_test')?.label).toBe('その列の分の割合')
+    expect(metricLabel('column_share', 'anomaly_top_test')?.label).toBe('その列が占める割合')
     // anomaly_scores_test を anomaly_<分割> と取り違えない
     expect(metricLabel('k', 'anomaly_scores_test')).toBeNull()
     expect(metricLabel('score', 'anomaly_test')).toBeNull()

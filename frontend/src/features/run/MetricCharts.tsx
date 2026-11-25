@@ -49,7 +49,7 @@ export function MetricCharts({
   earlyStoppedEpoch?: number | null
   /** ML-Found の検証の間隔 (trainer.valid_every_n_epochs) */
   validInterval?: number
-  /** run.json と history.csv が無く評価だけを持つ実験 (学習しない作り) か */
+  /** run.json と history.csv が無く評価だけを持つ実験 (学習を行わない実験) か */
   untrained?: boolean
 }) {
   const [logScale, setLogScale] = useState(false)
@@ -133,7 +133,7 @@ export function MetricCharts({
     return (
       <p className="py-10 text-center text-sm text-ink-3">
         {untrained
-          ? '学習の記録 (run.json と history.csv) が無い実験です. 学習しない作り (異常の検知の距離に基づく度合いなど) の結果は評価のタブで見ます.'
+          ? '学習の記録 (run.json と history.csv) が無い実験です. 学習を行わない実験 (異常の検知の距離に基づく度合いなど) の結果は評価のタブで見ます.'
           : '記録された指標がありません. 最初のエポックを終える前に止まったか, 学習中です.'}
       </p>
     )

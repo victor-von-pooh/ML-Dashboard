@@ -313,7 +313,10 @@ const ANOMALY_EVALUATIONS: [RegExp, string, Record<string, MetricLabel>][] = [
       rank: { label: '順位', note: '度合いの高い順' },
       score: ANOMALY_SCORE,
       column: { label: '最も外れた列', note: '度合いのうち最も大きい分の列' },
-      column_share: { label: 'その列の分の割合', note: '度合いのうち最も外れた列の分. 0 から 1' },
+      column_share: {
+        label: 'その列が占める割合',
+        note: '度合いのうち最も外れた列が占める割合. 0 から 1',
+      },
     },
   ],
   [
@@ -329,7 +332,7 @@ const ANOMALY_EVALUATIONS: [RegExp, string, Record<string, MetricLabel>][] = [
       },
       average_precision: {
         label: 'PR-AUC',
-        note: '度合いの順に並べた適合率と再現率の曲線の下の面積. でたらめな順では異常の割合',
+        note: '度合いの順に並べた適合率と再現率の曲線の下の面積. 異常の行を上位に並べられているほど 1 に近く, でたらめな順では異常の割合',
       },
     },
   ],

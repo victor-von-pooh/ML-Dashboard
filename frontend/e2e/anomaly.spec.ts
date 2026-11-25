@@ -63,7 +63,7 @@ test('評価のタブで, K と人が確かめる件数の上限と, 度合い�
   await expect(top.getByText('上位の行の要約')).toBeVisible()
   await expect(top.getByRole('columnheader', { name: /^最も外れた列\s*column$/ })).toBeVisible()
   await expect(
-    top.getByRole('columnheader', { name: /^その列の分の割合\s*column_share$/ }),
+    top.getByRole('columnheader', { name: /^その列が占める割合\s*column_share$/ }),
   ).toBeVisible()
   await expect(top.getByRole('row')).toHaveCount(11)
 })
