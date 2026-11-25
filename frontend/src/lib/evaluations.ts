@@ -76,7 +76,9 @@ export function collectColumns(list: (RunEvaluations | null | undefined)[]): Eva
 
 /**
  * 並べる列. 選んだ列 (今ある列だけ) か, 選んでいないか選んだ列が全て無くなった
- * 場合は先頭の列. 列を並べない印 (NO_COLUMNS) だけなら並べない
+ * 場合は先頭の列. 先頭の列は, 守る指標の表を先にした並びのまま向きの分かる列を先にする
+ * (行の数や K のような向きの無い列で幅を埋めないため). 列を並べない印 (NO_COLUMNS)
+ * だけなら並べない
  */
 export function chooseColumns(
   columns: EvaluationColumn[],
@@ -88,7 +90,12 @@ export function chooseColumns(
     .map((key) => columns.find((column) => column.key === key))
     .filter((column): column is EvaluationColumn => column !== undefined)
   const unique = [...new Map(chosen.map((column) => [column.key, column])).values()]
-  return (unique.length > 0 ? unique : columns).slice(0, limit)
+  if (unique.length > 0) return unique.slice(0, limit)
+  const leading = [...columns].sort(
+    (a, b) =>
+      Number(b.guard) - Number(a.guard) || Number(b.better != null) - Number(a.better != null),
+  )
+  return leading.slice(0, limit)
 }
 
 /** 差を 0 とみなす幅 (計算の誤差で悪いとしないため) */

@@ -1,0 +1,13 @@
+experiment:
+  name: anomaly_distance
+  output_dir: outputs
+  seed: 0
+  device: cpu
+data:
+  dataset: outputs/dataset
+  source: null
+anomaly:
+  score: distance
+  k: 10
+  capacity: 20
+  ridge: 0.001

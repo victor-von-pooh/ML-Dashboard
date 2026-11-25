@@ -10,6 +10,8 @@ import {
   flattenConfig,
   groupMetrics,
   guessDirection,
+  evaluationTitle,
+  isAnomalyEvaluation,
   metricLabel,
   metricNote,
   hasAxis,
@@ -340,6 +342,37 @@ describe('指標の良い向き', () => {
     expect(metricNote('valid/loss')).toBeNull()
     expect(metricNote('constructor')).toBeNull()
     expect(metricNote('k', 'constructor')).toBeNull()
+  })
+
+  it('異常の検知の評価は, 名前の形 (anomaly_<分割> など) で列の日本語の名前を引く', () => {
+    expect(metricLabel('k', 'anomaly_test')?.label).toBe('上位の件数 K')
+    expect(metricLabel('anomalies', 'anomaly_unlabeled')?.label).toBe('異常の行の数')
+    expect(metricNote('precision_at_k', 'anomaly_valid')).toMatch(/異常の割合が小さいと低く出る/)
+    expect(metricLabel('average_precision', 'anomaly_test')?.label).toBe('PR-AUC')
+    // 度合いの分布と上位の行の要約の score は異常の度合い
+    expect(metricLabel('quantile', 'anomaly_scores_test')?.label).toBe('分位')
+    expect(metricLabel('score', 'anomaly_scores_test')?.label).toBe('異常の度合い')
+    expect(metricLabel('column', 'anomaly_top_unlabeled')?.label).toBe('最も外れた列')
+    expect(metricLabel('column_share', 'anomaly_top_test')?.label).toBe('その列が占める割合')
+    // anomaly_scores_test を anomaly_<分割> と取り違えない
+    expect(metricLabel('k', 'anomaly_scores_test')).toBeNull()
+    expect(metricLabel('score', 'anomaly_test')).toBeNull()
+    // 分割の後ろに _ が続く名前と, 別の頭の名前は引かない
+    expect(metricLabel('k', 'anomaly_test_extra')).toBeNull()
+    expect(metricLabel('k', 'my_anomaly_test')).toBeNull()
+    // 学習曲線の指標は評価の名前なしでも引く
+    expect(metricLabel('valid/precision_at_k')?.label).toBe('上位 K 件の適合率')
+    expect(evaluationTitle('anomaly_test')).toBe('上位 K 件の適合率と PR-AUC')
+    expect(evaluationTitle('anomaly_scores_unlabeled')).toBe('度合いの分布')
+    expect(evaluationTitle('anomaly_top_valid')).toBe('上位の行の要約')
+    expect(evaluationTitle('group_stability')).toBeNull()
+    expect(isAnomalyEvaluation('anomaly_valid')).toBe(true)
+    expect(isAnomalyEvaluation('baseline_test')).toBe(false)
+  })
+
+  it('異常の検知の指標は名前から大きいほど良いと推測する', () => {
+    expect(guessDirection('valid/precision_at_k')).toBe('max')
+    expect(guessDirection('valid/average_precision')).toBe('max')
   })
 
   it('監視する指標は ML-Found の向き, 他は推測, 学習率と推測できない列は null', () => {

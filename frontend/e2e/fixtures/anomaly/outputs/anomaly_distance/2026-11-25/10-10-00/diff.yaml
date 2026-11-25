@@ -1,0 +1,6 @@
+experiment.name:
+  default: anomaly_autoencoder
+  experiment: anomaly_distance
+anomaly.score:
+  default: autoencoder
+  experiment: distance

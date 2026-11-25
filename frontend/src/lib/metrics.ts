@@ -259,6 +259,14 @@ const METRIC_LABELS: Record<string, MetricLabel> = {
   ari: { label: '調整ランド指数の平均', note: '作り直した群との一致. 1 は同じ群, 0 は偶然と同じ' },
   ari_min: { label: '調整ランド指数の最小', note: '作り直した群との一致の最も低い値' },
   silhouette: { label: 'シルエット係数', note: '群のまとまり. -1 から 1' },
+  precision_at_k: {
+    label: '上位 K 件の適合率',
+    note: '値の高い順の上位 K 件のうち, 当たり (異常の行など) の割合',
+  },
+  average_precision: {
+    label: 'PR-AUC',
+    note: '値の高い順に並べた適合率と再現率の曲線の下の面積 (平均適合率)',
+  },
 }
 // 比べる相手の列の終わりと, 日本語の名前に添える言葉
 const COMPARE_SUFFIXES: [string, string][] = [
@@ -283,6 +291,69 @@ const EVALUATION_LABELS: Record<string, Record<string, MetricLabel>> = {
   },
 }
 
+// 異常の検知 (ML-Quest の異常の検知の骨組み) の評価の列の日本語の名前. 名前の後ろの
+// 分割は _ を含まない名前 (anomaly_scores_test を anomaly_<分割> と取り違えないため)
+const ANOMALY_SCORE: MetricLabel = {
+  label: '異常の度合い',
+  note: '大きいほど学習用の正常の行から外れている',
+}
+const ANOMALY_EVALUATIONS: [RegExp, string, Record<string, MetricLabel>][] = [
+  [
+    /^anomaly_scores_[^_]+$/,
+    '度合いの分布',
+    {
+      quantile: { label: '分位', note: '0 から 1. 0.95 は度合いの低い方から 95 % の位置' },
+      score: ANOMALY_SCORE,
+    },
+  ],
+  [
+    /^anomaly_top_[^_]+$/,
+    '上位の行の要約',
+    {
+      rank: { label: '順位', note: '度合いの高い順' },
+      score: ANOMALY_SCORE,
+      column: { label: '最も外れた列', note: '度合いのうち最も大きい分の列' },
+      column_share: {
+        label: 'その列が占める割合',
+        note: '度合いのうち最も外れた列が占める割合. 0 から 1',
+      },
+    },
+  ],
+  [
+    /^anomaly_[^_]+$/,
+    '上位 K 件の適合率と PR-AUC',
+    {
+      rows: { label: '行の数', note: null },
+      anomalies: { label: '異常の行の数', note: '正解で異常の行' },
+      k: { label: '上位の件数 K', note: '上位 K 件の適合率の K' },
+      precision_at_k: {
+        label: '上位 K 件の適合率',
+        note: '度合いの高い K 行のうち異常の行の割合. 異常の割合が小さいと低く出る',
+      },
+      average_precision: {
+        label: 'PR-AUC',
+        note: '度合いの順に並べた適合率と再現率の曲線の下の面積. 異常の行を上位に並べられているほど 1 に近く, でたらめな順では異常の割合',
+      },
+    },
+  ],
+]
+
+/** 異常の検知の評価の名前か (anomaly_<分割>, anomaly_scores_<分割>, anomaly_top_<分割>) */
+export function isAnomalyEvaluation(evaluation: string): boolean {
+  return ANOMALY_EVALUATIONS.some(([pattern]) => pattern.test(evaluation))
+}
+
+/** 名前の分かる評価の日本語の名前 (異常の検知の評価). 知らない評価は null */
+export function evaluationTitle(evaluation: string): string | null {
+  return ANOMALY_EVALUATIONS.find(([pattern]) => pattern.test(evaluation))?.[1] ?? null
+}
+
+/** 評価に固有の列の日本語の名前 (名前で引く評価の次に, 名前の形で引く評価) */
+function evaluationLabels(evaluation: string): Record<string, MetricLabel> | undefined {
+  if (Object.hasOwn(EVALUATION_LABELS, evaluation)) return EVALUATION_LABELS[evaluation]
+  return ANOMALY_EVALUATIONS.find(([pattern]) => pattern.test(evaluation))?.[2]
+}
+
 /** 指標か評価の列の日本語の名前と, 添える説明 (無ければ null) */
 export interface MetricLabel {
   label: string
@@ -296,10 +367,7 @@ export interface MetricLabel {
  */
 export function metricLabel(name: string, evaluation?: string): MetricLabel | null {
   const metric = name.slice(name.lastIndexOf('/') + 1)
-  const own =
-    evaluation && Object.hasOwn(EVALUATION_LABELS, evaluation)
-      ? EVALUATION_LABELS[evaluation]
-      : undefined
+  const own = evaluation ? evaluationLabels(evaluation) : undefined
   if (own && Object.hasOwn(own, metric)) return own[metric] ?? null
   if (Object.hasOwn(METRIC_LABELS, metric)) return METRIC_LABELS[metric] ?? null
   for (const [suffix, word] of COMPARE_SUFFIXES) {

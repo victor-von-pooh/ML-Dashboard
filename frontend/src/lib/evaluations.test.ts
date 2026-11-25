@@ -70,6 +70,31 @@ describe('chooseColumns', () => {
       'baseline_test:mae',
     ])
   })
+  it('選んでいなければ, 守る指標の表を先にした並びのまま向きの分かる列を先に', () => {
+    // 異常の検知の 1 行の表は行の数, 異常の行の数, K を先に持つ
+    const anomaly = collectColumns([
+      {
+        values: [
+          value({ evaluation: 'anomaly_test', column: 'rows', better: null }),
+          value({ evaluation: 'anomaly_test', column: 'anomalies', better: null }),
+          value({ evaluation: 'anomaly_test', column: 'k', better: null }),
+          value({ evaluation: 'anomaly_test', column: 'precision_at_k', better: 'higher' }),
+          value({ evaluation: 'anomaly_test', column: 'average_precision', better: 'higher' }),
+          value({ evaluation: 'guard_test', column: 'n', better: null, guard: true }),
+        ],
+      },
+    ])
+    expect(chooseColumns(anomaly, [], 4).map((column) => column.key)).toEqual([
+      'guard_test:n',
+      'anomaly_test:precision_at_k',
+      'anomaly_test:average_precision',
+      'anomaly_test:rows',
+    ])
+    // 選んだ列は選んだ順のまま
+    expect(chooseColumns(anomaly, ['anomaly_test:k'], 4).map((column) => column.key)).toEqual([
+      'anomaly_test:k',
+    ])
+  })
   it('選んだ列のうち今ある列だけを, 重複を除いて選んだ順に', () => {
     const chosen = chooseColumns(columns, ['other:score', 'gone:x', 'other:score'], 3)
     expect(chosen.map((column) => column.key)).toEqual(['other:score'])

@@ -17,6 +17,7 @@ import { tabPanelProps, useStableId } from '../../lib/a11y'
 import { formatDateTime, formatDuration, formatMetric } from '../../lib/format'
 import { groupImageSeries } from '../../lib/images'
 import { validInterval } from '../../lib/metrics'
+import { nextStage } from '../../lib/nextStage'
 import type { RunFile } from '../../api/client'
 import { EvaluationsTab } from './EvaluationsTab'
 import { PolicyTab } from './PolicyTab'
@@ -129,6 +130,14 @@ export function RunDetailPage() {
   // 開いた場合 (共有したリンクなど) は学習曲線を表示
   const series = seriesOf(data.files)
   const evaluations = results.data?.evaluations ?? []
+  // 次の段階への案内 (モデルの定義か推論の一式を持つ完了した実験)
+  const { show: showNextStage, hasBundle } = nextStage(data)
+  const hasFile = (path: string) => data.files.some((file) => file.path === path)
+  // 学習の記録が無く評価だけを持つ実験 (学習曲線の代わりに評価のタブへ案内する)
+  const untrained =
+    !hasFile('run.json') &&
+    !hasFile('history.csv') &&
+    data.files.some((file) => file.path.startsWith('evaluations/'))
   const samples = results.data?.samples ?? []
   const trajectories = results.data?.trajectories ?? []
   // 評価と見本は, 読み終えて無いと分かった場合だけ学習曲線に戻す (読む間は待つ)
@@ -195,9 +204,10 @@ export function RunDetailPage() {
           もう一度起動できません: {relaunch.data.reason}
         </p>
       )}
-      {data.model && data.status === 'completed' && (
+      {showNextStage && (
         <NextStageNote
-          hasBundle={data.files.some((file) => file.path.startsWith('inference/'))}
+          hasBundle={hasBundle}
+          hasModel={data.model != null}
           path={data.path ?? null}
         />
       )}
@@ -339,6 +349,7 @@ export function RunDetailPage() {
               best={data.best}
               earlyStoppedEpoch={data.early_stopped_epoch}
               validInterval={validInterval(data.config)}
+              untrained={untrained}
             />
           ) : history.error ? (
             <ErrorBox error={history.error} />
@@ -348,7 +359,7 @@ export function RunDetailPage() {
         {/* 読み直しに失敗しても, 前に読めた中身を出し続ける */}
         {tab === 'evaluations' &&
           (results.data ? (
-            <EvaluationsTab evaluations={evaluations} />
+            <EvaluationsTab evaluations={evaluations} config={data.config} />
           ) : results.error ? (
             <ErrorBox error={results.error} />
           ) : (
@@ -412,15 +423,23 @@ export function RunDetailPage() {
 }
 
 /** 比べて選んだ実験を次の段階 (推論) で使う案内 */
-function NextStageNote({ hasBundle, path }: { hasBundle: boolean; path: string | null }) {
+function NextStageNote({
+  hasBundle,
+  hasModel,
+  path,
+}: {
+  hasBundle: boolean
+  hasModel: boolean
+  path: string | null
+}) {
   return (
     <details className="mb-4 text-xs text-ink-3">
       <summary className="cursor-pointer">この実験を推論の段階で使うには</summary>
       <p className="mt-1">
         {hasBundle
           ? 'この実験は推論の一式 (inference/) を持つので, ML-Provide の「実験の一覧から登録」で登録できます.'
-          : 'ML-Provide の「学習の結果から作る」で, この実験のディレクトリ (重み) と, 写したモデルの定義 (model_spec.yaml) を選びます.'}{' '}
-        プロジェクトの default の config の model.spec は変わりません.
+          : 'ML-Provide の「学習の結果から作る」で, この実験のディレクトリ (重み) と, 写したモデルの定義 (model_spec.yaml) を選びます.'}
+        {hasModel && ' プロジェクトの default の config の model.spec は変わりません.'}
       </p>
       {path && (
         <p className="mt-1 flex flex-wrap items-center gap-2">
