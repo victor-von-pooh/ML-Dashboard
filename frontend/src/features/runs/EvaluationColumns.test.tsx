@@ -127,7 +127,7 @@ describe('EvaluationCell', () => {
 })
 
 describe('ColumnLabel', () => {
-  it('群分けの指標は列の名前の上に日本語の説明を添え, 知らない列は名前だけ', () => {
+  it('群分けの指標は列の名前の上に日本語の説明を添え, 知らない列は名前だけ. 向きの分かる列は向きを添える', () => {
     const column = {
       key: 'group_stability:silhouette_diff',
       evaluation: 'group_stability',
@@ -139,10 +139,27 @@ describe('ColumnLabel', () => {
     }
     const { container, rerender } = render(<ColumnLabel column={column} />)
     expect(container.textContent).toBe(
-      'シルエット係数 (比べる相手との差)silhouette_diff (group_stability)',
+      'シルエット係数 (比べる相手との差)silhouette_diff(大きいほど良い) (group_stability)',
     )
-    rerender(<ColumnLabel column={{ ...column, key: 'x:accuracy', column: 'accuracy' }} />)
+    rerender(
+      <ColumnLabel column={{ ...column, key: 'x:accuracy', column: 'accuracy', better: null }} />,
+    )
     expect(container.textContent).toBe('accuracy (group_stability)')
+    // 値段を変える判断の売れた数の誤差は小さいほど良い
+    rerender(
+      <ColumnLabel
+        column={{
+          ...column,
+          key: 'price_test:mae',
+          evaluation: 'price_test',
+          column: 'mae',
+          diff: false,
+          better: 'lower',
+          baseline: null,
+        }}
+      />,
+    )
+    expect(container.textContent).toBe('売れた数の平均絶対誤差mae(小さいほど良い) (price_test)')
   })
 })
 

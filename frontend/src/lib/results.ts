@@ -111,9 +111,17 @@ export function numericColumns(evaluation: Evaluation): Set<string> {
   )
 }
 
-/** 0 から 1 の割合を % の文字にする (0.3 は 30 %. 小数第 1 位まで) */
-export function formatPercent(value: number): string {
-  return `${Number((value * 100).toFixed(1))} %`
+/**
+ * 割合を % の文字にする (0.3 は 30 %. 既定は小数第 1 位まで). signed では 0 より大きい
+ * 値に + を付ける (値段を変える割合の候補の +5 % など)
+ */
+export function formatPercent(
+  value: number,
+  { digits = 1, signed = false }: { digits?: number; signed?: boolean } = {},
+): string {
+  // -0 を 0 にする (丸めた後の -0.0 を「-0 %」と書かないため)
+  const rounded = Number((value * 100).toFixed(digits)) || 0
+  return `${signed && rounded > 0 ? '+' : ''}${rounded} %`
 }
 
 /** 評価の表の値の表示 */

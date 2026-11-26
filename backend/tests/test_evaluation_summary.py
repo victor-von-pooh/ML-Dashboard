@@ -471,6 +471,65 @@ def test_uplift_values(client: TestClient, project_dir: Path) -> None:
     )
 
 
+def test_price_values(client: TestClient, project_dir: Path) -> None:
+    """
+    ML-Quest の値段を変える判断の骨組みの形の, テスト用の売れた数の誤差と
+    見込みの利益の比べを一覧が返し, 書いた向き (better) を使い, better が
+    無くても売れた数の誤差を名前から小さいほど良いとし, 利益の差と比と弾力性
+    には名前から向きを付けないことと, 検証用の評価を列にしないことを確かめる
+    関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 骨組みの evaluations/price_<分割>.json と同じ列
+    run_dir = project_dir / "outputs" / EVALUATED_RUN
+    row = {"rows": 600, "products": 40, "mae": 1.28, "rmse": 1.73,
+           "elasticity": -1.62, "elasticity_counted": 40, "profit": 5320.5,
+           "current_profit": 5144.2, "profit_gain": 176.3,
+           "profit_ratio": 1.034, "changed": 27, "max_change": 0.1}
+    better = {"mae": "lower", "rmse": "lower", "profit_gain": "higher",
+              "profit_ratio": "higher"}
+    write_evaluation(run_dir, "price_test", [row], baseline=None,
+                     better=better)
+    write_evaluation(run_dir, "price_valid", [row], split="valid",
+                     baseline=None, better=better)
+    evaluations = list_summaries(client, project_dir)[EVALUATED_RUN]
+    values = [
+        (item["evaluation"], item["column"], item["better"])
+        for item in evaluations["values"]
+    ]
+    assert values == [
+        ("price_test", "rows", None),
+        ("price_test", "products", None),
+        ("price_test", "mae", "lower"),
+        ("price_test", "rmse", "lower"),
+        ("price_test", "elasticity", None),
+        ("price_test", "elasticity_counted", None),
+        ("price_test", "profit", None),
+        ("price_test", "current_profit", None),
+        ("price_test", "profit_gain", "higher"),
+        ("price_test", "profit_ratio", "higher"),
+        ("price_test", "changed", None),
+        ("price_test", "max_change", None),
+    ]
+
+    # 向きを書かない形では, 売れた数の誤差だけが名前から小さいほど良い
+    # (profit_gain は gain の語を含むので向きを決めない)
+    assert metric_better("mae", "valid/mae", "min") == "lower"
+    assert metric_better("rmse", "valid/mae", "min") == "lower"
+    for name in ("profit_gain", "profit_ratio", "elasticity", "changed"):
+        assert metric_better(name, "valid/mae", "min") is None
+
+
 def test_all_split_guard_and_order(
     client: TestClient, project_dir: Path
 ) -> None:

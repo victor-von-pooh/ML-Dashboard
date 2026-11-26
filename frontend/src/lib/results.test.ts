@@ -170,6 +170,14 @@ describe('formatPercent', () => {
     expect(formatPercent(0.125)).toBe('12.5 %')
     expect(formatPercent(1 / 3)).toBe('33.3 %')
   })
+
+  it('桁の数と符号を選べ, 丸めた -0 は 0 にする', () => {
+    expect(formatPercent(1.03427, { digits: 2 })).toBe('103.43 %')
+    expect(formatPercent(0.05, { signed: true })).toBe('+5 %')
+    expect(formatPercent(-0.1, { signed: true })).toBe('-10 %')
+    expect(formatPercent(0, { signed: true })).toBe('0 %')
+    expect(formatPercent(-0.0001)).toBe('0 %')
+  })
 })
 
 describe('className と axisLabel', () => {
