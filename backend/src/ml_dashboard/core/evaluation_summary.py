@@ -49,7 +49,7 @@ HIGHER_BETTER = frozenset({
     "precision", "recall", "sensitivity", "specificity", "iou", "miou",
     "jaccard", "dice", "r2", "bleu", "rouge", "meteor", "chrf", "psnr",
     "ssim", "ndcg", "mrr", "hit", "hits", "kappa", "mcc",
-    "reward", "return", "success", "coverage", "silhouette", "ari",
+    "reward", "return", "success", "coverage", "silhouette", "ari", "qini",
 })
 # 向きを打ち消すか変える語 (neg_log_loss は大きいほど良く, accuracy_gap は
 # 小さいほど良い). 含む名前は名前の語では向きを決めない

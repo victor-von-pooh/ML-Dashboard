@@ -413,6 +413,64 @@ def test_anomaly_values(client: TestClient, project_dir: Path) -> None:
     assert detail.json()["model"] is None
 
 
+def test_uplift_values(client: TestClient, project_dir: Path) -> None:
+    """
+    ML-Quest の効果の見積もりの骨組みの形の, テスト用の Qini の係数と上位
+    K 割の効果の差を一覧が返し, 書いた向き (better) を使い, better が無くても
+    Qini の係数を名前から大きいほど良いとすることと, Qini の曲線と検証用の
+    評価を列にしないことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 骨組みの evaluations/uplift_<分割>.json と qini_curve_<分割>.json と
+    # 同じ列
+    run_dir = project_dir / "outputs" / EVALUATED_RUN
+    row = {"rows": 400, "treated": 201, "control": 199, "k": 0.3,
+           "qini": 0.21, "uplift_at_k": 0.12, "effect": 0.05,
+           "estimated": 0.05}
+    write_evaluation(run_dir, "uplift_test", [row], baseline=None,
+                     better={"qini": "higher", "uplift_at_k": "higher"})
+    write_evaluation(run_dir, "uplift_valid", [row], split="valid",
+                     baseline=None)
+    write_evaluation(
+        run_dir, "qini_curve_test",
+        [{"fraction": 0.0, "rows": 0, "qini": 0.0, "random": 0.0},
+         {"fraction": 1.0, "rows": 400, "qini": 19.3, "random": 19.3}],
+        kind="curve", baseline=None
+    )
+    evaluations = list_summaries(client, project_dir)[EVALUATED_RUN]
+    values = [
+        (item["evaluation"], item["column"], item["better"])
+        for item in evaluations["values"]
+    ]
+    assert values == [
+        ("uplift_test", "rows", None),
+        ("uplift_test", "treated", None),
+        ("uplift_test", "control", None),
+        ("uplift_test", "k", None),
+        ("uplift_test", "qini", "higher"),
+        ("uplift_test", "uplift_at_k", "higher"),
+        ("uplift_test", "effect", None),
+        ("uplift_test", "estimated", None),
+    ]
+
+    # 向きを書かない形でも, Qini の係数は名前から大きいほど良い
+    assert metric_better("qini", "valid/loss", "min") == "higher"
+    assert metric_better("uplift_at_k", "valid/loss", "min") is None
+    assert metric_better("uplift_at_k", "valid/uplift_at_k", "max") == (
+        "higher"
+    )
+
+
 def test_all_split_guard_and_order(
     client: TestClient, project_dir: Path
 ) -> None:

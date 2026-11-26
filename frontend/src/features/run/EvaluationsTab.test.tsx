@@ -267,4 +267,70 @@ describe('EvaluationsTab', () => {
     rerender(<EvaluationsTab evaluations={[table]} config={{ anomaly: { k: 10 } }} />)
     expect(screen.queryByRole('region', { name: '異常の検知の評価の読み方' })).toBeNull()
   })
+
+  it('効果を見積もるの評価は, 先頭に読み方と K (%) と配る数の上限を出し, K の欄を % で書く', () => {
+    // ML-Quest の効果の見積もりの骨組みが書く evaluations/uplift_test.json の形
+    const uplift: Evaluation = {
+      ...table,
+      name: 'uplift_test',
+      columns: ['rows', 'treated', 'control', 'k', 'qini', 'uplift_at_k', 'effect', 'estimated'],
+      rows: [
+        {
+          rows: 400,
+          treated: 201,
+          control: 199,
+          k: 0.3,
+          qini: 0.2103,
+          uplift_at_k: 0.124,
+          effect: 0.048,
+          estimated: 0.051,
+        },
+      ],
+      description: null,
+      baseline: null,
+      guard: false,
+      better: { qini: 'higher', uplift_at_k: 'higher' },
+      total_rows: 1,
+    }
+    render(<EvaluationsTab evaluations={[uplift]} config={{ uplift: { k: 0.3, budget: 500 } }} />)
+    const note = screen.getByRole('region', { name: '効果の見積もりの評価の読み方' })
+    expect(within(note).getByText('上位 30 %')).toBeInTheDocument()
+    expect(within(note).getByText('500 件')).toBeInTheDocument()
+    expect(within(note).getByText(/上位 30 % の効果の差 \(uplift_at_k\)/)).toBeInTheDocument()
+    expect(screen.getByText('Qini の係数と上位 K 割の効果の差')).toBeInTheDocument()
+    expect(screen.getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual([
+      '行の数rows',
+      '処置の群の行の数treated',
+      '対照の群の行の数control',
+      '上位の割合 Kk',
+      'Qini の係数qini (大きいほど良い)',
+      '上位 K 割の効果の差uplift_at_k (大きいほど良い)',
+      '全体の効果の差effect',
+      '効果の見積もりの平均estimated',
+    ])
+    expect(
+      within(screen.getAllByRole('row')[1]!)
+        .getAllByRole('cell')
+        .map((cell) => cell.textContent),
+    ).toEqual(['400', '201', '199', '上位 30 %', '0.2103', '0.1240', '0.04800', '0.05100'])
+  })
+
+  it('config に uplift の項目が無ければ読み方だけを出し, K の書き方を「上位 K 割」にする', () => {
+    // 検証用の分割の評価 (uplift_valid)
+    const uplift: Evaluation = {
+      ...table,
+      name: 'uplift_valid',
+      split: 'valid',
+      columns: ['rows', 'qini'],
+      rows: [{ rows: 400, qini: 0.19 }],
+      guard: false,
+      better: { qini: 'higher' },
+      total_rows: 1,
+    }
+    render(<EvaluationsTab evaluations={[uplift]} config={{ uplift: { k: 0, budget: null } }} />)
+    const note = screen.getByRole('region', { name: '効果の見積もりの評価の読み方' })
+    expect(within(note).queryByText('上位の割合 K')).toBeNull()
+    expect(within(note).queryByText(/配る数の上限 \(守る指標\)/)).toBeNull()
+    expect(within(note).getByText(/上位 K 割の効果の差 \(uplift_at_k\)/)).toBeInTheDocument()
+  })
 })

@@ -5,6 +5,7 @@ import { groupImageSeries } from './images'
 import {
   curveSeries,
   formatCell,
+  formatPercent,
   groupSamples,
   numericColumns,
   labelOf,
@@ -159,6 +160,15 @@ describe('formatCell', () => {
     expect(formatCell(0.00001)).toBe('1.000e-5')
     expect(formatCell(true)).toBe('true')
     expect(formatCell('a')).toBe('a')
+  })
+})
+
+describe('formatPercent', () => {
+  it('0 から 1 の割合を % にし, 小数第 1 位までにする', () => {
+    expect(formatPercent(0.3)).toBe('30 %')
+    expect(formatPercent(1)).toBe('100 %')
+    expect(formatPercent(0.125)).toBe('12.5 %')
+    expect(formatPercent(1 / 3)).toBe('33.3 %')
   })
 })
 

@@ -111,6 +111,11 @@ export function numericColumns(evaluation: Evaluation): Set<string> {
   )
 }
 
+/** 0 から 1 の割合を % の文字にする (0.3 は 30 %. 小数第 1 位まで) */
+export function formatPercent(value: number): string {
+  return `${Number((value * 100).toFixed(1))} %`
+}
+
 /** 評価の表の値の表示 */
 export function formatCell(value: unknown): string {
   if (value == null) return '—'

@@ -212,9 +212,9 @@ const LOWER_IS_BETTER = /loss|err|mae|mse|rmse|nelbo|kl|recon|residual|boundary|
 // distance は距離 (例えば作った表と本物の表の列ごとの分布の近さ column_distance)
 const LOWER_WORDS = /(^|[/_.-])(fid|chamfer|distance)($|[/_.-])/i
 // ndcg と mrr は並べる課題の指標 (recall_at_k は recall で大きいほど良い). silhouette
-// は群分けのシルエット係数
+// は群分けのシルエット係数. qini は効果を見積もるの Qini の係数
 const HIGHER_IS_BETTER =
-  /acc|auc|^ap$|\/ap$|f1|precision|recall|r2|score|iou|psnr|ssim|ndcg|mrr|silhouette/i
+  /acc|auc|^ap$|\/ap$|f1|precision|recall|r2|score|iou|psnr|ssim|ndcg|mrr|silhouette|qini/i
 // 語として現れる場合だけ大きいほど良い指標. ari は群分けの調整ランド指数 (部分一致では
 // variance まで含むため)
 const HIGHER_WORDS = /(^|[/_.-])ari($|[/_.-])/i
@@ -266,6 +266,14 @@ const METRIC_LABELS: Record<string, MetricLabel> = {
   average_precision: {
     label: 'PR-AUC',
     note: '値の高い順に並べた適合率と再現率の曲線の下の面積 (平均適合率)',
+  },
+  qini: {
+    label: 'Qini の係数',
+    note: '効果の見積もりの高い順の並びの良さ. 1 は理想の並び, 0 はでたらめに配るのと同じ',
+  },
+  uplift_at_k: {
+    label: '上位 K 割の効果の差',
+    note: '効果の見積もりの高い順の上位 K 割の行での, 処置の群と対照の群の結果の平均の差',
   },
 }
 // 比べる相手の列の終わりと, 日本語の名前に添える言葉
@@ -338,20 +346,77 @@ const ANOMALY_EVALUATIONS: [RegExp, string, Record<string, MetricLabel>][] = [
   ],
 ]
 
+// 効果を見積もる (ML-Quest の効果の見積もりの骨組み) の評価の列の日本語の名前. 名前の
+// 後ろの分割は異常の検知と同じく _ を含まない名前
+const UPLIFT_EVALUATIONS: [RegExp, string, Record<string, MetricLabel>][] = [
+  [
+    /^qini_curve_[^_]+$/,
+    'Qini の曲線',
+    {
+      rows: { label: '上位の行の数', note: '効果の見積もりの高い順の上位の行の数' },
+      fraction: { label: '上位の行の割合', note: '0 から 1. 0.3 は上位 30 %' },
+      qini: {
+        label: 'Qini の値',
+        note: '上位の行で処置によって増えた結果 (対照の群の数を処置の群に合わせた結果の和の差)',
+      },
+      random: {
+        label: 'でたらめに配る線',
+        note: '効果の見積もりを使わずに無作為に配った場合の直線',
+      },
+    },
+  ],
+  [
+    /^uplift_[^_]+$/,
+    'Qini の係数と上位 K 割の効果の差',
+    {
+      rows: { label: '行の数', note: null },
+      treated: { label: '処置の群の行の数', note: '処置した (クーポンを配った) 行' },
+      control: { label: '対照の群の行の数', note: '処置しなかった行' },
+      k: { label: '上位の割合 K', note: '0 から 1. 0.3 は上位 30 %' },
+      qini: {
+        label: 'Qini の係数',
+        note: '効果の見積もりの高い順の並びの良さ. 1 は理想の並び, 0 はでたらめに配るのと同じ, 負はでたらめより悪い',
+      },
+      uplift_at_k: {
+        label: '上位 K 割の効果の差',
+        note: '効果の見積もりの高い順の上位 K 割の行での, 処置の群と対照の群の結果の平均の差. 上位に片方の群が無ければ「—」',
+      },
+      effect: {
+        label: '全体の効果の差',
+        note: '分割の全ての行での, 処置の群と対照の群の結果の平均の差 (無作為に配った場合の効果)',
+      },
+      estimated: { label: '効果の見積もりの平均', note: '分割の全ての行の効果の見積もりの平均' },
+    },
+  ],
+]
+
+/** 効果を見積もるの評価の名前か (uplift_<分割>, qini_curve_<分割>) */
+export function isUpliftEvaluation(evaluation: string): boolean {
+  return UPLIFT_EVALUATIONS.some(([pattern]) => pattern.test(evaluation))
+}
+
+/** 曲線に描く列 (名前の分かる評価で, 横軸と目盛りの違う列を除くもの). 知らない評価は null */
+export function curveColumns(evaluation: string): string[] | null {
+  return /^qini_curve_[^_]+$/.test(evaluation) ? ['qini', 'random'] : null
+}
+
 /** 異常の検知の評価の名前か (anomaly_<分割>, anomaly_scores_<分割>, anomaly_top_<分割>) */
 export function isAnomalyEvaluation(evaluation: string): boolean {
   return ANOMALY_EVALUATIONS.some(([pattern]) => pattern.test(evaluation))
 }
 
-/** 名前の分かる評価の日本語の名前 (異常の検知の評価). 知らない評価は null */
+// 名前の形で引く評価 (異常の検知と効果を見積もる)
+const PATTERN_EVALUATIONS = [...ANOMALY_EVALUATIONS, ...UPLIFT_EVALUATIONS]
+
+/** 名前の分かる評価の日本語の名前 (異常の検知と効果を見積もるの評価). 知らない評価は null */
 export function evaluationTitle(evaluation: string): string | null {
-  return ANOMALY_EVALUATIONS.find(([pattern]) => pattern.test(evaluation))?.[1] ?? null
+  return PATTERN_EVALUATIONS.find(([pattern]) => pattern.test(evaluation))?.[1] ?? null
 }
 
 /** 評価に固有の列の日本語の名前 (名前で引く評価の次に, 名前の形で引く評価) */
 function evaluationLabels(evaluation: string): Record<string, MetricLabel> | undefined {
   if (Object.hasOwn(EVALUATION_LABELS, evaluation)) return EVALUATION_LABELS[evaluation]
-  return ANOMALY_EVALUATIONS.find(([pattern]) => pattern.test(evaluation))?.[2]
+  return PATTERN_EVALUATIONS.find(([pattern]) => pattern.test(evaluation))?.[2]
 }
 
 /** 指標か評価の列の日本語の名前と, 添える説明 (無ければ null) */
