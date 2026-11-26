@@ -13,6 +13,7 @@ import {
   guessDirection,
   evaluationTitle,
   isAnomalyEvaluation,
+  isPriceEvaluation,
   isUpliftEvaluation,
   metricLabel,
   metricNote,
@@ -401,6 +402,30 @@ describe('指標の良い向き', () => {
     // 曲線に描く列 (Qini の曲線は上位の行の数を描かない)
     expect(curveColumns('qini_curve_test')).toEqual(['qini', 'random'])
     expect(curveColumns('anomaly_scores_test')).toBeNull()
+  })
+
+  it('値段を変える判断の評価は, 名前の形 (price_<分割>) で列の日本語の名前を引く', () => {
+    expect(metricLabel('mae', 'price_test')?.label).toBe('売れた数の平均絶対誤差')
+    expect(metricLabel('rmse', 'price_valid')?.label).toBe('売れた数の二乗平均平方根誤差')
+    expect(metricNote('elasticity', 'price_test')).toMatch(/1 % 上げたとき.*良し悪しの向きは無い/)
+    expect(metricLabel('profit_gain', 'price_test')?.label).toBe('見込みの利益の差')
+    expect(metricLabel('profit_ratio', 'price_test')?.label).toBe('見込みの利益の比')
+    expect(metricLabel('max_change', 'price_test')?.label).toBe('値段を変える幅の上限')
+    expect(metricLabel('products', 'price_test')?.label).toBe('商品の数')
+    // price_items_test のような形の違う評価と, 学習曲線の valid/mae は引かない
+    expect(metricLabel('profit', 'price_items_test')).toBeNull()
+    expect(metricLabel('valid/mae')).toBeNull()
+    expect(metricLabel('mae', 'uplift_test')).toBeNull()
+    expect(evaluationTitle('price_test')).toBe('売れた数の予測の誤差と見込みの利益')
+    expect(isPriceEvaluation('price_valid')).toBe(true)
+    expect(isPriceEvaluation('uplift_test')).toBe(false)
+    expect(isUpliftEvaluation('price_test')).toBe(false)
+    // 監視する指標の valid/mae は ML-Found の向き, 監視しなくても名前から小さいほど良い
+    expect(columnDirection('valid/mae', [{ monitor: 'valid/mae', mode: 'min' }])).toEqual({
+      direction: 'min',
+      guessed: false,
+    })
+    expect(guessDirection('valid/mae')).toBe('min')
   })
 
   it('効果を見積もるの Qini の係数は名前から大きいほど良いと推測する', () => {

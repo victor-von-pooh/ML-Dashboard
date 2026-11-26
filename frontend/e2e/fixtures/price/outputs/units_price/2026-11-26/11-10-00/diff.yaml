@@ -1,0 +1,3 @@
+optimizer.params.lr:
+  default: 0.001
+  experiment: 0.003

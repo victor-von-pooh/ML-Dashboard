@@ -227,10 +227,17 @@ export function EvaluationCell({
 
 /**
  * 評価の列の見出しの中身. 名前の分かる列は日本語の名前を主にして列の名前を小さく添え,
- * その下に評価の名前
+ * 向きの分かる列は良い向きを添え (並べ替える前に良い向きが分かるように), その下に
+ * 評価の名前
  */
 export function ColumnLabel({ column }: { column: EvaluationColumn }) {
   const name = metricLabel(column.column, column.evaluation)
+  const direction =
+    column.better === 'lower'
+      ? '小さいほど良い'
+      : column.better === 'higher'
+        ? '大きいほど良い'
+        : null
   return (
     <span className="inline-flex flex-col items-end leading-tight" title={name?.note ?? undefined}>
       {name ? (
@@ -240,6 +247,9 @@ export function ColumnLabel({ column }: { column: EvaluationColumn }) {
         </>
       ) : (
         <span className="font-mono">{column.column}</span>
+      )}
+      {direction && (
+        <span className="text-[10px] font-normal whitespace-nowrap text-ink-3">({direction})</span>
       )}
       <span className="sr-only"> (</span>
       <span className="font-mono text-[10px] font-normal text-ink-3">{column.evaluation}</span>

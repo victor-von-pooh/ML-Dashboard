@@ -333,4 +333,132 @@ describe('EvaluationsTab', () => {
     expect(within(note).queryByText(/配る数の上限 \(守る指標\)/)).toBeNull()
     expect(within(note).getByText(/上位 K 割の効果の差 \(uplift_at_k\)/)).toBeInTheDocument()
   })
+
+  it('値段を変える判断の評価は, 先頭に読み方と候補と上限 (%) を出し, 比と上限の欄を % で書く', () => {
+    // ML-Quest の値段を変える判断の骨組みが書く evaluations/price_test.json の形
+    const price: Evaluation = {
+      ...table,
+      name: 'price_test',
+      columns: [
+        'rows',
+        'products',
+        'mae',
+        'rmse',
+        'elasticity',
+        'elasticity_counted',
+        'profit',
+        'current_profit',
+        'profit_gain',
+        'profit_ratio',
+        'changed',
+        'max_change',
+      ],
+      rows: [
+        {
+          rows: 600,
+          products: 40,
+          mae: 1.284,
+          rmse: 1.731,
+          elasticity: -1.62,
+          elasticity_counted: 40,
+          profit: 5320.5,
+          current_profit: 5144.2,
+          profit_gain: 176.3,
+          profit_ratio: 1.03427,
+          changed: 27,
+          max_change: 0.1,
+        },
+      ],
+      description: null,
+      baseline: null,
+      guard: false,
+      better: { mae: 'lower', rmse: 'lower', profit_gain: 'higher', profit_ratio: 'higher' },
+      total_rows: 1,
+    }
+    render(
+      <EvaluationsTab
+        evaluations={[price]}
+        config={{ price: { candidates: [-0.1, -0.05, 0, 0.05, 0.1], max_change: 0.1 } }}
+      />,
+    )
+    const note = screen.getByRole('region', { name: '値段を変える判断の評価の読み方' })
+    expect(within(note).getByText('-10 %, -5 %, 0 %, +5 %, +10 %')).toBeInTheDocument()
+    expect(within(note).getByText('値段を変える幅の上限 (守る指標)')).toBeInTheDocument()
+    expect(within(note).getByText('10 %')).toBeInTheDocument()
+    expect(within(note).getByText(/値段の弾力性 \(elasticity\)/)).toBeInTheDocument()
+    expect(within(note).getByText(/利益は \(値段 − 原価\) × 売れた数/)).toBeInTheDocument()
+    expect(screen.getByText('売れた数の予測の誤差と見込みの利益')).toBeInTheDocument()
+    expect(screen.getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual([
+      '行の数rows',
+      '商品の数products',
+      '売れた数の平均絶対誤差mae (小さいほど良い)',
+      '売れた数の二乗平均平方根誤差rmse (小さいほど良い)',
+      '値段の弾力性の平均elasticity',
+      '弾力性を数えた商品の数elasticity_counted',
+      '選んだ値段での見込みの利益profit',
+      '今の値段での見込みの利益current_profit',
+      '見込みの利益の差profit_gain (大きいほど良い)',
+      '見込みの利益の比profit_ratio (大きいほど良い)',
+      '値段を変える商品の数changed',
+      '値段を変える幅の上限max_change',
+    ])
+    expect(
+      within(screen.getAllByRole('row')[1]!)
+        .getAllByRole('cell')
+        .map((cell) => cell.textContent),
+    ).toEqual([
+      '600',
+      '40',
+      '1.284',
+      '1.731',
+      '-1.620',
+      '40',
+      '5321',
+      '5144',
+      '176.3',
+      '103.43 %',
+      '27',
+      '10 %',
+    ])
+  })
+
+  it('config の price が無いか読めなければ読み方だけを出す', () => {
+    const price: Evaluation = {
+      ...table,
+      name: 'price_valid',
+      split: 'valid',
+      columns: ['rows', 'mae', 'profit_ratio'],
+      rows: [{ rows: 600, mae: 1.3, profit_ratio: null }],
+      guard: false,
+      better: { mae: 'lower', profit_ratio: 'higher' },
+      total_rows: 1,
+    }
+    const { rerender } = render(<EvaluationsTab evaluations={[price]} config={{}} />)
+    const note = screen.getByRole('region', { name: '値段を変える判断の評価の読み方' })
+    expect(within(note).queryByText('変える割合の候補')).toBeNull()
+    expect(within(note).queryByText('値段を変える幅の上限 (守る指標)')).toBeNull()
+    // 今の利益が 0 以下で比の無い欄は「—」
+    expect(within(screen.getAllByRole('row')[1]!).getAllByRole('cell')[2]).toHaveTextContent('—')
+    // 候補に数でない値があるものと負の上限は出さない
+    rerender(
+      <EvaluationsTab
+        evaluations={[price]}
+        config={{ price: { candidates: [0, 'up'], max_change: -0.1 } }}
+      />,
+    )
+    expect(within(note).queryByText('変える割合の候補')).toBeNull()
+    expect(within(note).queryByText('値段を変える幅の上限 (守る指標)')).toBeNull()
+    // 今の値段の 0 を含まない候補は出さない
+    rerender(
+      <EvaluationsTab
+        evaluations={[price]}
+        config={{ price: { candidates: [-0.1, 0.1], max_change: 0.1 } }}
+      />,
+    )
+    expect(within(note).queryByText('変える割合の候補')).toBeNull()
+    expect(within(note).getByText('値段を変える幅の上限 (守る指標)')).toBeInTheDocument()
+    // 名前の形の違う評価 (price_items_test) には読み方を出さない
+    rerender(<EvaluationsTab evaluations={[{ ...price, name: 'price_items_test' }]} config={{}} />)
+    expect(screen.queryByRole('region', { name: '値段を変える判断の評価の読み方' })).toBeNull()
+  })
 })

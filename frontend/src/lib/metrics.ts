@@ -390,6 +390,61 @@ const UPLIFT_EVALUATIONS: [RegExp, string, Record<string, MetricLabel>][] = [
   ],
 ]
 
+// 値段を変える判断 (ML-Quest の値段を変える判断の骨組み) の評価の列の日本語の名前. 名前の
+// 後ろの分割は異常の検知と同じく _ を含まない名前
+const PRICE_EVALUATIONS: [RegExp, string, Record<string, MetricLabel>][] = [
+  [
+    /^price_[^_]+$/,
+    '売れた数の予測の誤差と見込みの利益',
+    {
+      rows: { label: '行の数', note: null },
+      products: { label: '商品の数', note: '値段を選ぶ商品の数. 商品の id の列が無ければ行の数' },
+      mae: {
+        label: '売れた数の平均絶対誤差',
+        note: '記録の値段での売れた数の予測と記録の差の絶対値の平均 (売れた数の単位)',
+      },
+      rmse: {
+        label: '売れた数の二乗平均平方根誤差',
+        note: '記録の値段での売れた数の予測と記録の差の二乗の平均の平方根. 大きく外れた予測を重く数える',
+      },
+      elasticity: {
+        label: '値段の弾力性の平均',
+        note: '今の値段を 1 % 上げたときに予測した数が何 % 変わるかの商品の平均. -2 は 2 % 減る. 良し悪しの向きは無い',
+      },
+      elasticity_counted: {
+        label: '弾力性を数えた商品の数',
+        note: '今の値段での予測した数が 0 の商品は数えない',
+      },
+      profit: {
+        label: '選んだ値段での見込みの利益',
+        note: '商品ごとの 1 行あたりの見込みの利益 ((値段 − 原価) × 予測した数) の和',
+      },
+      current_profit: {
+        label: '今の値段での見込みの利益',
+        note: '今の値段での, 商品ごとの 1 行あたりの見込みの利益の和',
+      },
+      profit_gain: {
+        label: '見込みの利益の差',
+        note: '選んだ値段での見込みの利益から今の値段での見込みの利益を引いた値. 0 以上',
+      },
+      profit_ratio: {
+        label: '見込みの利益の比',
+        note: '選んだ値段での見込みの利益を今の値段での見込みの利益で割った値. 100 % は変わらない. 今の利益が 0 以下なら「—」',
+      },
+      changed: { label: '値段を変える商品の数', note: '選んだ変える割合が 0 % でない商品の数' },
+      max_change: {
+        label: '値段を変える幅の上限',
+        note: '変える割合の絶対値の上限 (守る指標). 超える候補は選ばない',
+      },
+    },
+  ],
+]
+
+/** 値段を変える判断の評価の名前か (price_<分割>) */
+export function isPriceEvaluation(evaluation: string): boolean {
+  return PRICE_EVALUATIONS.some(([pattern]) => pattern.test(evaluation))
+}
+
 /** 効果を見積もるの評価の名前か (uplift_<分割>, qini_curve_<分割>) */
 export function isUpliftEvaluation(evaluation: string): boolean {
   return UPLIFT_EVALUATIONS.some(([pattern]) => pattern.test(evaluation))
@@ -405,10 +460,13 @@ export function isAnomalyEvaluation(evaluation: string): boolean {
   return ANOMALY_EVALUATIONS.some(([pattern]) => pattern.test(evaluation))
 }
 
-// 名前の形で引く評価 (異常の検知と効果を見積もる)
-const PATTERN_EVALUATIONS = [...ANOMALY_EVALUATIONS, ...UPLIFT_EVALUATIONS]
+// 名前の形で引く評価 (異常の検知, 効果を見積もる, 値段を変える判断)
+const PATTERN_EVALUATIONS = [...ANOMALY_EVALUATIONS, ...UPLIFT_EVALUATIONS, ...PRICE_EVALUATIONS]
 
-/** 名前の分かる評価の日本語の名前 (異常の検知と効果を見積もるの評価). 知らない評価は null */
+/**
+ * 名前の分かる評価の日本語の名前 (異常の検知, 効果を見積もる, 値段を変える判断の評価).
+ * 知らない評価は null
+ */
 export function evaluationTitle(evaluation: string): string | null {
   return PATTERN_EVALUATIONS.find(([pattern]) => pattern.test(evaluation))?.[1] ?? null
 }

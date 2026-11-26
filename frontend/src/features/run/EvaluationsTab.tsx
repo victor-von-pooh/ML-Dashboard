@@ -11,6 +11,7 @@ import {
   curveColumns,
   evaluationTitle,
   isAnomalyEvaluation,
+  isPriceEvaluation,
   isUpliftEvaluation,
   metricLabel,
 } from '../../lib/metrics'
@@ -21,14 +22,30 @@ import { EvaluationCell } from '../runs/EvaluationColumns'
 const MAX_CURVE_SERIES = 8
 
 /**
+ * % で書く評価の列の書き方. 効果を見積もるの上位の割合 K (0.3 は上位 30 %) と, 値段を
+ * 変える判断の見込みの利益の比 (1.0342 は 103.42 %. 1 に近い値の違いが見えるように小数
+ * 第 2 位まで) と変える幅の上限 (0.1 は 10 %). 他の列は null
+ */
+function percentFormat(evaluation: string, column: string): ((value: number) => string) | null {
+  if (isUpliftEvaluation(evaluation) && column === 'k') {
+    return (value) => `上位 ${formatPercent(value)}`
+  }
+  if (isPriceEvaluation(evaluation) && column === 'profit_ratio') {
+    return (value) => formatPercent(value, { digits: 2 })
+  }
+  if (isPriceEvaluation(evaluation) && column === 'max_change') {
+    return (value) => formatPercent(value)
+  }
+  return null
+}
+
+/**
  * 評価の表. 列は評価の順のまま. 向き (better) のある列は見出しに添え, 名前の分かる列は
  * 日本語の名前を主にして英字の名前を小さく添える. 比べる相手との差の列は, 一覧と同じく
  * 良し悪しを色とアイコンと文字で出す
  */
 function EvaluationTable({ evaluation }: { evaluation: Evaluation }) {
   const numeric = useMemo(() => numericColumns(evaluation), [evaluation])
-  // 効果を見積もるの上位の割合 K は % で書く (0.3 は上位 30 %)
-  const percent = isUpliftEvaluation(evaluation.name)
   return (
     <div className="max-h-[480px] overflow-auto rounded-lg border border-line">
       <table className="w-full text-sm">
@@ -75,6 +92,7 @@ function EvaluationTable({ evaluation }: { evaluation: Evaluation }) {
               {evaluation.columns.map((column) => {
                 const value = row[column]
                 const diff = diffValue(evaluation, column, value)
+                const percent = percentFormat(evaluation.name, column)
                 return (
                   <td
                     key={column}
@@ -86,8 +104,8 @@ function EvaluationTable({ evaluation }: { evaluation: Evaluation }) {
                   >
                     {diff ? (
                       <EvaluationCell value={diff} format={formatCell} />
-                    ) : percent && column === 'k' && typeof value === 'number' ? (
-                      `上位 ${formatPercent(value)}`
+                    ) : percent && typeof value === 'number' ? (
+                      percent(value)
                     ) : (
                       formatCell(value)
                     )}
@@ -350,9 +368,105 @@ function UpliftNote({ config }: { config: Record<string, unknown> | null | undef
   )
 }
 
+/** config の price の項目 (ML-Quest の値段を変える判断の骨組みの candidates, max_change) */
+function priceSettings(config: Record<string, unknown> | null | undefined): {
+  candidates: number[] | null
+  maxChange: number | null
+} {
+  const section = config?.price
+  const values =
+    section && typeof section === 'object' && !Array.isArray(section)
+      ? (section as Record<string, unknown>)
+      : {}
+  // 候補は -1 より大きい有限の数の並びで, 今の値段の 0 を含む (骨組みと ML-Found の
+  // profit_lift の決まり)
+  const list = values.candidates
+  const candidates =
+    Array.isArray(list) &&
+    list.includes(0) &&
+    list.every((value) => typeof value === 'number' && Number.isFinite(value) && value > -1)
+      ? (list as number[])
+      : null
+  const limit = values.max_change
+  const maxChange = typeof limit === 'number' && Number.isFinite(limit) && limit >= 0 ? limit : null
+  return { candidates, maxChange }
+}
+
+/**
+ * 値段を変える判断の評価の読み方と, 変える割合の候補と値段を変える幅の上限 (config の
+ * price. 書いていない項目と読めない項目は出さない)
+ */
+function PriceNote({ config }: { config: Record<string, unknown> | null | undefined }) {
+  const { candidates, maxChange } = priceSettings(config)
+  const items: [string, string][] = []
+  if (candidates) {
+    items.push([
+      '変える割合の候補',
+      candidates.map((value) => formatPercent(value, { signed: true })).join(', '),
+    ])
+  }
+  if (maxChange != null) items.push(['値段を変える幅の上限 (守る指標)', formatPercent(maxChange)])
+  return (
+    <section
+      aria-label="値段を変える判断の評価の読み方"
+      className="rounded-lg border border-line bg-surface-2 px-4 py-3 text-sm"
+    >
+      <h3 className="mb-2 flex items-center gap-1.5 font-semibold text-ink">
+        <Info className="size-4 text-ink-3" aria-hidden />
+        値段を変える判断の評価
+      </h3>
+      {items.length > 0 && (
+        <dl className="mb-2 flex flex-wrap gap-x-6 gap-y-1">
+          {items.map(([label, value]) => (
+            <div key={label} className="flex gap-2">
+              <dt className="text-ink-3">{label}</dt>
+              <dd className="tabular text-ink">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <ul className="list-disc space-y-1 pl-5 text-xs text-ink-2">
+        <li>
+          試しに値段を変えた売れ行きの記録から, 値段を入力に入れて売れた数 (1 行の記録で売れた数)
+          を予測し, 商品ごとに見込みの利益が最も大きい値段を選びます. 今の値段は,
+          商品ごとの記録の値段の中央値 (商品の id の列が無ければ行の値段) です.
+        </li>
+        <li>
+          売れた数の予測の誤差 (mae, rmse) は, 記録の値段での予測と記録の売れた数の差で,
+          売れた数の単位です. どちらも小さいほど良く, rmse は大きく外れた予測を重く数えます.
+        </li>
+        <li>
+          値段の弾力性 (elasticity) は, 今の値段を 1 % 上げたときに予測した売れた数が何 %
+          変わるかの商品の平均です. -2 なら 2 % 減ります. 売れ行きの性質を読む値で,
+          良し悪しの向きはありません.
+        </li>
+        <li>
+          変える割合の候補は今の値段に対する割合で, +5 % は今の値段の 5 % 上げた値段です.
+          値段を変える幅の上限 (守る指標) を超える候補は選びません. 今の値段 (0 %)
+          はいつも選べるので, 選んだ値段の見込みの利益は今の値段より小さくなりません.
+          値段を変える商品の数 (changed) は, 0 % でない割合を選んだ商品の数です.
+        </li>
+        <li>
+          利益は (値段 − 原価) × 売れた数で, 原価の列が無ければ売上です. 見込みの利益 (profit,
+          current_profit) は記録の売れた数でなく予測した売れた数から数えた見込みで, 商品ごとの 1
+          行あたりの利益の和です. 選んだ値段と今の値段の見込みの利益の差 (profit_gain) と比
+          (profit_ratio. 100 % は変わらない) は大きいほど良く, 予測が外れれば見込みも外れるので,
+          売れた数の予測の誤差と一緒に読みます.
+        </li>
+        <li>
+          推論の段階では, 新しい行の値段を今の値段として, 同じ候補と上限で値段を選びます.
+          見込みは試しに値段を変えた記録を前提にするので, 値段を変えた後の利益は,
+          値段を変える商品と変えない商品を無作為に分けて比べると確かめられます.
+        </li>
+      </ul>
+    </section>
+  )
+}
+
 /**
  * データ全体の評価 (ML-Found の evaluations/). 守る指標を先頭に (並びはバックエンド).
- * 異常の検知か効果を見積もるの評価を持つ実験は, 先頭に読み方と, K と件数の上限を出す
+ * 異常の検知, 効果を見積もる, 値段を変える判断の評価を持つ実験は, 先頭に読み方と,
+ * config の K, 件数の上限, 値段の候補と上限を出す
  */
 export function EvaluationsTab({
   evaluations,
@@ -363,10 +477,12 @@ export function EvaluationsTab({
 }) {
   const anomaly = evaluations.some((evaluation) => isAnomalyEvaluation(evaluation.name))
   const uplift = evaluations.some((evaluation) => isUpliftEvaluation(evaluation.name))
+  const price = evaluations.some((evaluation) => isPriceEvaluation(evaluation.name))
   return (
     <div className="space-y-4">
       {anomaly && <AnomalyNote config={config} />}
       {uplift && <UpliftNote config={config} />}
+      {price && <PriceNote config={config} />}
       {evaluations.map((evaluation) => (
         <Card
           key={evaluation.name}
