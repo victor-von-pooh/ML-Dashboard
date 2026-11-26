@@ -448,6 +448,15 @@ describe('EvaluationsTab', () => {
     )
     expect(within(note).queryByText('変える割合の候補')).toBeNull()
     expect(within(note).queryByText('値段を変える幅の上限 (守る指標)')).toBeNull()
+    // 今の値段の 0 を含まない候補は出さない
+    rerender(
+      <EvaluationsTab
+        evaluations={[price]}
+        config={{ price: { candidates: [-0.1, 0.1], max_change: 0.1 } }}
+      />,
+    )
+    expect(within(note).queryByText('変える割合の候補')).toBeNull()
+    expect(within(note).getByText('値段を変える幅の上限 (守る指標)')).toBeInTheDocument()
     // 名前の形の違う評価 (price_items_test) には読み方を出さない
     rerender(<EvaluationsTab evaluations={[{ ...price, name: 'price_items_test' }]} config={{}} />)
     expect(screen.queryByRole('region', { name: '値段を変える判断の評価の読み方' })).toBeNull()

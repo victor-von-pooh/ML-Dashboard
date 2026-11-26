@@ -378,11 +378,12 @@ function priceSettings(config: Record<string, unknown> | null | undefined): {
     section && typeof section === 'object' && !Array.isArray(section)
       ? (section as Record<string, unknown>)
       : {}
-  // 候補は -1 より大きい有限の数の並び (骨組みと ML-Found の profit_lift の決まり)
+  // 候補は -1 より大きい有限の数の並びで, 今の値段の 0 を含む (骨組みと ML-Found の
+  // profit_lift の決まり)
   const list = values.candidates
   const candidates =
     Array.isArray(list) &&
-    list.length > 0 &&
+    list.includes(0) &&
     list.every((value) => typeof value === 'number' && Number.isFinite(value) && value > -1)
       ? (list as number[])
       : null
