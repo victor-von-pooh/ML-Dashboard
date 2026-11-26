@@ -296,12 +296,9 @@ function UpliftNote({ config }: { config: Record<string, unknown> | null | undef
   const top = k != null ? `上位 ${formatPercent(k)}` : null
   // 上位 K 割の効果の差の呼び方 (K が分かれば % で)
   const lift = top ? `${top} の効果の差` : '上位 K 割の効果の差'
-  const items: [string, string][] = [
-    ...(top ? [['上位の割合 K', top] as [string, string]] : []),
-    ...(budget != null
-      ? [['配る数の上限 (守る指標)', `${budget.toLocaleString()} 件`] as [string, string]]
-      : []),
-  ]
+  const items: [string, string][] = []
+  if (top) items.push(['上位の割合 K', top])
+  if (budget != null) items.push(['配る数の上限', `${budget.toLocaleString()} 件`])
   return (
     <section
       aria-label="効果の見積もりの評価の読み方"
@@ -345,8 +342,8 @@ function UpliftNote({ config }: { config: Record<string, unknown> | null | undef
         </li>
         <li>
           推論の段階では, 効果の高い順に配る数の上限まで配ります.
-          効果は無作為に配った記録を前提にした見積もりなので,
-          配った効果は配る相手を無作為に分けて試して確かめます.
+          効果は無作為に配った記録を前提にした見積もりなので, 配った後の効果は,
+          配る相手と配らない相手を無作為に分けて比べると確かめられます.
         </li>
       </ul>
     </section>

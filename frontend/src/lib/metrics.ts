@@ -379,7 +379,7 @@ const UPLIFT_EVALUATIONS: [RegExp, string, Record<string, MetricLabel>][] = [
       },
       uplift_at_k: {
         label: '上位 K 割の効果の差',
-        note: '効果の見積もりの高い順の上位 K 割の行での, 処置の群と対照の群の結果の平均の差. 上位に片方の群が無ければ空',
+        note: '効果の見積もりの高い順の上位 K 割の行での, 処置の群と対照の群の結果の平均の差. 上位に片方の群が無ければ「—」',
       },
       effect: {
         label: '全体の効果の差',

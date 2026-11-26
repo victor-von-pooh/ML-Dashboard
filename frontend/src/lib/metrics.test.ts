@@ -388,7 +388,7 @@ describe('指標の良い向き', () => {
     expect(metricLabel('qini', 'qini_curve_test')?.label).toBe('Qini の値')
     expect(metricLabel('random', 'qini_curve_test')?.label).toBe('でたらめに配る線')
     expect(metricLabel('fraction', 'qini_curve_valid')?.label).toBe('上位の行の割合')
-    // qini_curve_test を uplift_<分割> と, uplift_effects を評価と取り違えない
+    // qini_curve_test を uplift_<分割> と, uplift_test_extra を uplift_<分割> と取り違えない
     expect(metricLabel('treated', 'qini_curve_test')).toBeNull()
     expect(metricLabel('treated', 'uplift_test_extra')).toBeNull()
     // 学習曲線の指標は評価の名前なしでも引く

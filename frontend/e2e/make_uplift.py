@@ -16,13 +16,16 @@ from ml_found import save_evaluation
 K = 0.3
 BUDGET = 500
 
+# 骨組みの結果の種類の名前 (ML-Quest の OUTCOME_NAMES の binary)
+OUTCOME = "起きたか (買ったかの 0 と 1. 効果は確率の差)"
+
 # 骨組みの評価の向き
 BETTER = {"qini": "higher", "uplift_at_k": "higher"}
 
 # 分割の名前と, 骨組みの評価の説明に入る分割の日本語の名前
 SPLITS = {"valid": "検証用", "test": "テスト用"}
 
-# 曲線の点の数 (骨組みは 101 を目安に間引く. 確かめ用なので少なく)
+# 曲線の点の数 (骨組みは 101 を目安に間引く. ここは確かめ用の少ない点数)
 POINTS = 21
 
 # 実験ごとの (評価した重み, エポック, 分割ごとの (行の数, 処置の群の行の数,
@@ -100,8 +103,8 @@ def main(project: Path) -> None:
                 split,
                 description=(
                     f"{title}の行 ({rows} 行. 処置の群 {treated} 行, 対照の"
-                    f"群 {rows - treated} 行) の効果の見積もり (起きたか) の, "
-                    f"Qini の係数 qini と上位 {K * 100:g} % (K = {K}) の"
+                    f"群 {rows - treated} 行) の効果の見積もり ({OUTCOME}) "
+                    f"の, Qini の係数 qini と上位 {K * 100:g} % (K = {K}) の"
                     "処置の群と対照の群の結果の平均の差 uplift_at_k ("
                     f"{weights}). 大きいほど良い. effect は分割の全ての行の"
                     "結果の平均の差 (無作為に配った場合), estimated は見積もり"

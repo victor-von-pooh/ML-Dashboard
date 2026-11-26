@@ -42,7 +42,7 @@ test('評価のタブで, K と配る数の上限と読み方, Qini の曲線と
   const note = page.getByRole('region', { name: '効果の見積もりの評価の読み方' })
   await expect(note.getByText('上位の割合 K', { exact: true })).toBeVisible()
   await expect(note.getByText('上位 30 %', { exact: true })).toBeVisible()
-  await expect(note.getByText('配る数の上限 (守る指標)', { exact: true })).toBeVisible()
+  await expect(note.getByText('配る数の上限', { exact: true })).toBeVisible()
   await expect(note.getByText('500 件')).toBeVisible()
   await expect(note.getByText(/処置の群は処置した行, 対照の群は処置しなかった行/)).toBeVisible()
   await expect(note.getByText(/正解の効果は顧客ごとには見えません/)).toBeVisible()
