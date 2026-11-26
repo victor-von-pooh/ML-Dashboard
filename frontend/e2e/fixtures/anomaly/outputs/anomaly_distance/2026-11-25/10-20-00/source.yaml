@@ -1,0 +1,9 @@
+format_version: 1
+script: train.py
+default: configs/default/train.yaml
+experiment: configs/experiment/train.yaml
+overrides:
+  - experiment.name=anomaly_distance
+  - anomaly.score=distance
+  - trainer.epochs=1
+model_spec: null

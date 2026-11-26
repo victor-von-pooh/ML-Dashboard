@@ -1,0 +1,2 @@
+epoch,valid/precision_at_k,valid/average_precision
+1,0.7,0.7302

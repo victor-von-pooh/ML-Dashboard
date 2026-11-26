@@ -135,3 +135,23 @@ describe('ModelTab の Scheduler の引数', () => {
     expect(screen.queryByRole('table', { name: 'StepLR の引数' })).toBeNull()
   })
 })
+
+describe('ModelTab のパラメータの無いモデル', () => {
+  it('optimizers が空の実験は, Optimizer と Scheduler の欄に使わない旨を出す', () => {
+    render(<ModelTab run={{ ...runWith([], null), optimizer: null }} />)
+    expect(
+      screen.getByText('パラメータの無いモデルのため, Optimizer は使いません.'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('パラメータの無いモデルのため, Scheduler は使いません.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Net()')).toBeInTheDocument()
+    expect(screen.queryByText('ログに記録がありません.')).toBeNull()
+  })
+
+  it('optimizers を書かない実験は, ログに記録が無い旨のままにする', () => {
+    render(<ModelTab run={{ ...runWith(null, null), optimizer: null }} />)
+    expect(screen.getAllByText('ログに記録がありません.')).toHaveLength(2)
+    expect(screen.queryByText(/パラメータの無いモデル/)).toBeNull()
+  })
+})

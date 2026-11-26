@@ -4,11 +4,13 @@ import { expect, test } from '@playwright/test'
 
 // e2e/serve.sh が写し, ML-Quest の異常の検知の骨組みと同じ形の評価を
 // e2e/make_anomaly.py で書いた確かめ用のプロジェクト (自己符号化器の実験と,
-// run.json と history.csv とモデルの定義の記録が無く推論の一式を持つ, 学習しない
-// 距離に基づく度合いの実験)
+// モデルの定義の記録が無く推論の一式を持つ, 学習するパラメータの無い距離に基づく
+// 度合いの 2 つの形の実験. ML-Found の fit で残した形と, run.json と history.csv
+// の無い形)
 const ANOMALY_DIR = path.resolve(import.meta.dirname, '.work', 'anomaly')
 const AUTOENCODER = 'anomaly_autoencoder/2026-11-25/10-00-00'
 const DISTANCE = 'anomaly_distance/2026-11-25/10-10-00'
+const FITTED = 'anomaly_distance/2026-11-25/10-20-00'
 
 let projectId = ''
 
@@ -80,9 +82,11 @@ test('自己符号化器と距離に基づく度合いを, 一覧と比較で上
   await expect(page.getByRole('row', { name: DISTANCE })).toContainText('0.741')
   await expect(page.getByRole('row', { name: AUTOENCODER })).toContainText('0.664')
 
+  await expect(page.getByRole('row', { name: FITTED })).toContainText('0.741')
+
   const checkboxes = page.getByRole('checkbox', { name: /を比較に選ぶ/ })
-  await expect(checkboxes).toHaveCount(2)
-  for (const index of [0, 1]) {
+  await expect(checkboxes).toHaveCount(3)
+  for (const index of [0, 1, 2]) {
     await checkboxes.nth(index).click()
     await expect(checkboxes.nth(index)).toBeChecked()
   }
@@ -106,4 +110,42 @@ test('モデルの定義が無く推論の一式を持つ実験に, 実験の一
   await expect(page.getByText(/model\.spec は変わりません/)).toHaveCount(0)
   await expect(page.getByRole('button', { name: /実験のディレクトリの場所/ })).toBeVisible()
   await expect(page.locator('code').filter({ hasText: new RegExp(`${DISTANCE}$`) })).toBeVisible()
+})
+
+test('ML-Found の fit で残したパラメータの無いモデルの実験を, 他の実験と同じ完了した実験として出す', async ({
+  page,
+}) => {
+  // 一覧: 状態は完了で「完了」の絞り込みに入り, エポックとベストが出る
+  await page.goto(`/projects/${projectId}`)
+  const row = page.getByRole('row', { name: FITTED })
+  await expect(row).toContainText('完了')
+  await expect(row).toContainText('1 / 1')
+  await expect(row).toContainText('0.7302')
+  await page.getByRole('button', { name: /^完了/ }).click()
+  await expect(page.getByRole('row', { name: FITTED })).toBeVisible()
+  await expect(page.getByRole('row', { name: DISTANCE })).toHaveCount(0)
+
+  // 詳細: 学習曲線は検証の指標だけで, 学習の記録が無い旨は出さない
+  await page.goto(`/projects/${projectId}/runs/${FITTED}`)
+  await expect(page.getByText('完了', { exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'precision_at_k' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'average_precision' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'lr' })).toHaveCount(0)
+  await expect(
+    page.getByText(/学習の記録 \(run\.json と history\.csv\) が無い実験です/),
+  ).toHaveCount(0)
+
+  // 次の段階への案内は「実験の一覧から登録」だけ
+  await page.getByText('この実験を推論の段階で使うには').click()
+  await expect(page.getByText(/ML-Provide の「実験の一覧から登録」で登録できます/)).toBeVisible()
+  await expect(page.getByText(/学習の結果から作る/)).toHaveCount(0)
+
+  // モデルのタブ: Optimizer と Scheduler は使わない旨
+  await page.getByRole('tab', { name: /モデル/ }).click()
+  await expect(
+    page.getByText('パラメータの無いモデルのため, Optimizer は使いません.'),
+  ).toBeVisible()
+  await expect(
+    page.getByText('パラメータの無いモデルのため, Scheduler は使いません.'),
+  ).toBeVisible()
 })

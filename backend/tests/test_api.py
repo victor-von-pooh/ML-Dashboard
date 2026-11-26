@@ -6,6 +6,8 @@ from fastapi.testclient import TestClient
 
 from ml_dashboard.core.runs import optimizers_from_config
 
+from conftest import write_run
+
 
 def register(client: TestClient, project_dir: Path) -> str:
     """
@@ -560,6 +562,80 @@ def test_optimizers_from_config() -> None:
         (item.name, item.optimizer, item.scheduler) for item in optimizers
     ] == [("generator", "Adam", "StepLR"), ("discriminator", "SGD", None)]
     assert optimizers_from_config({"optimizer": {"name": "Adam"}}) is None
+
+
+def test_run_without_parameters(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    パラメータの無いモデルの実験 (run.json の optimizers が空のリスト,
+    history.csv に train/ と lr の列が無い) を, 他の実験と同じ完了した
+    実験として読み, config の Optimizer で補わないことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # ML-Found の fit で残した形 (ログは無い)
+    run_dir = write_run(
+        project_dir, "12-00-00", log="",
+        history="epoch,valid/precision_at_k,valid/average_precision\n"
+        "1,0.7,0.7302\n"
+    )
+    (run_dir / "config.yaml").write_text(
+        "experiment:\n  name: demo\ntrainer:\n  epochs: 1\n"
+        "  monitor: valid/average_precision\n  mode: max\n"
+        "optimizers:\n  main:\n    name: Adam\n"
+    )
+    (run_dir / "run.json").write_text(json.dumps({
+        "status": "completed", "planned_epochs": 1, "completed_epochs": 1,
+        "monitor": "valid/average_precision", "mode": "max",
+        "best_epoch": 1, "best_value": 0.7302, "duration_sec": 0.21,
+        "final_weights": "best", "optimizers": []
+    }))
+    project_id = register(client, project_dir)
+    base = f"/api/projects/{project_id}/runs/demo/2026-11-08/12-00-00"
+
+    # 状態, エポック, ベスト, 学習時間は他の実験と同じ
+    run = client.get(f"/api/projects/{project_id}/runs").json()[0]
+    assert run["id"] == "demo/2026-11-08/12-00-00"
+    assert run["status"] == "completed"
+    assert run["epochs"] == 1
+    assert run["best"] == {
+        "monitor": "valid/average_precision", "mode": "max", "epoch": 1,
+        "value": 0.7302
+    }
+    assert run["duration_sec"] == 0.21
+
+    # 指標の推移は検証の列だけ
+    history = client.get(f"{base}/history").json()
+    assert set(history["columns"]) == {
+        "epoch", "valid/precision_at_k", "valid/average_precision"
+    }
+
+    # 空の optimizers は config で補わない
+    assert client.get(base).json()["optimizers"] == []
+
+    # optimizers を書かない版の ML-Found の実験は config で補う
+    (run_dir / "run.json").write_text('{"status": "completed"}')
+    optimizers = client.get(base).json()["optimizers"]
+    assert [(item["name"], item["optimizer"]) for item in optimizers] == [
+        ("main", "Adam")
+    ]
+
+    # 全ての行の形が違う場合も, 書いていない場合と同じく config で補う
+    (run_dir / "run.json").write_text(json.dumps({
+        "status": "completed", "optimizers": [{"name": 1}]
+    }))
+    optimizers = client.get(base).json()["optimizers"]
+    assert [item["name"] for item in optimizers] == ["main"]
 
 
 def test_move_project(

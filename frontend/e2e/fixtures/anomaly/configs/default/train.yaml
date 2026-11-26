@@ -1,6 +1,8 @@
 # 異常の検知 (ML-Quest の異常の検知の骨組み) の画面の確かめ用のプロジェクト. 学習は
-# せず, 置いた実験を見る. 自己符号化器の実験と, 学習しない距離に基づく度合いの実験
-# (run.json と history.csv が無く, モデルの定義の記録も無い) を比べる
+# せず, 置いた実験を見る. 自己符号化器の実験と, 学習するパラメータの無い距離に基づく
+# 度合いの 2 つの形の実験 (モデルの定義の記録が無い. ML-Found の fit で残した,
+# optimizers が空の run.json と train/ と lr の列の無い history.csv を持つものと,
+# run.json と history.csv の無いもの) を比べる
 experiment:
   name: anomaly_autoencoder
   output_dir: outputs
