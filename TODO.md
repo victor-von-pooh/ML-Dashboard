@@ -5,11 +5,7 @@
 
 ## 優先度 高
 
-### 値段を変える判断の実験で, 次の段階への案内を通しのテストで確かめる
-- 何を: 値段を変える判断の確かめ用の実験 (`frontend/e2e/fixtures/price/` の `units_price`. 推論の一式の印 `inference/inference.yaml` を持つ) を開き, 「この実験を推論の段階で使うには」の案内に ML-Provide の「実験の一覧から登録」で登録できる旨が出ることを, `frontend/e2e/price.spec.ts` で確かめる
-- なぜ: ML-Quest の値段を変える判断の骨組みは実験の中に値段の一式 (`inference/`) を作り, 推論の段階に渡す. 今の `price.spec.ts` は学習曲線, 評価のタブ, 一覧と比較だけを確かめ, 異常の検知の実験 (`frontend/e2e/anomaly.spec.ts`) のように次の段階への案内を見ていないため
-- 終わりの条件: `price.spec.ts` で, `units_price` の実験の案内に「実験の一覧から登録」で登録できる旨と実験のディレクトリの場所が出ることを確かめる
-- つながり: docs/DESIGN.md の「13. テスト」の通し, ML-Quest の docs/DESIGN.md の「値段を変える判断の骨組み」の推論, ML-Inference の docs/DESIGN.md の「値段の一式」, ML-Provide の docs/DESIGN.md の「10. 実験の一覧」(「実験の一覧から登録」の本体)
+無し
 
 ## 優先度 中
 
