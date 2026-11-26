@@ -2353,6 +2353,11 @@ export interface components {
             params: {
                 [key: string]: boolean | number | string | null;
             };
+            /**
+             * Evaluations
+             * @default []
+             */
+            evaluations: components["schemas"]["EvaluationValue"][];
         };
         /** RunPolicy */
         RunPolicy: {

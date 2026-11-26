@@ -5545,6 +5545,14 @@
             },
             "type": "object",
             "title": "Params"
+          },
+          "evaluations": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationValue"
+            },
+            "type": "array",
+            "title": "Evaluations",
+            "default": []
           }
         },
         "type": "object",

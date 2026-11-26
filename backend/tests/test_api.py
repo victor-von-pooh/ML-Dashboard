@@ -435,6 +435,24 @@ def test_params(client: TestClient, project_dir: Path) -> None:
     assert run["params"]["trainer.flag"] is True
     assert run["params"]["trainer.none"] is None
     assert run["best"]["value"] == 0.9
+    assert run["evaluations"] == []
+
+    # テスト用の 1 行の評価の表があれば, 一覧と比較と同じ値と向き
+    evaluations = run_dir / "evaluations"
+    evaluations.mkdir()
+    (evaluations / "group_stability.json").write_text(json.dumps({
+        "name": "group_stability", "split": "all", "kind": "table",
+        "x": None, "columns": ["k", "ari"], "rows": [{"k": 3, "ari": 0.9}],
+        "description": None, "baseline": None, "guard": False,
+        "better": {"ari": "higher"}, "epoch": None,
+        "created_at": "2026-11-08T10:00:00+00:00",
+    }), encoding="utf-8")
+    params = client.get(f"/api/projects/{project_id}/params").json()
+    run = next(item for item in params if item["id"].endswith("10-00-00"))
+    found = {f"{item['evaluation']}:{item['column']}": item
+             for item in run["evaluations"]}
+    assert found["group_stability:ari"]["value"] == 0.9
+    assert found["group_stability:ari"]["better"] == "higher"
 
 
 def test_flatten_params_edge_cases() -> None:

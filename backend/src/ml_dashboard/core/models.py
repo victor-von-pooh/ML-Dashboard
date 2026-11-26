@@ -360,6 +360,9 @@ class RunParams(BaseModel):
     best: Optional[BestValue]
     final_metrics: dict[str, Optional[float]]
     params: dict[str, ParamValue]
+    # 一覧と比較の評価の値 (テスト用と全ての行の 1 行の表の数の列. 向きと
+    # 比べる相手も一覧と同じ). evaluations/ の無い実験は空
+    evaluations: list[EvaluationValue] = []
 
 
 class TaskOrigin(BaseModel):
