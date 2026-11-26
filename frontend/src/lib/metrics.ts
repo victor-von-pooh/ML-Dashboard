@@ -440,6 +440,71 @@ const PRICE_EVALUATIONS: [RegExp, string, Record<string, MetricLabel>][] = [
   ],
 ]
 
+// 時間をまたぐ量の判断 (ML-Quest の時間をまたぐ量の判断の骨組み) の評価の列の日本語の名前.
+// 名前の後ろの分割は _ を含まない名前 (demand_levels_<分割> は demand_<分割> の形に当たらない)
+const DEMAND_EVALUATIONS: [RegExp, string, Record<string, MetricLabel>][] = [
+  [
+    /^demand_levels_[^_]+$/,
+    '水準ごとの分位点の損失',
+    {
+      level: {
+        label: '水準',
+        note: '学んだ分位点の水準. 0.9 は需要がこの数を超えない見込みが 90 %',
+      },
+      loss: {
+        label: '分位点の損失',
+        note: 'この水準の分位点の予測と先の期間の需要の分位点の損失 (pinball loss) の行の平均',
+      },
+    },
+  ],
+  [
+    /^demand_[^_]+$/,
+    '需要の予測の誤差と発注の数の損',
+    {
+      rows: { label: '行の数', note: '発注を決める日の行 (商品と日) の数' },
+      products: { label: '商品の数', note: null },
+      mae: {
+        label: '需要の平均絶対誤差',
+        note: '0.5 の分位点の予測と先の期間の需要の差の絶対値の平均 (需要の単位)',
+      },
+      pinball_loss: {
+        label: '分位点の損失の平均',
+        note: '学んだ全ての水準の分位点の損失 (pinball loss) の平均. 水準ごとの値は demand_levels の表',
+      },
+      order_cost: {
+        label: '選んだ発注の数での損',
+        note: '水準 τ の分位点から在庫を引いた発注の数での, 実際の需要での損の和 (品切れの損 × 足りない数 + 売れ残りの損 × 余った数)',
+      },
+      baseline_cost: {
+        label: '前の期間と同じ数の発注での損',
+        note: '前の期間の需要と同じ数 (在庫を引いた数) を発注したときの, 実際の需要での損の和',
+      },
+      order_cost_saving: {
+        label: '発注の数の損の差',
+        note: '前の期間と同じ数の発注での損から, 選んだ発注の数での損を引いた値. 0 より大きければ損が減る',
+      },
+      order_cost_ratio: {
+        label: '発注の数の損の比',
+        note: '選んだ発注の数での損を前の期間と同じ数の発注での損で割った値. 100 % は変わらない. 前の期間の損が 0 なら「—」',
+      },
+      capped: {
+        label: '上限に当たった行の数',
+        note: '発注の数の上限 (守る指標) を超える数を上限で切った行の数',
+      },
+      level: {
+        label: '発注に使う水準 τ',
+        note: '品切れの損 / (品切れの損 + 売れ残りの損)',
+      },
+      max_order: { label: '発注の数の上限', note: '1 回の発注の数の上限 (守る指標)' },
+    },
+  ],
+]
+
+/** 時間をまたぐ量の判断の評価の名前か (demand_<分割>, demand_levels_<分割>) */
+export function isDemandEvaluation(evaluation: string): boolean {
+  return DEMAND_EVALUATIONS.some(([pattern]) => pattern.test(evaluation))
+}
+
 /** 値段を変える判断の評価の名前か (price_<分割>) */
 export function isPriceEvaluation(evaluation: string): boolean {
   return PRICE_EVALUATIONS.some(([pattern]) => pattern.test(evaluation))
@@ -460,12 +525,17 @@ export function isAnomalyEvaluation(evaluation: string): boolean {
   return ANOMALY_EVALUATIONS.some(([pattern]) => pattern.test(evaluation))
 }
 
-// 名前の形で引く評価 (異常の検知, 効果を見積もる, 値段を変える判断)
-const PATTERN_EVALUATIONS = [...ANOMALY_EVALUATIONS, ...UPLIFT_EVALUATIONS, ...PRICE_EVALUATIONS]
+// 名前の形で引く評価 (異常の検知, 効果を見積もる, 値段を変える判断, 時間をまたぐ量の判断)
+const PATTERN_EVALUATIONS = [
+  ...ANOMALY_EVALUATIONS,
+  ...UPLIFT_EVALUATIONS,
+  ...PRICE_EVALUATIONS,
+  ...DEMAND_EVALUATIONS,
+]
 
 /**
- * 名前の分かる評価の日本語の名前 (異常の検知, 効果を見積もる, 値段を変える判断の評価).
- * 知らない評価は null
+ * 名前の分かる評価の日本語の名前 (異常の検知, 効果を見積もる, 値段を変える判断, 時間を
+ * またぐ量の判断の評価). 知らない評価は null
  */
 export function evaluationTitle(evaluation: string): string | null {
   return PATTERN_EVALUATIONS.find(([pattern]) => pattern.test(evaluation))?.[1] ?? null

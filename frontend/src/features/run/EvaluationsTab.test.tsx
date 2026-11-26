@@ -1,5 +1,6 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { Evaluation } from '../../api/client'
 import { EvaluationsTab } from './EvaluationsTab'
@@ -460,5 +461,194 @@ describe('EvaluationsTab', () => {
     // 名前の形の違う評価 (price_items_test) には読み方を出さない
     rerender(<EvaluationsTab evaluations={[{ ...price, name: 'price_items_test' }]} config={{}} />)
     expect(screen.queryByRole('region', { name: '値段を変える判断の評価の読み方' })).toBeNull()
+  })
+
+  describe('時間をまたぐ量の判断', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals()
+    })
+
+    // ML-Quest の時間をまたぐ量の判断の骨組みが書く evaluations/demand_test.json と
+    // evaluations/demand_levels_test.json の形
+    const demand: Evaluation = {
+      ...table,
+      name: 'demand_test',
+      columns: [
+        'rows',
+        'products',
+        'mae',
+        'pinball_loss',
+        'order_cost',
+        'baseline_cost',
+        'order_cost_saving',
+        'order_cost_ratio',
+        'capped',
+        'level',
+        'max_order',
+      ],
+      rows: [
+        {
+          rows: 480,
+          products: 24,
+          mae: 3.42,
+          pinball_loss: 1.18,
+          order_cost: 912.5,
+          baseline_cost: 1188,
+          order_cost_saving: 275.5,
+          order_cost_ratio: 0.76809,
+          capped: 3,
+          level: 0.8,
+          max_order: 60,
+        },
+      ],
+      description: null,
+      baseline: null,
+      guard: false,
+      better: {
+        mae: 'lower',
+        pinball_loss: 'lower',
+        order_cost: 'lower',
+        baseline_cost: 'lower',
+        order_cost_saving: 'higher',
+        order_cost_ratio: 'lower',
+      },
+      total_rows: 1,
+    }
+    const levels: Evaluation = {
+      ...demand,
+      name: 'demand_levels_test',
+      columns: ['level', 'loss'],
+      rows: [
+        { level: 0.1, loss: 0.71 },
+        { level: 0.5, loss: 1.52 },
+        { level: 0.8, loss: 1.31 },
+      ],
+      better: { loss: 'lower' },
+      total_rows: 3,
+    }
+    const config = {
+      demand: { levels: [0.1, 0.5, 0.8] },
+      order: { shortage_cost: 4, holding_cost: 1, max_order: 60 },
+    }
+
+    it('先頭に読み方と水準, τ, 損, 上限を出し, 日本語の名前と向きと損の比 (%) を書く', () => {
+      render(<EvaluationsTab evaluations={[demand, levels]} config={config} />)
+      const note = screen.getByRole('region', { name: '時間をまたぐ量の判断の評価の読み方' })
+      expect(within(note).getByText('0.1, 0.5, 0.8')).toBeInTheDocument()
+      expect(within(note).getByText('発注に使う水準 τ').nextSibling).toHaveTextContent('0.8')
+      expect(within(note).getByText('品切れの損 (1 つ足りないとき)').nextSibling).toHaveTextContent(
+        '4',
+      )
+      expect(within(note).getByText('売れ残りの損 (1 つ余ったとき)').nextSibling).toHaveTextContent(
+        '1',
+      )
+      expect(within(note).getByText('発注の数の上限 (守る指標)').nextSibling).toHaveTextContent(
+        '60',
+      )
+      expect(within(note).getByText(/売れる数を在庫の数 \+ 発注の数として/)).toBeInTheDocument()
+      expect(screen.getByText('需要の予測の誤差と発注の数の損')).toBeInTheDocument()
+      expect(screen.getByText('水準ごとの分位点の損失')).toBeInTheDocument()
+      const [summary, perLevel] = screen.getAllByRole('table')
+      expect(
+        within(summary!)
+          .getAllByRole('columnheader')
+          .map((cell) => cell.textContent),
+      ).toEqual([
+        '行の数rows',
+        '商品の数products',
+        '需要の平均絶対誤差mae (小さいほど良い)',
+        '分位点の損失の平均pinball_loss (小さいほど良い)',
+        '選んだ発注の数での損order_cost (小さいほど良い)',
+        '前の期間と同じ数の発注での損baseline_cost (小さいほど良い)',
+        '発注の数の損の差order_cost_saving (大きいほど良い)',
+        '発注の数の損の比order_cost_ratio (小さいほど良い)',
+        '上限に当たった行の数capped',
+        '発注に使う水準 τlevel',
+        '発注の数の上限max_order',
+      ])
+      expect(
+        within(within(summary!).getAllByRole('row')[1]!)
+          .getAllByRole('cell')
+          .map((cell) => cell.textContent),
+      ).toEqual([
+        '480',
+        '24',
+        '3.420',
+        '1.180',
+        '912.5',
+        '1188',
+        '275.5',
+        '76.81 %',
+        '3',
+        '0.8000',
+        '60',
+      ])
+      expect(
+        within(perLevel!)
+          .getAllByRole('columnheader')
+          .map((cell) => cell.textContent),
+      ).toEqual(['水準level', '分位点の損失loss (小さいほど良い)'])
+      expect(within(perLevel!).getAllByRole('row')).toHaveLength(4)
+    })
+
+    it('demand_orders.csv があれば商品ごとの発注の数の表を出す', async () => {
+      const fetchMock = vi.fn(
+        async () =>
+          new Response(
+            'item,date,split,stock,quantile,order,previous,demand\nA,2026-03-01,test,2,11.4,9,10,12\n',
+            {
+              status: 200,
+            },
+          ),
+      )
+      vi.stubGlobal('fetch', fetchMock)
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      render(
+        <QueryClientProvider client={client}>
+          <EvaluationsTab
+            evaluations={[demand]}
+            config={config}
+            files={[{ path: 'demand_orders.csv', size: 120, kind: 'text', downloadable: true }]}
+            projectId="p"
+            runId="demand/2026-03-01/10-00-00"
+          />
+        </QueryClientProvider>,
+      )
+      const orders = await screen.findByRole('table', { name: '商品ごとの発注の数' })
+      expect(within(orders).getAllByRole('columnheader')[5]).toHaveTextContent('order')
+      expect(within(orders).getAllByRole('row')[1]).toHaveTextContent('9')
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/projects/p/runs/demand/2026-03-01/10-00-00/files/demand_orders.csv',
+      )
+      expect(
+        screen.getByRole('link', { name: /demand_orders\.csv をダウンロード/ }),
+      ).toBeInTheDocument()
+    })
+
+    it('config が読めなければ読み方だけを出し, 表のファイルが無ければ表を出さない', () => {
+      const { rerender } = render(
+        <EvaluationsTab
+          evaluations={[demand]}
+          config={{ demand: { levels: [0.5, 0.1] }, order: { shortage_cost: 0, max_order: -1 } }}
+        />,
+      )
+      const note = screen.getByRole('region', { name: '時間をまたぐ量の判断の評価の読み方' })
+      expect(within(note).queryByText('学んだ水準')).toBeNull()
+      expect(within(note).queryByText('発注に使う水準 τ')).toBeNull()
+      expect(within(note).queryByText('発注の数の上限 (守る指標)')).toBeNull()
+      expect(screen.queryByText('商品ごとの発注の数')).toBeNull()
+      // 前の期間の損が 0 で比の無い欄は「—」
+      rerender(
+        <EvaluationsTab
+          evaluations={[{ ...demand, rows: [{ ...demand.rows[0], order_cost_ratio: null }] }]}
+        />,
+      )
+      expect(within(screen.getAllByRole('row')[1]!).getAllByRole('cell')[7]).toHaveTextContent('—')
+      // 名前の形の違う評価 (demand_items_test) には読み方を出さない
+      rerender(<EvaluationsTab evaluations={[{ ...demand, name: 'demand_items_test' }]} />)
+      expect(
+        screen.queryByRole('region', { name: '時間をまたぐ量の判断の評価の読み方' }),
+      ).toBeNull()
+    })
   })
 })

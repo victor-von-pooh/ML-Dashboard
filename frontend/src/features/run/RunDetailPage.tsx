@@ -359,7 +359,13 @@ export function RunDetailPage() {
         {/* 読み直しに失敗しても, 前に読めた中身を出し続ける */}
         {tab === 'evaluations' &&
           (results.data ? (
-            <EvaluationsTab evaluations={evaluations} config={data.config} />
+            <EvaluationsTab
+              evaluations={evaluations}
+              config={data.config}
+              files={data.files}
+              projectId={projectId}
+              runId={data.id}
+            />
           ) : results.error ? (
             <ErrorBox error={results.error} />
           ) : (

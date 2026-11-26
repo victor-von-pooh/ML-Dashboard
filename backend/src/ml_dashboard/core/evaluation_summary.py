@@ -51,12 +51,12 @@ HIGHER_BETTER = frozenset({
     "ssim", "ndcg", "mrr", "hit", "hits", "kappa", "mcc",
     "reward", "return", "success", "coverage", "silhouette", "ari", "qini",
 })
-# 向きを打ち消すか変える語 (neg_log_loss は大きいほど良く, accuracy_gap は
-# 小さいほど良い). 含む名前は名前の語では向きを決めない
+# 向きを打ち消すか変える語 (neg_log_loss と order_cost_saving は大きいほど
+# 良く, accuracy_gap は小さいほど良い). 含む名前は名前の語では向きを決めない
 MODIFIER_WORDS = frozenset({
     "neg", "negative", "inv", "inverse", "gap", "drop", "delta",
     "std", "var", "variance", "reduction", "improvement", "increase",
-    "decrease", "gain",
+    "decrease", "gain", "saving", "savings",
 })
 # 差を 0 とみなす幅 (計算の誤差で落ちたとしないため)
 DIFF_TOLERANCE = 1e-12

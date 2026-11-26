@@ -13,6 +13,7 @@ import {
   guessDirection,
   evaluationTitle,
   isAnomalyEvaluation,
+  isDemandEvaluation,
   isPriceEvaluation,
   isUpliftEvaluation,
   metricLabel,
@@ -426,6 +427,26 @@ describe('指標の良い向き', () => {
       guessed: false,
     })
     expect(guessDirection('valid/mae')).toBe('min')
+  })
+
+  it('時間をまたぐ量の判断の評価は, 名前の形 (demand_<分割>, demand_levels_<分割>) で列の日本語の名前を引く', () => {
+    expect(metricLabel('mae', 'demand_test')?.label).toBe('需要の平均絶対誤差')
+    expect(metricLabel('pinball_loss', 'demand_valid')?.label).toBe('分位点の損失の平均')
+    expect(metricLabel('order_cost', 'demand_test')?.label).toBe('選んだ発注の数での損')
+    expect(metricLabel('order_cost_saving', 'demand_test')?.label).toBe('発注の数の損の差')
+    expect(metricNote('order_cost_ratio', 'demand_test')).toMatch(/100 % は変わらない/)
+    expect(metricLabel('capped', 'demand_test')?.label).toBe('上限に当たった行の数')
+    expect(metricLabel('loss', 'demand_levels_test')?.label).toBe('分位点の損失')
+    // demand_levels_test は demand_<分割> の列の名前を引かない
+    expect(metricLabel('mae', 'demand_levels_test')).toBeNull()
+    expect(metricLabel('mae', 'demand_items_test')).toBeNull()
+    expect(evaluationTitle('demand_test')).toBe('需要の予測の誤差と発注の数の損')
+    expect(evaluationTitle('demand_levels_valid')).toBe('水準ごとの分位点の損失')
+    expect(isDemandEvaluation('demand_levels_test')).toBe(true)
+    expect(isDemandEvaluation('price_test')).toBe(false)
+    expect(isPriceEvaluation('demand_test')).toBe(false)
+    // 学習曲線の valid/pinball_loss は名前から小さいほど良い
+    expect(guessDirection('valid/pinball_loss')).toBe('min')
   })
 
   it('効果を見積もるの Qini の係数は名前から大きいほど良いと推測する', () => {

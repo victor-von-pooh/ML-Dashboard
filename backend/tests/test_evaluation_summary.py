@@ -530,6 +530,69 @@ def test_price_values(client: TestClient, project_dir: Path) -> None:
         assert metric_better(name, "valid/mae", "min") is None
 
 
+def test_demand_values(client: TestClient, project_dir: Path) -> None:
+    """
+    ML-Quest の時間をまたぐ量の判断の骨組みの形の, テスト用の需要の誤差と
+    発注の数の損の比べ (1 行の表) を一覧が返し, 書いた向き (better) を使い,
+    水準ごとの分位点の損失 (水準の数の行の表) と検証用の評価を列にしない
+    ことと, better が無くても損の差 (order_cost_saving) を名前から小さい
+    ほど良いとしないことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 骨組みの evaluations/demand_<分割>.json と
+    # evaluations/demand_levels_<分割>.json と同じ列
+    run_dir = project_dir / "outputs" / EVALUATED_RUN
+    row = {"rows": 480, "products": 24, "mae": 3.42, "pinball_loss": 1.18,
+           "order_cost": 912.5, "baseline_cost": 1188.0,
+           "order_cost_saving": 275.5, "order_cost_ratio": 0.7681,
+           "capped": 3, "level": 0.8, "max_order": 60.0}
+    better = {"mae": "lower", "pinball_loss": "lower",
+              "order_cost": "lower", "baseline_cost": "lower",
+              "order_cost_saving": "higher", "order_cost_ratio": "lower"}
+    write_evaluation(run_dir, "demand_test", [row], baseline=None,
+                     better=better)
+    write_evaluation(run_dir, "demand_valid", [row], split="valid",
+                     baseline=None, better=better)
+    levels = [{"level": level, "loss": loss}
+              for level, loss in ((0.1, 0.71), (0.5, 1.52), (0.8, 1.31))]
+    write_evaluation(run_dir, "demand_levels_test", levels, baseline=None,
+                     better={"loss": "lower"})
+    evaluations = list_summaries(client, project_dir)[EVALUATED_RUN]
+    values = [
+        (item["evaluation"], item["column"], item["better"])
+        for item in evaluations["values"]
+    ]
+    assert values == [
+        ("demand_test", "rows", None),
+        ("demand_test", "products", None),
+        ("demand_test", "mae", "lower"),
+        ("demand_test", "pinball_loss", "lower"),
+        ("demand_test", "order_cost", "lower"),
+        ("demand_test", "baseline_cost", "lower"),
+        ("demand_test", "order_cost_saving", "higher"),
+        ("demand_test", "order_cost_ratio", "lower"),
+        ("demand_test", "capped", None),
+        ("demand_test", "level", None),
+        ("demand_test", "max_order", None),
+    ]
+
+    # 向きを書かない形では, 損の差は saving の語を含むので向きを決めない
+    assert metric_better("order_cost_saving", "valid/loss", "min") is None
+    assert metric_better("pinball_loss", "valid/loss", "min") == "lower"
+    assert metric_better("order_cost", "valid/loss", "min") == "lower"
+    assert metric_better("capped", "valid/loss", "min") is None
+
+
 def test_all_split_guard_and_order(
     client: TestClient, project_dir: Path
 ) -> None:
