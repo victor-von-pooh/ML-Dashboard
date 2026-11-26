@@ -1,0 +1,9 @@
+experiment.name:
+  default: anomaly_autoencoder
+  experiment: anomaly_distance
+trainer.epochs:
+  default: 3
+  experiment: 1
+anomaly.score:
+  default: autoencoder
+  experiment: distance

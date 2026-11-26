@@ -1367,15 +1367,34 @@ class RunData:
             ),
             model_summary=summary_rows,
             model_summary_rows=summary_total,
-            optimizers=(
-                read_optimizers(self.status)
-                or optimizers_from_config(self.config)
-            ),
+            optimizers=self.optimizers(),
             monitor=self.monitor(),
             notices=self.notices()
         )
 
         return detail
+
+    def optimizers(self) -> Optional[list[OptimizerInfo]]:
+        """
+        Optimizer ごとの情報を, run.json の optimizers から決めるメソッド
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        ----------
+        optimizers: Optional[list[OptimizerInfo]]
+            Optimizer ごとの情報. パラメータの無いモデル (optimizers が空の
+            リスト) は空, run.json に書いていない版の ML-Found の実験は
+            config の optimizers から作ったもの
+        """
+        # config の Optimizer を使わないパラメータの無いモデルは, 補わずに空
+        optimizers = read_optimizers(self.status)
+        if optimizers is None:
+            optimizers = optimizers_from_config(self.config)
+
+        return optimizers
 
 
 def read_optimizers(
@@ -1393,14 +1412,17 @@ def read_optimizers(
     Returns
     ----------
     optimizers: Optional[list[OptimizerInfo]]
-        Optimizer ごとの情報 (形の違う行は除く), 書いていない場合と
-        リストでない場合は None
+        Optimizer ごとの情報 (形の違う行は除く). 空のリスト (パラメータの
+        無いモデル) は空, 書いていない場合, リストでない場合, 全ての行の
+        形が違う場合は None
     """
     # 形の違う行 (手で書き換えたものなど) だけを除外. 辞書でない
     # Scheduler の引数は行ごと捨てず, 引数だけを無いものとする
     raw = status.get("optimizers")
     if not isinstance(raw, list):
         return None
+    if not raw:
+        return []
     optimizers = []
     for item in raw:
         if isinstance(item, dict) and not isinstance(
@@ -1412,7 +1434,7 @@ def read_optimizers(
         except ValidationError:
             continue
 
-    return optimizers
+    return optimizers if optimizers else None
 
 
 def optimizers_from_config(

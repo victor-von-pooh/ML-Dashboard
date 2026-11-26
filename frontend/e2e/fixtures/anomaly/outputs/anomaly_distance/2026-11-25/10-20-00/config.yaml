@@ -1,0 +1,18 @@
+experiment:
+  name: anomaly_distance
+  output_dir: outputs
+  seed: 0
+  device: cpu
+trainer:
+  epochs: 1
+  monitor: valid/average_precision
+  mode: max
+data:
+  dataset: outputs/dataset
+  source: null
+  batch_size: 128
+anomaly:
+  score: distance
+  k: 10
+  capacity: 20
+  ridge: 0.001
