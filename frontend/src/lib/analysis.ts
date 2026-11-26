@@ -114,7 +114,9 @@ export function metricOptions(runs: RunParams[]): MetricOption[] {
       .map((key) => ({ id: `final:${key}`, label: `最終 ${key}` })),
     ...[...evaluations].sort().map((key) => {
       // 日本語の名前は一覧と比較と同じ (知らない列は名前のまま)
-      const [evaluation = '', column = ''] = key.split(':')
+      // 評価の名前は : を含まないので, 最初の : で分ける (列は : を含みうる)
+      const evaluation = key.slice(0, key.indexOf(':'))
+      const column = key.slice(key.indexOf(':') + 1)
       const named = metricLabel(column, evaluation)?.label
       return {
         id: `${EVALUATION_PREFIX}${key}`,
@@ -152,7 +154,8 @@ export function metricDirection(runs: RunParams[], metric: string): Direction {
       if (better === 'lower') lower += 1
     }
     if (higher !== lower) return higher > lower ? 'max' : 'min'
-    const column = metric.split(':').at(-1) ?? ''
+    const key = metric.slice(EVALUATION_PREFIX.length)
+    const column = key.slice(key.indexOf(':') + 1)
     return guessDirection(column) ?? 'min'
   }
   // 実験の多い向きの監視する指標を基準にする
