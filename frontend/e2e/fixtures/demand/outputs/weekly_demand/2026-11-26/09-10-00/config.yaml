@@ -1,0 +1,26 @@
+experiment:
+  name: weekly_demand
+  output_dir: outputs
+  seed: 0
+  device: cpu
+optimizer:
+  name: AdamW
+  params:
+    lr: 0.03
+trainer:
+  epochs: 3
+  grad_clip_norm: 1.0
+  monitor: valid/loss
+  mode: min
+data:
+  dataset: outputs/dataset
+  source: null
+  batch_size: 128
+demand:
+  levels: [0.1, 0.5, 0.8, 0.9]
+order:
+  shortage_cost: 4
+  holding_cost: 1
+  max_order: 60
+model:
+  spec: models/model.yaml

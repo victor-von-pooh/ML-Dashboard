@@ -2,7 +2,7 @@ import clsx from 'clsx'
 import { Info, ShieldCheck } from 'lucide-react'
 import { useMemo } from 'react'
 
-import type { Evaluation } from '../../api/client'
+import { runFileUrl, type Evaluation, type RunFile } from '../../api/client'
 import { LineChart, type ChartSeries } from '../../components/LineChart'
 import { Card } from '../../components/ui'
 import { seriesVar } from '../../lib/colors'
@@ -11,12 +11,14 @@ import {
   curveColumns,
   evaluationTitle,
   isAnomalyEvaluation,
+  isDemandEvaluation,
   isPriceEvaluation,
   isUpliftEvaluation,
   metricLabel,
 } from '../../lib/metrics'
 import { curveSeries, formatCell, formatPercent, numericColumns } from '../../lib/results'
 import { EvaluationCell } from '../runs/EvaluationColumns'
+import { CsvSample } from './CsvSample'
 
 // 1 つの曲線に重ねる列の上限 (系列の色の数)
 const MAX_CURVE_SERIES = 8
@@ -24,7 +26,8 @@ const MAX_CURVE_SERIES = 8
 /**
  * % で書く評価の列の書き方. 効果を見積もるの上位の割合 K (0.3 は上位 30 %) と, 値段を
  * 変える判断の見込みの利益の比 (1.0342 は 103.42 %. 1 に近い値の違いが見えるように小数
- * 第 2 位まで) と変える幅の上限 (0.1 は 10 %). 他の列は null
+ * 第 2 位まで) と変える幅の上限 (0.1 は 10 %), 時間をまたぐ量の判断の発注の数の損の比
+ * (0.8215 は 82.15 %. 利益の比と同じ桁). 他の列は null
  */
 function percentFormat(evaluation: string, column: string): ((value: number) => string) | null {
   if (isUpliftEvaluation(evaluation) && column === 'k') {
@@ -35,6 +38,9 @@ function percentFormat(evaluation: string, column: string): ((value: number) => 
   }
   if (isPriceEvaluation(evaluation) && column === 'max_change') {
     return (value) => formatPercent(value)
+  }
+  if (isDemandEvaluation(evaluation) && column === 'order_cost_ratio') {
+    return (value) => formatPercent(value, { digits: 2 })
   }
   return null
 }
@@ -463,26 +469,174 @@ function PriceNote({ config }: { config: Record<string, unknown> | null | undefi
   )
 }
 
+/** 有限の正の数か (骨組みの品切れの損と売れ残りの損の決まり) */
+function isPositive(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+}
+
+/**
+ * config の demand と order の項目 (ML-Quest の時間をまたぐ量の判断の骨組みの
+ * demand.levels, order.shortage_cost, order.holding_cost, order.max_order). 読めない
+ * 項目は null
+ */
+function demandSettings(config: Record<string, unknown> | null | undefined): {
+  levels: number[] | null
+  shortage: number | null
+  holding: number | null
+  maxOrder: number | null
+} {
+  const section = (name: string) => {
+    const value = config?.[name]
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {}
+  }
+  const demand = section('demand')
+  const order = section('order')
+  // 水準は 0 より大きく 1 より小さい数の小さい順の並び (骨組みの決まり)
+  const list = demand.levels
+  const levels =
+    Array.isArray(list) &&
+    list.length > 0 &&
+    list.every((value) => typeof value === 'number' && value > 0 && value < 1) &&
+    list.every((value, index) => index === 0 || (list[index - 1] as number) < (value as number))
+      ? (list as number[])
+      : null
+  const limit = order.max_order
+  return {
+    levels,
+    shortage: isPositive(order.shortage_cost) ? order.shortage_cost : null,
+    holding: isPositive(order.holding_cost) ? order.holding_cost : null,
+    maxOrder: typeof limit === 'number' && Number.isFinite(limit) && limit >= 0 ? limit : null,
+  }
+}
+
+/**
+ * 時間をまたぐ量の判断の評価の読み方と, 学んだ水準, 発注に使う水準 τ, 2 つの損と発注の
+ * 数の上限 (config の demand と order. 書いていない項目と読めない項目は出さない)
+ */
+function DemandNote({ config }: { config: Record<string, unknown> | null | undefined }) {
+  const { levels, shortage, holding, maxOrder } = demandSettings(config)
+  const items: [string, string][] = []
+  if (levels) items.push(['学んだ水準', levels.join(', ')])
+  if (shortage != null && holding != null) {
+    // 骨組みと同じ τ = 品切れの損 / (品切れの損 + 売れ残りの損). 2 進の丸めの端数は
+    // 出さない
+    const tau = Number((shortage / (shortage + holding)).toPrecision(10))
+    items.push(['発注に使う水準 τ', String(tau)])
+  }
+  if (shortage != null) items.push(['品切れの損 (1 つ足りないとき)', String(shortage)])
+  if (holding != null) items.push(['売れ残りの損 (1 つ余ったとき)', String(holding)])
+  if (maxOrder != null) items.push(['発注の数の上限 (守る指標)', String(maxOrder)])
+  return (
+    <section
+      aria-label="時間をまたぐ量の判断の評価の読み方"
+      className="rounded-lg border border-line bg-surface-2 px-4 py-3 text-sm"
+    >
+      <h3 className="mb-2 flex items-center gap-1.5 font-semibold text-ink">
+        <Info className="size-4 text-ink-3" aria-hidden />
+        時間をまたぐ量の判断の評価
+      </h3>
+      {items.length > 0 && (
+        <dl className="mb-2 flex flex-wrap gap-x-6 gap-y-1">
+          {items.map(([label, value]) => (
+            <div key={label} className="flex gap-2">
+              <dt className="text-ink-3">{label}</dt>
+              <dd className="tabular text-ink">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <ul className="list-disc space-y-1 pl-5 text-xs text-ink-2">
+        <li>
+          商品と発注を決める日の行ごとに, 先の期間の需要 (売れる数の合計) の分位点を学んだ水準ごとに
+          予測し, 水準 τ の分位点から在庫の数を引いた数を発注の数にします.
+        </li>
+        <li>
+          需要の平均絶対誤差 (mae) は 0.5 の分位点の予測と実際の需要の差で, 需要の単位です.
+          分位点の損失 (pinball_loss) は学んだ全ての水準の平均で,
+          水準ごとの値は「水準ごとの分位点の損失」 の表に並びます. どちらも小さいほど良い値です.
+        </li>
+        <li>
+          発注の数の損 (order_cost) は, 売れる数を在庫の数 + 発注の数として, 品切れの損 × 足りない数
+          + 売れ残りの損 × 余った数を実際の需要で数えた和です. 前の期間と同じ数の発注での損
+          (baseline_cost) と比べた差 (order_cost_saving) は大きいほど, 比 (order_cost_ratio. 100 %
+          は変わらない) は小さいほど良い値です.
+        </li>
+        <li>
+          発注の数は 0 から発注の数の上限 (守る指標) の間の整数で, 上限を超える数は上限で切ります.
+          上限に当たった行の数 (capped) が多ければ, 上限が需要に対して小さい見込みです.
+        </li>
+        <li>
+          商品ごとの発注の数の表 (demand_orders.csv) は, 分割ごとの発注を決める日の行の在庫の数, τ
+          の分位点, 発注の数, 前の期間と先の期間の需要の合計です.
+          推論の段階でも同じ決め方で発注の数を 決めます.
+        </li>
+      </ul>
+    </section>
+  )
+}
+
+// 時間をまたぐ量の判断の骨組みが実験のディレクトリに書く, 商品ごとの発注の数の表
+const DEMAND_ORDERS_FILE = 'demand_orders.csv'
+
+/** 商品ごとの発注の数の表 (実験の demand_orders.csv. 見本の CSV と同じく先頭の行を表にする) */
+function DemandOrders({ url, file }: { url: string; file: RunFile }) {
+  return (
+    <Card
+      title={
+        <span className="flex items-center gap-2">
+          <span className="font-mono">{DEMAND_ORDERS_FILE}</span>
+          <span className="text-sm font-normal text-ink-2">商品ごとの発注の数</span>
+        </span>
+      }
+    >
+      <CsvSample
+        url={url}
+        sample={{
+          name: 'demand_orders',
+          kind: 'file',
+          path: file.path,
+          size: file.size,
+          newer_version: false,
+        }}
+        label="商品ごとの発注の数"
+      />
+    </Card>
+  )
+}
+
 /**
  * データ全体の評価 (ML-Found の evaluations/). 守る指標を先頭に (並びはバックエンド).
- * 異常の検知, 効果を見積もる, 値段を変える判断の評価を持つ実験は, 先頭に読み方と,
- * config の K, 件数の上限, 値段の候補と上限を出す
+ * 異常の検知, 効果を見積もる, 値段を変える判断, 時間をまたぐ量の判断の評価を持つ実験は,
+ * 先頭に読み方と, config の K, 件数の上限, 値段の候補と上限, 水準と損と発注の数の上限を
+ * 出す. 時間をまたぐ量の判断の実験は, 最後に商品ごとの発注の数の表 (files に
+ * demand_orders.csv があれば) を出す
  */
 export function EvaluationsTab({
   evaluations,
   config,
+  files = [],
+  projectId = '',
+  runId = '',
 }: {
   evaluations: Evaluation[]
   config?: Record<string, unknown> | null
+  files?: RunFile[]
+  projectId?: string
+  runId?: string
 }) {
   const anomaly = evaluations.some((evaluation) => isAnomalyEvaluation(evaluation.name))
   const uplift = evaluations.some((evaluation) => isUpliftEvaluation(evaluation.name))
   const price = evaluations.some((evaluation) => isPriceEvaluation(evaluation.name))
+  const demand = evaluations.some((evaluation) => isDemandEvaluation(evaluation.name))
+  const orders = demand ? files.find((file) => file.path === DEMAND_ORDERS_FILE) : undefined
   return (
     <div className="space-y-4">
       {anomaly && <AnomalyNote config={config} />}
       {uplift && <UpliftNote config={config} />}
       {price && <PriceNote config={config} />}
+      {demand && <DemandNote config={config} />}
       {evaluations.map((evaluation) => (
         <Card
           key={evaluation.name}
@@ -523,6 +677,7 @@ export function EvaluationsTab({
           )}
         </Card>
       ))}
+      {orders && <DemandOrders url={runFileUrl(projectId, runId, orders.path)} file={orders} />}
     </div>
   )
 }

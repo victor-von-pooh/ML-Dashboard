@@ -1,0 +1,4 @@
+epoch,train/loss,valid/loss,valid/mae,valid/pinball_loss,lr
+1,2.410,2.530,6.82,2.530,0.01
+2,1.620,1.740,4.31,1.740,0.01
+3,1.210,1.330,3.38,1.330,0.01

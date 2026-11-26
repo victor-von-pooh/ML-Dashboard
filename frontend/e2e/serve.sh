@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # 画面の通しのテスト (Playwright) 用に, デモのプロジェクトで実験を 2 つ作り,
 # 強化学習, 見本, 表を作る課題, 推薦, 群分け, 異常の検知, 効果を見積もる, 値段を
-# 変える判断の確かめ用のプロジェクトを写してからダッシュボードを起動する. 画面は
-# pnpm build で作っておく
+# 変える判断, 時間をまたぐ量の判断の確かめ用のプロジェクトを写してからダッシュ
+# ボードを起動する. 画面は pnpm build で作っておく
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -35,6 +35,9 @@ rsync -a fixtures/uplift/ "$WORK/uplift/"
 # 値段を変える判断 (効果を見積もるで, 今ある記録で値段を変えた) の確かめ用の
 # プロジェクト (評価は下で ML-Found の save_evaluation で書く)
 rsync -a fixtures/price/ "$WORK/price/"
+# 時間をまたぐ量の判断 (予測するで, 先の期間の需要) の確かめ用のプロジェクト
+# (評価と発注の数の表は下で ML-Found の save_evaluation などで書く)
+rsync -a fixtures/demand/ "$WORK/demand/"
 
 # 書き出したプロジェクトの一覧の確かめ用に, ML-Pathfinder の置き場と, そこに
 # 記録した (まだ登録していない) 学習のプロジェクトと, 記録の無い問題の設定.
@@ -85,6 +88,10 @@ uv run python "$WORK/../make_uplift.py" "$WORK/uplift"
 
 # 値段を変える判断の, 売れた数の予測の誤差, 弾力性, 見込みの利益の比べの評価
 uv run python "$WORK/../make_price.py" "$WORK/price"
+
+# 時間をまたぐ量の判断の, 需要の誤差と発注の数の損の比べ, 水準ごとの分位点の
+# 損失の評価と, 商品ごとの発注の数の表
+uv run python "$WORK/../make_demand.py" "$WORK/demand"
 
 # ML-Quest で書く問題の設定 (exported を記録した e2e の売上, 記録の無い
 # e2e の解約, 学習しない e2e の写真)

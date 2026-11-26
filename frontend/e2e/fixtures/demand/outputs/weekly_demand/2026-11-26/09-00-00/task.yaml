@@ -1,0 +1,18 @@
+format_version: 1
+role: predict
+output: distribution
+what: 商品ごとの先の 7 日の需要の分位点
+target:
+  kind: null
+  origin:
+    type: unknown
+    name: null
+    settings: null
+method: scratch
+base:
+  experiment: null
+  weights: null
+dataset:
+  path: null
+  name: null
+  format_version: null
