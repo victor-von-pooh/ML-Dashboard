@@ -1,0 +1,26 @@
+# 効果を見積もる (ML-Quest の効果の見積もりの骨組み) の画面の確かめ用の
+# プロジェクト. 学習はせず, 置いた実験を見る. 学習率を変えた 2 つの実験を比べる
+experiment:
+  name: purchased_uplift
+  output_dir: outputs
+  seed: 0
+  device: cpu
+optimizer:
+  name: AdamW
+  params:
+    lr: 0.001
+trainer:
+  epochs: 3
+  monitor: valid/qini
+  mode: max
+  monitor_tiebreak: valid/loss
+  monitor_tiebreak_mode: min
+data:
+  dataset: outputs/dataset
+  source: null
+  batch_size: 128
+uplift:
+  k: 0.3
+  budget: 500
+model:
+  spec: models/model.yaml

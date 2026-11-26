@@ -7,8 +7,14 @@ import { LineChart, type ChartSeries } from '../../components/LineChart'
 import { Card } from '../../components/ui'
 import { seriesVar } from '../../lib/colors'
 import { diffValue } from '../../lib/evaluations'
-import { evaluationTitle, isAnomalyEvaluation, metricLabel } from '../../lib/metrics'
-import { curveSeries, formatCell, numericColumns } from '../../lib/results'
+import {
+  curveColumns,
+  evaluationTitle,
+  isAnomalyEvaluation,
+  isUpliftEvaluation,
+  metricLabel,
+} from '../../lib/metrics'
+import { curveSeries, formatCell, formatPercent, numericColumns } from '../../lib/results'
 import { EvaluationCell } from '../runs/EvaluationColumns'
 
 // 1 つの曲線に重ねる列の上限 (系列の色の数)
@@ -21,6 +27,8 @@ const MAX_CURVE_SERIES = 8
  */
 function EvaluationTable({ evaluation }: { evaluation: Evaluation }) {
   const numeric = useMemo(() => numericColumns(evaluation), [evaluation])
+  // 効果を見積もるの上位の割合 K は % で書く (0.3 は上位 30 %)
+  const percent = isUpliftEvaluation(evaluation.name)
   return (
     <div className="max-h-[480px] overflow-auto rounded-lg border border-line">
       <table className="w-full text-sm">
@@ -76,7 +84,13 @@ function EvaluationTable({ evaluation }: { evaluation: Evaluation }) {
                       value == null && 'text-ink-3',
                     )}
                   >
-                    {diff ? <EvaluationCell value={diff} format={formatCell} /> : formatCell(value)}
+                    {diff ? (
+                      <EvaluationCell value={diff} format={formatCell} />
+                    ) : percent && column === 'k' && typeof value === 'number' ? (
+                      `上位 ${formatPercent(value)}`
+                    ) : (
+                      formatCell(value)
+                    )}
                   </td>
                 )
               })}
@@ -88,17 +102,36 @@ function EvaluationTable({ evaluation }: { evaluation: Evaluation }) {
   )
 }
 
-/** 評価の曲線. x の列を横軸に, 他の数の列を 1 つの縦軸に重ねる (凡例で列を選べる) */
+// でたらめに配る場合のような, 比べる基準の線の列 (破線で描く)
+const REFERENCE_COLUMNS = new Set(['random'])
+
+/**
+ * 評価の曲線. x の列を横軸に, 他の数の列を 1 つの縦軸に重ねる (凡例で列を選べる).
+ * 名前の分かる評価は描く列を絞り (Qini の曲線の上位の行の数のような目盛りの違う列を
+ * 除くため), 系列の名前に日本語の名前を添え, 基準の線を破線にする
+ */
 function EvaluationCurve({ evaluation }: { evaluation: Evaluation }) {
-  const all = useMemo(() => curveSeries(evaluation), [evaluation])
+  const all = useMemo(() => {
+    const columns = curveColumns(evaluation.name)
+    const found = curveSeries(evaluation)
+    return columns
+      ? columns.flatMap((column) => found.filter((item) => item.column === column))
+      : found
+  }, [evaluation])
   const series = useMemo<ChartSeries[]>(
     () =>
-      all.slice(0, MAX_CURVE_SERIES).map((item, index) => ({
-        name: item.column,
-        color: seriesVar(index),
-        points: item.points,
-      })),
-    [all],
+      all.slice(0, MAX_CURVE_SERIES).map((item, index) => {
+        const name = curveColumns(evaluation.name)
+          ? metricLabel(item.column, evaluation.name)
+          : null
+        return {
+          name: name ? `${name.label} (${item.column})` : item.column,
+          color: seriesVar(index),
+          points: item.points,
+          dashed: REFERENCE_COLUMNS.has(item.column) && name != null,
+        }
+      }),
+    [all, evaluation.name],
   )
   if (series.length === 0) return <EvaluationTable evaluation={evaluation} />
   return (
@@ -107,7 +140,9 @@ function EvaluationCurve({ evaluation }: { evaluation: Evaluation }) {
         series={series}
         xLabel={evaluation.x ?? undefined}
         integerX={false}
-        label={`${evaluation.name} の曲線 (横軸 ${evaluation.x ?? ''})`}
+        label={`${evaluation.name} の曲線 (横軸 ${evaluation.x ?? ''}. 系列: ${series
+          .map((item) => item.name)
+          .join(', ')})`}
       />
       {all.length > MAX_CURVE_SERIES && (
         <p className="text-xs text-ink-3">
@@ -234,9 +269,93 @@ function AnomalyNote({ config }: { config: Record<string, unknown> | null | unde
   )
 }
 
+/** config の uplift の項目 (ML-Quest の効果の見積もりの骨組みの k, budget) */
+function upliftSettings(config: Record<string, unknown> | null | undefined): {
+  k: number | null
+  budget: number | null
+} {
+  const section = config?.uplift
+  const values =
+    section && typeof section === 'object' && !Array.isArray(section)
+      ? (section as Record<string, unknown>)
+      : {}
+  const k = typeof values.k === 'number' && values.k > 0 && values.k <= 1 ? values.k : null
+  const budget =
+    typeof values.budget === 'number' && Number.isInteger(values.budget) && values.budget > 0
+      ? values.budget
+      : null
+  return { k, budget }
+}
+
+/**
+ * 効果を見積もるの評価の読み方と, 上位の割合 K と配る数の上限 (config の uplift.
+ * 書いていない項目は出さない)
+ */
+function UpliftNote({ config }: { config: Record<string, unknown> | null | undefined }) {
+  const { k, budget } = upliftSettings(config)
+  const top = k != null ? `上位 ${formatPercent(k)}` : null
+  // 上位 K 割の効果の差の呼び方 (K が分かれば % で)
+  const lift = top ? `${top} の効果の差` : '上位 K 割の効果の差'
+  const items: [string, string][] = [
+    ...(top ? [['上位の割合 K', top] as [string, string]] : []),
+    ...(budget != null
+      ? [['配る数の上限 (守る指標)', `${budget.toLocaleString()} 件`] as [string, string]]
+      : []),
+  ]
+  return (
+    <section
+      aria-label="効果の見積もりの評価の読み方"
+      className="rounded-lg border border-line bg-surface-2 px-4 py-3 text-sm"
+    >
+      <h3 className="mb-2 flex items-center gap-1.5 font-semibold text-ink">
+        <Info className="size-4 text-ink-3" aria-hidden />
+        効果の見積もりの評価
+      </h3>
+      {items.length > 0 && (
+        <dl className="mb-2 flex flex-wrap gap-x-6 gap-y-1">
+          {items.map(([label, value]) => (
+            <div key={label} className="flex gap-2">
+              <dt className="text-ink-3">{label}</dt>
+              <dd className="tabular text-ink">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <ul className="list-disc space-y-1 pl-5 text-xs text-ink-2">
+        <li>
+          効果 (uplift) は顧客ごとの, 処置したとき (クーポンを配ったときなど) の結果から,
+          しないときの結果を引いた値の見積もりです. 処置の群は処置した行,
+          対照の群は処置しなかった行です.
+        </li>
+        <li>
+          1 人の顧客には処置したかしないかの片方の結果しか無いので,
+          正解の効果は顧客ごとには見えません. 評価は, 効果の見積もりの高い順に並べた上位の行の中で,
+          処置の群と対照の群の結果の平均の差を数えた値です.
+        </li>
+        <li>
+          Qini の曲線 (qini_curve_&lt;分割&gt;) は, 横軸が効果の見積もりの高い順の上位の行の割合,
+          縦軸が上位の行で処置によって増えた結果です. 破線のでたらめに配る線より上にあるほど,
+          効果の高い顧客を上に並べられています.
+        </li>
+        <li>
+          Qini の係数 (qini) は, 曲線とでたらめに配る線の間の面積を理想の並びの面積で割った値で,
+          大きいほど良く, 1 は理想の並び, 0 はでたらめに配るのと同じです. {`${lift} (uplift_at_k)`}{' '}
+          も大きいほど良く, 全体の効果の差 (effect) より大きければ,
+          効果の高い順に選んで配る意味があります.
+        </li>
+        <li>
+          推論の段階では, 効果の高い順に配る数の上限まで配ります.
+          効果は無作為に配った記録を前提にした見積もりなので,
+          配った効果は配る相手を無作為に分けて試して確かめます.
+        </li>
+      </ul>
+    </section>
+  )
+}
+
 /**
  * データ全体の評価 (ML-Found の evaluations/). 守る指標を先頭に (並びはバックエンド).
- * 異常の検知の評価を持つ実験は, 先頭に読み方と K と人が確かめる件数の上限を出す
+ * 異常の検知か効果を見積もるの評価を持つ実験は, 先頭に読み方と, K と件数の上限を出す
  */
 export function EvaluationsTab({
   evaluations,
@@ -246,9 +365,11 @@ export function EvaluationsTab({
   config?: Record<string, unknown> | null
 }) {
   const anomaly = evaluations.some((evaluation) => isAnomalyEvaluation(evaluation.name))
+  const uplift = evaluations.some((evaluation) => isUpliftEvaluation(evaluation.name))
   return (
     <div className="space-y-4">
       {anomaly && <AnomalyNote config={config} />}
+      {uplift && <UpliftNote config={config} />}
       {evaluations.map((evaluation) => (
         <Card
           key={evaluation.name}

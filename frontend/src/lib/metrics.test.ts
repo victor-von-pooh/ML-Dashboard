@@ -6,12 +6,14 @@ import {
   axisOptions,
   axisStart,
   columnDirection,
+  curveColumns,
   diffConfigs,
   flattenConfig,
   groupMetrics,
   guessDirection,
   evaluationTitle,
   isAnomalyEvaluation,
+  isUpliftEvaluation,
   metricLabel,
   metricNote,
   hasAxis,
@@ -373,6 +375,40 @@ describe('指標の良い向き', () => {
   it('異常の検知の指標は名前から大きいほど良いと推測する', () => {
     expect(guessDirection('valid/precision_at_k')).toBe('max')
     expect(guessDirection('valid/average_precision')).toBe('max')
+  })
+
+  it('効果を見積もるの評価は, 名前の形 (uplift_<分割>, qini_curve_<分割>) で列の日本語の名前を引く', () => {
+    expect(metricLabel('treated', 'uplift_test')?.label).toBe('処置の群の行の数')
+    expect(metricLabel('control', 'uplift_valid')?.label).toBe('対照の群の行の数')
+    expect(metricLabel('k', 'uplift_test')?.label).toBe('上位の割合 K')
+    expect(metricNote('qini', 'uplift_test')).toMatch(/^Qini の係数 \(.*0 はでたらめに配るのと同じ/)
+    expect(metricLabel('uplift_at_k', 'uplift_test')?.label).toBe('上位 K 割の効果の差')
+    expect(metricLabel('effect', 'uplift_test')?.label).toBe('全体の効果の差')
+    // Qini の曲線の qini は係数でなく曲線の値
+    expect(metricLabel('qini', 'qini_curve_test')?.label).toBe('Qini の値')
+    expect(metricLabel('random', 'qini_curve_test')?.label).toBe('でたらめに配る線')
+    expect(metricLabel('fraction', 'qini_curve_valid')?.label).toBe('上位の行の割合')
+    // qini_curve_test を uplift_<分割> と, uplift_effects を評価と取り違えない
+    expect(metricLabel('treated', 'qini_curve_test')).toBeNull()
+    expect(metricLabel('treated', 'uplift_test_extra')).toBeNull()
+    // 学習曲線の指標は評価の名前なしでも引く
+    expect(metricLabel('valid/qini')?.label).toBe('Qini の係数')
+    expect(evaluationTitle('uplift_test')).toBe('Qini の係数と上位 K 割の効果の差')
+    expect(evaluationTitle('qini_curve_valid')).toBe('Qini の曲線')
+    expect(isUpliftEvaluation('qini_curve_test')).toBe(true)
+    expect(isUpliftEvaluation('anomaly_test')).toBe(false)
+    expect(isAnomalyEvaluation('uplift_test')).toBe(false)
+    // 曲線に描く列 (Qini の曲線は上位の行の数を描かない)
+    expect(curveColumns('qini_curve_test')).toEqual(['qini', 'random'])
+    expect(curveColumns('anomaly_scores_test')).toBeNull()
+  })
+
+  it('効果を見積もるの Qini の係数は名前から大きいほど良いと推測する', () => {
+    expect(guessDirection('valid/qini')).toBe('max')
+    expect(columnDirection('valid/qini', [{ monitor: 'valid/qini', mode: 'max' }])).toEqual({
+      direction: 'max',
+      guessed: false,
+    })
   })
 
   it('監視する指標は ML-Found の向き, 他は推測, 学習率と推測できない列は null', () => {

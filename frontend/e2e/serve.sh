@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 画面の通しのテスト (Playwright) 用に, デモのプロジェクトで実験を 2 つ作り,
-# 強化学習, 見本, 表を作る課題, 推薦, 群分け, 異常の検知の確かめ用のプロジェクトを
-# 写してからダッシュボードを起動する. 画面は pnpm build で作っておく
+# 強化学習, 見本, 表を作る課題, 推薦, 群分け, 異常の検知, 効果を見積もるの確かめ用の
+# プロジェクトを写してからダッシュボードを起動する. 画面は pnpm build で作っておく
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -28,6 +28,9 @@ rsync -a fixtures/groups/ "$WORK/groups/"
 # 異常の検知 (予測するで, 異常) の確かめ用のプロジェクト (評価は下で ML-Found の
 # save_evaluation で書く)
 rsync -a fixtures/anomaly/ "$WORK/anomaly/"
+# 効果を見積もる (今ある記録から) の確かめ用のプロジェクト (評価は下で ML-Found
+# の save_evaluation で書く)
+rsync -a fixtures/uplift/ "$WORK/uplift/"
 
 # 書き出したプロジェクトの一覧の確かめ用に, ML-Pathfinder の置き場と, そこに
 # 記録した (まだ登録していない) 学習のプロジェクトと, 記録の無い問題の設定.
@@ -72,6 +75,9 @@ uv run python "$WORK/../make_groups.py" "$WORK/groups"
 
 # 異常の検知の, 上位 K 件の適合率と PR-AUC, 度合いの分布と上位の行の要約の評価
 uv run python "$WORK/../make_anomaly.py" "$WORK/anomaly"
+
+# 効果を見積もるの, Qini の係数と上位 K 割の効果の差, Qini の曲線の評価
+uv run python "$WORK/../make_uplift.py" "$WORK/uplift"
 
 # ML-Quest で書く問題の設定 (exported を記録した e2e の売上, 記録の無い
 # e2e の解約, 学習しない e2e の写真)
