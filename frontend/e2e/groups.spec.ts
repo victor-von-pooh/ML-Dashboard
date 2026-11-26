@@ -96,3 +96,40 @@ test('群の数を変えた実験を一覧と比較で並べ, 群の安定性の
   // シルエット係数はどちらもそのままより悪い
   await expect(evaluations.getByRole('row').filter({ hasText: '悪い' })).toHaveCount(2)
 })
+
+// 同じ名前 (group_k) で群の数だけが違う 2 つの実験のプロジェクト (e2e/serve.sh が写す)
+const GROUPS_K_DIR = path.resolve(import.meta.dirname, '.work', 'groups_k')
+
+test('群の数を変えた実験の分析で, 群の安定性の評価の値を結果に選ぶと, 散布図と値ごとの表と順位が出る', async ({
+  page,
+}) => {
+  const listed = (await (await page.request.get('/api/projects')).json()) as {
+    id: string
+    path: string
+  }[]
+  let kId = listed.find((project) => project.path === GROUPS_K_DIR)?.id
+  if (!kId) {
+    const created = await page.request.post('/api/projects', { data: { path: GROUPS_K_DIR } })
+    expect(created.status()).toBe(201)
+    kId = ((await created.json()) as { id: string }).id
+  }
+  await page.goto(`/projects/${kId}/analysis`)
+  await page.getByLabel('横軸: config の項目').selectOption('group.k')
+  await page
+    .getByLabel('縦軸: 結果')
+    .selectOption({ label: '評価 group_stability:ari (調整ランド指数の平均)' })
+  // 評価の向き (大きいほど良い) を推測し, 群の数ごとの値を良い順に並べる
+  await expect(page.getByLabel('良い向き')).toHaveValue('max')
+  await expect(page.getByRole('img', { name: /group\.k と .* の散布図/ })).toBeVisible()
+  const table = page
+    .locator('section', { has: page.getByRole('heading', { name: '値ごとの結果' }) })
+    .getByRole('table')
+  await expect(table.getByRole('row')).toHaveCount(3)
+  await expect(table.getByRole('row').nth(1)).toContainText('3')
+  await expect(table.getByRole('row').nth(1)).toContainText('1')
+  await expect(
+    page.locator('section', {
+      has: page.getByRole('heading', { name: '結果への影響が大きい項目' }),
+    }),
+  ).toContainText('group.k')
+})

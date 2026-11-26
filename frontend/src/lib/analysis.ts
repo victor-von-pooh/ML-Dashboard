@@ -1,5 +1,6 @@
 import type { RunParams } from '../api/client'
-import { guessDirection, type Direction } from './metrics'
+import { valueKey } from './evaluations'
+import { guessDirection, metricLabel, type Direction } from './metrics'
 
 export type ParamValue = RunParams['params'][string]
 
@@ -32,7 +33,7 @@ export function isNoise(key: string): boolean {
   return NOISE.some((pattern) => pattern.test(key))
 }
 
-/** 結果として選べる値 (ベストか, 最後のエポックの指標) */
+/** 結果として選べる値 (ベストか, 最後のエポックの指標か, 一覧と比較の評価の値) */
 export interface MetricOption {
   id: string
   label: string
@@ -94,10 +95,16 @@ export function varyingParams(runs: RunParams[]): VaryingParam[] {
   )
 }
 
-/** 結果として選べる値の一覧 */
+/** 評価の値の結果の id の頭 (後ろは <評価の名前>:<列>) */
+const EVALUATION_PREFIX = 'eval:'
+
+/** 結果として選べる値の一覧 (評価の値は, 一覧と比較と同じ <評価の名前>:<列> の名前) */
 export function metricOptions(runs: RunParams[]): MetricOption[] {
   const finals = new Set(runs.flatMap((run) => Object.keys(run.final_metrics)))
   const monitor = runs.find((run) => run.best)?.best?.monitor
+  const evaluations = new Set(
+    runs.flatMap((run) => (run.evaluations ?? []).map((value) => valueKey(value))),
+  )
   return [
     { id: 'best', label: monitor ? `ベスト (${monitor})` : 'ベスト' },
     // 学習率 (名前付きの複数の Optimizer の lr_<名前> も) は結果ではないので除外
@@ -105,20 +112,49 @@ export function metricOptions(runs: RunParams[]): MetricOption[] {
       .filter((key) => key !== 'lr' && !key.startsWith('lr_'))
       .sort()
       .map((key) => ({ id: `final:${key}`, label: `最終 ${key}` })),
+    ...[...evaluations].sort().map((key) => {
+      // 日本語の名前は一覧と比較と同じ (知らない列は名前のまま)
+      const [evaluation = '', column = ''] = key.split(':')
+      const named = metricLabel(column, evaluation)?.label
+      return {
+        id: `${EVALUATION_PREFIX}${key}`,
+        label: named ? `評価 ${key} (${named})` : `評価 ${key}`,
+      }
+    }),
   ]
+}
+
+/** 実験の評価の値を, 結果の id から引く (値の無い実験は undefined) */
+function evaluationOf(run: RunParams, metric: string) {
+  const key = metric.slice(EVALUATION_PREFIX.length)
+  return (run.evaluations ?? []).find((value) => valueKey(value) === key)
 }
 
 /** 実験から選んだ結果の値を取り出す */
 export function metricValue(run: RunParams, metric: string): number | null {
   if (metric === 'best') return run.best?.value ?? null
+  if (metric.startsWith(EVALUATION_PREFIX)) return evaluationOf(run, metric)?.value ?? null
   return run.final_metrics[metric.replace(/^final:/, '')] ?? null
 }
 
 /**
  * 結果の値は大きいほど良いか小さいほど良いかを決める.
- * ベストと監視する指標は ML-Found の向き, その他は指標の名前から推測する
+ * ベストと監視する指標は ML-Found の向き, 評価の値は評価の向き (一覧と比較と同じ. 実験の多い向き),
+ * その他は指標の名前から推測する
  */
 export function metricDirection(runs: RunParams[], metric: string): Direction {
+  if (metric.startsWith(EVALUATION_PREFIX)) {
+    let higher = 0
+    let lower = 0
+    for (const run of runs) {
+      const better = evaluationOf(run, metric)?.better
+      if (better === 'higher') higher += 1
+      if (better === 'lower') lower += 1
+    }
+    if (higher !== lower) return higher > lower ? 'max' : 'min'
+    const column = metric.split(':').at(-1) ?? ''
+    return guessDirection(column) ?? 'min'
+  }
   // 実験の多い向きの監視する指標を基準にする
   const counts = new Map<string, number>()
   for (const run of runs) {

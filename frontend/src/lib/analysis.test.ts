@@ -19,6 +19,7 @@ function run(id: string, params: RunParams['params'], best: number | null): RunP
     best: best === null ? null : { monitor: 'valid/acc', mode: 'max', epoch: 1, value: best },
     final_metrics: { 'valid/loss': best === null ? null : 1 - best },
     params,
+    evaluations: [],
   }
 }
 
@@ -121,5 +122,35 @@ describe('analysis', () => {
     expect(sensitivity(together, params, 'best', 'max').map((item) => item.keys)).toEqual([
       ['lr', 'wd', 'experiment.device'],
     ])
+  })
+
+  it('一覧と比較の評価の値を結果として選べ, 評価の向きで並べる', () => {
+    // 群の数を変えた群分けの実験 (全ての行の群の安定性. 大きいほど良い)
+    const value = (ari: number | null) => ({
+      evaluation: 'group_stability',
+      column: 'ari',
+      value: ari,
+      guard: false,
+      diff: false,
+      better: 'higher' as const,
+      baseline: null,
+    })
+    const grouped = [
+      { ...run('k2', { 'group.k': 2 }, null), evaluations: [value(0.6)] },
+      { ...run('k3', { 'group.k': 3 }, null), evaluations: [value(0.9)] },
+      { ...run('k4', { 'group.k': 4 }, null), evaluations: [value(null)] },
+      run('none', { 'group.k': 5 }, null),
+    ]
+    const options = metricOptions(grouped)
+    expect(options).toContainEqual({
+      id: 'eval:group_stability:ari',
+      label: '評価 group_stability:ari (調整ランド指数の平均)',
+    })
+    expect(metricValue(grouped[1]!, 'eval:group_stability:ari')).toBe(0.9)
+    expect(metricValue(grouped[2]!, 'eval:group_stability:ari')).toBeNull()
+    expect(metricValue(grouped[3]!, 'eval:group_stability:ari')).toBeNull()
+    expect(metricDirection(grouped, 'eval:group_stability:ari')).toBe('max')
+    const rows = groupByParam(grouped, 'group.k', 'eval:group_stability:ari', 'max')
+    expect(rows.map((row) => row.value)).toEqual(['3', '2'])
   })
 })

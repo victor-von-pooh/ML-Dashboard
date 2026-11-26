@@ -80,6 +80,18 @@ uv run python "$WORK/../make_ranking.py" "$WORK/ranking"
 # 群分けの群の数 3 と 4 の実験の, 群の安定性と群の要約の評価
 uv run python "$WORK/../make_groups.py" "$WORK/groups"
 
+# 分析の画面の確かめ用に, 同じ名前 (group_k) で群の数だけが違う 2 つの実験の
+# プロジェクト (群分けの実験の写しで, 名前を group_k にそろえる)
+rsync -a "$WORK/groups/configs" "$WORK/groups/train.py" "$WORK/groups_k/"
+for run in group_3/2026-11-24/10-00-00 group_4/2026-11-24/10-10-00; do
+  mkdir -p "$WORK/groups_k/outputs/group_k/2026-11-24"
+  rsync -a "$WORK/groups/outputs/$run/" \
+    "$WORK/groups_k/outputs/group_k/2026-11-24/$(basename "$run")/"
+done
+sed -i.bak 's/^  name: group_[34]$/  name: group_k/' \
+  "$WORK"/groups_k/outputs/group_k/2026-11-24/*/config.yaml
+rm -f "$WORK"/groups_k/outputs/group_k/2026-11-24/*/config.yaml.bak
+
 # 異常の検知の, 上位 K 件の適合率と PR-AUC, 度合いの分布と上位の行の要約の評価
 uv run python "$WORK/../make_anomaly.py" "$WORK/anomaly"
 

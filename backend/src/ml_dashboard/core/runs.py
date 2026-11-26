@@ -1699,17 +1699,20 @@ def collect_params(output_dir: Path, run_dir: Path) -> Optional[RunParams]:
     Returns
     ----------
     params: Optional[RunParams]
-        config の値と結果, 読めない実験は None
+        config の値と結果 (ベスト, 最後の指標, 一覧と比較の評価の値),
+        読めない実験は None
     """
     # 壊れた実験は分析から除外
     try:
         data = RunData(output_dir, run_dir)
         summary = data.summary()
+        evaluations = summary.evaluations
         params = RunParams(
             id=summary.id, name=summary.name, started_at=summary.started_at,
             status=summary.status, best=summary.best,
             final_metrics=summary.final_metrics,
-            params=flatten_params(data.config)
+            params=flatten_params(data.config),
+            evaluations=evaluations.values if evaluations else []
         )
     except Exception:
         return None
