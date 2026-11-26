@@ -418,7 +418,7 @@ scheduler:
 11 は GPU (CUDA か Apple Silicon の mps) が無いと, かなり長くかかる. 画像のタスクなどは, 最初の学習で MNIST などのデータを取得するのでネットワークが要る.
 
 - **外部ライブラリの層の重み**: `12_quantum_nn` の default の実験の「モデル」のタブで, モデルの構造では `TorchConnector()` としか出ない層が, パラメータの一覧では重みとして出る. 2 行目に「qnn.qnn_est.weight と共有」と出て, 同じ重みを 2 つの名前で持っているので, 学習するパラメータ数には 1 回だけ数える
-- **EMA で検証した効果**: `11_diffusion` の 3 つの実験 (差分が `なし`, `ema.use=false`, `ema.eval=true`) を比べると, `valid/loss` のグラフで, EMA の重みで検証した実験は最初が高く, その後はなめらかに下がる (縦軸を対数にすると分かりやすい). default は EMA を生成画像にだけ使い, 検証は学習中の重みで行うので, `ema.use=false` と線が重なる
+- **EMA で検証した効果**: `11_diffusion` の 3 つの実験 (差分が `なし`, `trainer.ema.decay=null`, `ema.eval=true`) を比べると, `valid/loss` のグラフで, EMA の重みで検証した実験は最初が高く, その後はなめらかに下がる (縦軸を対数にすると分かりやすい). EMA は ML-Found の設定 `trainer.ema.decay` で持つ. default は EMA を生成画像にだけ使い (検証に使うモデルを学習中のモデルに上書きする), 検証は学習中の重みで行うので, EMA を使わない `trainer.ema.decay=null` と線が重なる. `ema.eval=true` は ML-Found の既定のとおり EMA の重みで検証し, ベストモデルも EMA の重みで選ぶ
 
 ## 10. 困ったとき
 
