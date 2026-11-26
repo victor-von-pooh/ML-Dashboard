@@ -1389,7 +1389,7 @@ class RunData:
             リスト) は空, run.json に書いていない版の ML-Found の実験は
             config の optimizers から作ったもの
         """
-        # パラメータの無いモデルは config の Optimizer を使わないので補わず空
+        # config の Optimizer を使わないパラメータの無いモデルは, 補わずに空
         optimizers = read_optimizers(self.status)
         if optimizers is None:
             optimizers = optimizers_from_config(self.config)
@@ -1434,9 +1434,7 @@ def read_optimizers(
         except ValidationError:
             continue
 
-    result = optimizers if optimizers else None
-
-    return result
+    return optimizers if optimizers else None
 
 
 def optimizers_from_config(

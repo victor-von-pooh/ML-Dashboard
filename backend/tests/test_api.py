@@ -620,17 +620,17 @@ def test_run_without_parameters(
         "epoch", "valid/precision_at_k", "valid/average_precision"
     }
 
-    # 空の optimizers は config で補わない
+    # config で補わない空の optimizers
     assert client.get(base).json()["optimizers"] == []
 
-    # optimizers を書かない版の ML-Found の実験は config で補う
+    # optimizers を書かない版の ML-Found の実験での, config からの補い
     (run_dir / "run.json").write_text('{"status": "completed"}')
     optimizers = client.get(base).json()["optimizers"]
     assert [(item["name"], item["optimizer"]) for item in optimizers] == [
         ("main", "Adam")
     ]
 
-    # 全ての行の形が違う場合も, 書いていない場合と同じく config で補う
+    # 全ての行の形が違う場合も, 書いていない場合と同じ config からの補い
     (run_dir / "run.json").write_text(json.dumps({
         "status": "completed", "optimizers": [{"name": 1}]
     }))

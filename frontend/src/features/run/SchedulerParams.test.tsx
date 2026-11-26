@@ -140,11 +140,10 @@ describe('ModelTab のパラメータの無いモデル', () => {
   it('optimizers が空の実験は, Optimizer と Scheduler の欄に使わない旨を出す', () => {
     render(<ModelTab run={{ ...runWith([], null), optimizer: null }} />)
     expect(
-      screen.getByText('パラメータの無いモデルのため, Optimizer は使いません.'),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByText('パラメータの無いモデルのため, Scheduler は使いません.'),
-    ).toBeInTheDocument()
+      screen.getAllByText(
+        'このモデルは学習で更新する重みを持たないので, Optimizer と Scheduler は使いません.',
+      ),
+    ).toHaveLength(2)
     expect(screen.getByText('Net()')).toBeInTheDocument()
     expect(screen.queryByText('ログに記録がありません.')).toBeNull()
   })
@@ -152,6 +151,6 @@ describe('ModelTab のパラメータの無いモデル', () => {
   it('optimizers を書かない実験は, ログに記録が無い旨のままにする', () => {
     render(<ModelTab run={{ ...runWith(null, null), optimizer: null }} />)
     expect(screen.getAllByText('ログに記録がありません.')).toHaveLength(2)
-    expect(screen.queryByText(/パラメータの無いモデル/)).toBeNull()
+    expect(screen.queryByText(/学習で更新する重みを持たない/)).toBeNull()
   })
 })

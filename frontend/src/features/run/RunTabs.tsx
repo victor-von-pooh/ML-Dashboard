@@ -242,6 +242,10 @@ function OptimizerTable({ optimizers }: { optimizers: NonNullable<RunDetail['opt
   )
 }
 
+// パラメータの無いモデルの実験の, Optimizer と Scheduler の欄の文
+const NO_PARAMS_TEXT =
+  'このモデルは学習で更新する重みを持たないので, Optimizer と Scheduler は使いません.'
+
 export function ModelTab({ run }: { run: RunDetail }) {
   const blocks: [string, string | null | undefined][] = [
     ['モデルの構造', run.model_structure],
@@ -258,9 +262,7 @@ export function ModelTab({ run }: { run: RunDetail }) {
       {blocks.map(([title, text]) => (
         <Card key={title} title={title} className={title === 'モデルの構造' ? 'lg:row-span-2' : ''}>
           {noParams && title !== 'モデルの構造' ? (
-            <p className="text-sm text-ink-3">
-              パラメータの無いモデルのため, {title} は使いません.
-            </p>
+            <p className="text-sm text-ink-3">{NO_PARAMS_TEXT}</p>
           ) : text ? (
             <pre className="max-h-[520px] overflow-auto font-mono text-xs leading-relaxed whitespace-pre-wrap text-ink-2 [overflow-wrap:anywhere]">
               {text}

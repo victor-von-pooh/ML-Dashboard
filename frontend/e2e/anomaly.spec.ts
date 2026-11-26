@@ -143,9 +143,15 @@ test('ML-Found の fit で残したパラメータの無いモデルの実験を
   // モデルのタブ: Optimizer と Scheduler は使わない旨
   await page.getByRole('tab', { name: /モデル/ }).click()
   await expect(
-    page.getByText('パラメータの無いモデルのため, Optimizer は使いません.'),
-  ).toBeVisible()
+    page.getByText(
+      'このモデルは学習で更新する重みを持たないので, Optimizer と Scheduler は使いません.',
+    ),
+  ).toHaveCount(2)
   await expect(
-    page.getByText('パラメータの無いモデルのため, Scheduler は使いません.'),
+    page
+      .getByText(
+        'このモデルは学習で更新する重みを持たないので, Optimizer と Scheduler は使いません.',
+      )
+      .first(),
   ).toBeVisible()
 })
