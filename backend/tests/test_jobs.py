@@ -65,6 +65,30 @@ print("done", status["status"], kind or "epoch", flush=True)
 '''
 
 
+# fit の終わりに完了を書き, その後に評価と推論の一式を書き出すスクリプト.
+# 一式の書き出しは, テストが置く GO を待ってから (最大 60 秒)
+BUNDLE_TRAIN = '''\
+import json, os, time
+from datetime import datetime
+from pathlib import Path
+
+now = datetime.now()
+day, clock = now.strftime("%Y-%m-%d"), now.strftime("%H-%M-%S")
+run = Path("outputs/demo") / day / clock
+run.mkdir(parents=True)
+(run / "config.yaml").write_text("experiment:\\n  name: demo\\n")
+status = {"status": "completed", "pid": os.getpid(), "planned_epochs": 1}
+(run / "run.json").write_text(json.dumps(status))
+for _ in range(1200):
+    if Path("GO").exists():
+        break
+    time.sleep(0.05)
+(run / "evaluations").mkdir()
+(run / "inference").mkdir()
+(run / "inference" / "inference.yaml").write_text("model: {}\\n")
+'''
+
+
 def wait_for(client: TestClient, job_id: str, key: str, value: object) -> dict:
     """
     ジョブの項目が指定した値になるまで待つ関数
@@ -190,6 +214,53 @@ def test_job_lifecycle(client: TestClient, project_dir: Path) -> None:
 
     jobs = client.get("/api/jobs").json()
     assert [item["id"] for item in jobs] == [job_id]
+
+
+def test_job_running_after_fit(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    fit の後の推論の一式の書き出しの間, ジョブが動いたままであることを
+    確かめる関数
+
+    画面はジョブの status と実験の状態を合わせて, この間を「後の処理中」
+    とし, プロセスが終わるまで「完了」を出さない
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    (project_dir / "train.py").write_text(BUNDLE_TRAIN)
+    project_id = register(client, project_dir)
+    created = client.post(
+        f"/api/projects/{project_id}/jobs", json={"script": "train.py"}
+    )
+    assert created.status_code == 201
+    job_id = created.json()["id"]
+
+    # 実験は完了でも, 一式を書き出すまでプロセスは動いたまま
+    job = wait_for(client, job_id, "run_id", ...)
+    for _ in range(10):
+        job = client.get(f"/api/jobs/{job_id}").json()
+        assert job["run"]["status"] == "completed"
+        assert job["status"] == "running"
+        time.sleep(0.02)
+    run_dir = project_dir / "outputs" / job["run_id"]
+    assert not (run_dir / "inference" / "inference.yaml").exists()
+
+    # 一式の書き出しとプロセスの終わり
+    (project_dir / "GO").touch()
+    job = wait_for(client, job_id, "status", "finished")
+    assert job["return_code"] == 0
+    assert job["run"]["status"] == "completed"
+    assert (run_dir / "inference" / "inference.yaml").is_file()
 
 
 def test_stop_within_epoch(client: TestClient, project_dir: Path) -> None:

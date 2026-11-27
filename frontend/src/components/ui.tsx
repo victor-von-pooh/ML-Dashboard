@@ -19,8 +19,8 @@ import {
   type Ref,
 } from 'react'
 
-import type { RunStatus } from '../api/client'
 import { directionLabel, metricNote, type ColumnDirection } from '../lib/metrics'
+import type { JobStatus } from '../lib/progress'
 
 export function Card({
   title,
@@ -88,24 +88,26 @@ export function Button({
   )
 }
 
-const STATUS: Record<RunStatus, { label: string; icon: LucideIcon; className: string }> = {
+const STATUS: Record<JobStatus, { label: string; icon: LucideIcon; className: string }> = {
   completed: { label: '完了', icon: CheckCircle2, className: 'text-good-text bg-good/10' },
   running: { label: '実行中', icon: Loader2, className: 'text-accent-text bg-accent/10' },
+  finishing: { label: '後の処理中', icon: Loader2, className: 'text-accent-text bg-accent/10' },
   stopped: { label: '中断', icon: PauseCircle, className: 'text-serious-text bg-serious/10' },
   failed: { label: '失敗', icon: XCircle, className: 'text-critical-text bg-critical/10' },
   unknown: { label: '未完了', icon: CircleHelp, className: 'text-ink-2 bg-surface-2' },
 }
 
-const STATUS_HINT: Record<RunStatus, string> = {
+const STATUS_HINT: Record<JobStatus, string> = {
   completed: '最後まで学習しました',
   running: '学習中です',
+  finishing: '学習を終え, 評価や推論の一式の書き出しなどの後の処理をしています',
   stopped: '中断の要求 (STOP, 登録した関数) か Ctrl-C で止めました',
   failed: 'エラーで止まりました',
   unknown: '途中で止まったか, 結果が残っていません',
 }
 
-/** 実験の状態. 色だけに頼らずアイコンと文字も付ける */
-export function StatusBadge({ status }: { status: RunStatus }) {
+/** 実験とジョブの状態. 色だけに頼らずアイコンと文字も付ける */
+export function StatusBadge({ status }: { status: JobStatus }) {
   const { label, icon: Icon, className } = STATUS[status]
   return (
     <span
@@ -115,7 +117,13 @@ export function StatusBadge({ status }: { status: RunStatus }) {
         className,
       )}
     >
-      <Icon className={clsx('size-3.5', status === 'running' && 'animate-spin')} aria-hidden />
+      <Icon
+        className={clsx(
+          'size-3.5',
+          (status === 'running' || status === 'finishing') && 'animate-spin',
+        )}
+        aria-hidden
+      />
       {label}
     </span>
   )
