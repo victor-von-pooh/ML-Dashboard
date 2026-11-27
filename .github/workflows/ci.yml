@@ -6,6 +6,13 @@ on:
   pull_request:
 
 jobs:
+  # CLAUDE.md の触れてよいリポジトリの一覧に無い名前が無いかの確かめ
+  repo-names:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/check_repo_names.py
+
   backend:
     runs-on: ubuntu-latest
     defaults:
