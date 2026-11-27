@@ -177,6 +177,7 @@ export function MetricCharts({
         {charts.map(({ group, series, sparse, direction }) => (
           <Card
             key={group.name}
+            landmark={false}
             title={<MetricTitle name={group.name} />}
             actions={
               direction || (best && group.keys.includes(best.monitor)) ? (

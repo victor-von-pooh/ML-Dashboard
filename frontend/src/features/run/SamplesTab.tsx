@@ -290,6 +290,7 @@ function SampleCard({
   const sample = group.entries[current]!
   return (
     <Card
+      landmark={false}
       title={<span className="font-mono">{group.name}</span>}
       actions={
         group.entries.length > 1 ? (

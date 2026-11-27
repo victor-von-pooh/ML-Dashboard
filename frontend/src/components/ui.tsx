@@ -25,7 +25,9 @@ import type { JobStatus } from '../lib/progress'
 
 /**
  * 枠で囲んだ欄. 見出し (title) を持つときは, 見出しを名前にした区域 (region) として
- * 読み上げる (欄を見出しの名前で探せるように). 見出しの無い欄は名前を持たない
+ * 読み上げる (欄を見出しの名前で探せるように). 見出しの無い欄は名前を持たない.
+ * 見出しにボタンなどを含むときは name で区域の名前を渡す. 指標, 評価, 見本, 画像ごとの
+ * ように数の決まらない欄は landmark={false} で区域にしない (区域が並び過ぎないように)
  */
 export function Card({
   title,
@@ -33,17 +35,25 @@ export function Card({
   children,
   className,
   padded = true,
+  name,
+  landmark = true,
 }: {
   title?: ReactNode
   actions?: ReactNode
   children: ReactNode
   className?: string
   padded?: boolean
+  /** 区域の名前 (省くと見出しを名前にする) */
+  name?: string
+  /** 区域 (region) にするか. false なら見出しは h2 のままで名前を持たない */
+  landmark?: boolean
 }) {
   const titleId = useId()
+  const region = landmark && Boolean(name || title)
   return (
     <section
-      aria-labelledby={title ? titleId : undefined}
+      aria-label={region && name ? name : undefined}
+      aria-labelledby={region && !name ? titleId : undefined}
       className={clsx(
         'rounded-xl border border-line bg-surface shadow-sm shadow-black/[0.03]',
         className,

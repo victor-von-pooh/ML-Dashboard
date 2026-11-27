@@ -432,6 +432,7 @@ export function ComparePage() {
               {charts.map(({ column, series, missing, identical, sparse, direction }) => (
                 <Card
                   key={column}
+                  landmark={false}
                   title={<MetricTitle name={column} />}
                   actions={direction ? <DirectionBadge value={direction} /> : undefined}
                 >
