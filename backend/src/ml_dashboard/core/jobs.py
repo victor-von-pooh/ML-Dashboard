@@ -7,6 +7,7 @@ import socket
 import subprocess
 import tempfile
 import threading
+import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -50,6 +51,21 @@ FORCE_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGKILL)
 # (開始の時刻はプロセスを作る直前に取るので本物は直後に始まり, 時計の
 # 合わせ直しで ps の時刻がずれても本物を外さない幅)
 JOB_START_SLACK_SEC = 60.0
+
+# pid を使い回したと読んだ学習中のジョブを, 実験の記録が変わらないまま
+# 終わったものにするまでの秒数 (ML-Found はバッチごとに進み具合を書き直す
+# ので, 本物は 1 バッチなどの 1 つの処理がこれを超えない限り書く)
+JOB_STALL_SEC = 3600.0
+
+# 学習の記録が止まったかを数える間に, 読み直しの間が空いたら数え直す秒数
+# (プロセスや VM の一時停止の後, 再開して最初に読んだ 1 回で決めないため)
+JOB_STALL_GAP_SEC = 300.0
+
+# 学習中に ML-Found が書き直す実験の記録 (どれかが変われば学習は生きている)
+LIVE_FILES = ("progress.json", "run.json", "train.log")
+
+# 実験の記録のファイルごとの (i-node, 大きさ, 更新の時刻), 無ければ None
+RunStamp = tuple[Optional[tuple[int, int, int]], ...]
 
 JobStatus = Literal["running", "finished"]
 
@@ -181,6 +197,38 @@ def same_process(job: Job) -> Optional[bool]:
     return same
 
 
+def run_stamp(run_dir: Path) -> RunStamp:
+    """
+    学習中に ML-Found が書き直す実験の記録の状態を取得する関数
+
+    ML-Found は progress.json と run.json を一時ファイルからの置き換えで
+    書く (書くたびに i-node が変わる). train.log は書き足す (大きさと
+    更新の時刻が変わる). 時刻の値は比べずに変わったかだけを見るのに使う
+
+    Parameters
+    ----------
+    run_dir: Path
+        実験のディレクトリ
+
+    Returns
+    ----------
+    stamp: RunStamp
+        LIVE_FILES の順の (i-node, 大きさ, 更新の時刻), 無いか読めない
+        ファイルは None (リンクは辿らない)
+    """
+    stamps: list[Optional[tuple[int, int, int]]] = []
+    for name in LIVE_FILES:
+        try:
+            info = os.lstat(run_dir / name)
+        except OSError:
+            stamps.append(None)
+            continue
+        stamps.append((info.st_ino, info.st_size, info.st_mtime_ns))
+    stamp = tuple(stamps)
+
+    return stamp
+
+
 class JobManager:
     def __init__(self, data_dir: Path):
         # ジョブの記録と出力を置くディレクトリを保存
@@ -190,6 +238,12 @@ class JobManager:
         # 一覧の読み直しと中断が同時でも, 読み込みから保存までを 1 つずつ実行
         self.processes: dict[str, subprocess.Popen[bytes]] = {}
         self.lock = threading.RLock()
+
+        # pid を使い回したと読んだ学習中のジョブごとの, 最後に変わったと
+        # 見た実験の記録, そのときと前に読んだときの単調な時計 (休止と時計の
+        # 合わせ直しで進まない. 起動し直すと比べられないのでメモリだけに保持)
+        self.stalls: dict[str, tuple[RunStamp, float, float]] = {}
+        self.clock = time.monotonic
 
     def job_dir(self, job_id: str) -> Path:
         """
@@ -457,14 +511,58 @@ class JobManager:
             return True, None
 
         # pid を別のプロセスが使い回していれば終了扱い. ただし実験の run.json
-        # が実行中なら実行中のまま (時計の合わせ直しで ps の時刻がずれた本物を
-        # 終わったものにすると戻せないため). 確かめられない場合も実行中のまま
-        if same_process(job) is False:
-            status = read_json(run_dir / "run.json") if run_dir else {}
-            if status.get("status") != "running":
-                return True, None
+        # が実行中なら, 学習の記録が止まったと分かるまで実行中のまま (時計の
+        # 合わせ直しで ps の時刻がずれた本物を終わったものにすると戻せない
+        # ため). 確かめられない場合も実行中のまま
+        if same_process(job) is not False:
+            self.stalls.pop(job.id, None)
+            return False, None
+        status = read_json(run_dir / "run.json") if run_dir else {}
+        if status.get("status") != "running":
+            return True, None
+        if run_dir is not None and self.stalled(job, run_dir):
+            return True, None
 
         return False, None
+
+    def stalled(self, job: Job, run_dir: Path) -> bool:
+        """
+        pid を使い回したと読んだ学習中のジョブの, 実験の記録が止まったかを
+        確かめる関数
+
+        記録の時刻の値は時計に頼るので比べず, ダッシュボードの単調な時計で
+        記録が変わらない間の長さを測る. 読み直しの間が JOB_STALL_GAP_SEC
+        以上空いた場合は, 一時停止から再開した直後の 1 回で決めないように
+        数え直す
+
+        Parameters
+        ----------
+        job: Job
+            ジョブ
+        run_dir: Path
+            ジョブの実験のディレクトリ
+
+        Returns
+        ----------
+        stalled: bool
+            学習中に ML-Found が書き直す記録が, どれも変わらないまま
+            JOB_STALL_SEC 以上たったかどうか. 初めて見た場合, 前に見た
+            ときから変わった場合, 前に読んでから JOB_STALL_GAP_SEC 以上
+            空いた場合は, そこから数え直して False
+        """
+        stamp = run_stamp(run_dir)
+        now = self.clock()
+        seen = self.stalls.get(job.id)
+        if (
+            seen is None or seen[0] != stamp
+            or now - seen[2] >= JOB_STALL_GAP_SEC
+        ):
+            self.stalls[job.id] = (stamp, now, now)
+            return False
+        self.stalls[job.id] = (stamp, seen[1], now)
+        stalled = now - seen[1] >= JOB_STALL_SEC
+
+        return stalled
 
     def refresh(self, job: Job, project: Optional[Project]) -> Job:
         """
@@ -497,6 +595,7 @@ class JobManager:
             job.return_code = return_code
             job.finished_at = now_iso()
             self.processes.pop(job.id, None)
+            self.stalls.pop(job.id, None)
 
             # run.json を書かない版の実験は終わった後に結び付け
             if project is not None and run_dir is None:
