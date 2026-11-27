@@ -7,7 +7,7 @@ ML-Dashboard で作業するときの方針をまとめる.
 ML-Found で行った実験の結果を確かめ, 学習を起動するローカルの Web アプリ. 設計は [docs/DESIGN.md](docs/DESIGN.md) にまとめる.
 
 - ML-Found は submodule. ダッシュボードに必要な汎用の仕組み (実験の状態の書き出し, 中断など) は ML-Found に足す. 画面と API に固有のものはこのリポジトリに置く
-- 動作確認には同梱の `demo` を使う. 多くの種類の学習で確かめる場合は, ML_tester の各タスク (ML-Found のプロジェクト) も使える. 手順書とテストは ML_tester が無くても通るようにする
+- 動作確認には同梱の `demo` を使う. 手順書とテストはリポジトリの中のもの (同梱の `demo` とテストの fixture) だけで通るようにする
 
 ## コードの書き方
 
@@ -15,7 +15,7 @@ ML-Found で行った実験の結果を確かめ, 学習を起動するローカ
 - TypeScript: Prettier と oxlint に従い, `strict` で型検査を通す. コメントは日本語で書く
 - API を変えたら `make api` で画面の型を作り直し, `openapi.json` と `src/api/schema.d.ts` もコミットする
 - 画面の色は `src/index.css` の役割ごとの変数を使う. グラフの系列の色は `--series-1` から固定の順で使い, 状態の色 (`--good` など) は系列に使わない. 状態は色だけでなくアイコンと文字も付ける
-- ドキュメントとコードのコメントでは, 「機械学習を全て GUI 上で行う」という目的のために開発しているリポジトリ (今は ML-Found, ML-Dashboard, ML-ModelControl, ML-CreateArchitecture, ML-EDA, ML-Fathom, ML-Inference, ML-Provide, ML-Quest, ML-Pathfinder, ML_tester, ML-Studio) 以外に触れない. ローカルのディレクトリ構成やパスも書かない
+- ドキュメントとコードのコメントでは, 「機械学習を全て GUI 上で行う」という目的のために開発しているリポジトリ (今は ML-Found, ML-Dashboard, ML-ModelControl, ML-CreateArchitecture, ML-EDA, ML-Fathom, ML-Inference, ML-Provide, ML-Quest, ML-Pathfinder, ML-Studio) 以外に触れない. ローカルのディレクトリ構成やパスも書かない
 
 ## 文書
 
