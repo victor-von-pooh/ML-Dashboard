@@ -446,12 +446,167 @@ def test_reused_pid_after_restart(
         assert core_jobs.same_process(job_at("2026-11-01T00:00:00")) is None
         assert core_jobs.same_process(job_at("壊れた時刻")) is None
 
-        # 実行中の run.json なら, 使い回しと読めても終わったものにしない
-        # (時計の合わせ直しで ps の時刻がずれた本物を戻せなくしないため).
-        # ただし割り込まない
+        # 実行中の run.json なら, 使い回しと読めても, 学習の記録が止まったと
+        # 分かるまでは終わったものにしない (時計の合わせ直しで ps の時刻が
+        # ずれた本物を戻せなくしないため). ただし割り込まない
         assert manager.poll(reused, run_dir) == (False, None)
         assert not manager.owns(reused, run_dir)
         assert manager.owns(job, run_dir)
+    finally:
+        process.kill()
+        process.wait()
+
+
+def test_stalled_run_with_reused_pid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    起動し直した後, run.json が実行中のまま pid を使い回したジョブを,
+    学習の記録が変わらないまま JOB_STALL_SEC たてば終わったものにし,
+    記録を書き続ける本物は動いたままにすることを確かめる関数
+
+    本物 (時計の合わせ直しで ps の時刻がずれ, 使い回しと読めるもの) と
+    死んだ学習は, ML-Found が学習中に書き直す記録が変わるかで見分ける.
+    使い回しと読めないジョブは, 記録が止まっても終わったものにしない
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        pytest の差し替え
+
+    Returns
+    ----------
+    None
+    """
+    run_dir = tmp_path / "outputs" / "demo" / "2026-11-01" / "00-00-00"
+    run_dir.mkdir(parents=True)
+
+    def write_live(epoch: int, batch: int) -> None:
+        # ML-Found と同じく一時ファイルに書いてから置き換え
+        for name, data in (
+            ("run.json", {
+                "status": "running", "pid": process.pid,
+                "hostname": socket.gethostname()
+            }),
+            ("progress.json", {
+                "phase": "train", "epoch": epoch, "batch": batch,
+                "updated_at": "2026-11-01T00:00:00+09:00"
+            })
+        ):
+            temp = run_dir / f".{name}.tmp"
+            temp.write_text(json.dumps(data))
+            os.replace(temp, run_dir / name)
+
+    # 学習のプロセスが死んだ後に pid を使い回した (と読める) プロセス
+    process = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(60)"],
+        start_new_session=True
+    )
+    try:
+        write_live(1, 1)
+        (run_dir / "train.log").write_text("epoch 1\n")
+        created_at = core_jobs.now_iso()
+        start = datetime.fromisoformat(created_at)
+
+        def job_of(job_id: str) -> core_jobs.Job:
+            # 起動し直した後の記録 (このアプリが起動したプロセスを持たない)
+            return core_jobs.Job(
+                id=job_id, project_id="p", script="train.py",
+                config="c.yaml", created_at=created_at, pid=process.pid,
+                status="running", return_code=None, run_id=None,
+                finished_at=None, stop_requested=False
+            )
+
+        # 時計はテストで進める単調な時計に差し替え
+        manager = core_jobs.JobManager(tmp_path)
+        now = [1000.0]
+        manager.clock = lambda: now[0]
+        stall = core_jobs.JOB_STALL_SEC
+
+        # pid のプロセスはジョブの開始の 1 時間後に始まったと読む
+        monkeypatch.setattr(
+            core_jobs, "process_started",
+            lambda pid: start + timedelta(hours=1)
+        )
+
+        # 記録を書き続ける本物は, 何時間たっても動いたまま
+        real = job_of("0123456789ab")
+        assert core_jobs.same_process(real) is False
+        for step in range(1, 5):
+            assert manager.poll(real, run_dir) == (False, None)
+            now[0] += stall - 1
+            write_live(1, step + 1)
+            assert manager.poll(real, run_dir) == (False, None)
+            now[0] += stall - 1
+        # 書き直した後は, そこから数え直す
+        assert manager.poll(real, run_dir) == (False, None)
+        now[0] += stall
+        assert manager.poll(real, run_dir) == (True, None)
+
+        # train.log に書き足しただけ (i-node が同じ) でも数え直す
+        assert manager.poll(real, run_dir) == (True, None)
+        with open(run_dir / "train.log", "a") as log:
+            log.write("epoch 2\n")
+        assert manager.poll(real, run_dir) == (False, None)
+        now[0] += stall - 1
+        assert manager.poll(real, run_dir) == (False, None)
+
+        # 死んだ学習 (記録が変わらない) は, 幅の手前までは動いたまま
+        dead = job_of("123456789abc")
+        assert manager.poll(dead, run_dir) == (False, None)
+        now[0] += stall - 1
+        assert manager.poll(dead, run_dir) == (False, None)
+        now[0] += 1
+        assert manager.poll(dead, run_dir) == (True, None)
+        # 終わったものにしても割り込まない
+        assert not manager.owns(dead, run_dir)
+
+        # 使い回しと読めない (同じプロセスと読む, 起動の時刻を読めない)
+        # ジョブは, 記録が止まっても終わったものにしない
+        for started in (start, None):
+            with monkeypatch.context() as patch:
+                patch.setattr(
+                    core_jobs, "process_started",
+                    lambda pid, started=started: started
+                )
+                job = job_of("23456789abcd")
+                for _ in range(3):
+                    assert manager.poll(job, run_dir) == (False, None)
+                    now[0] += stall * 2
+
+        # 一覧の読み直しでも終わったものにし, 終了コードは分からないまま
+        # (プロセスにはシグナルを送らない)
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        project = core_jobs.Project(
+            id="p", name="p", path=str(project_dir),
+            python=sys.executable, created_at=created_at
+        )
+        stored = job_of("3456789abcde")
+        manager.job_dir(stored.id).mkdir(parents=True)
+        manager.save(stored)
+        monkeypatch.setattr(
+            manager, "find_run", lambda job, project: run_dir
+        )
+        assert manager.get(stored.id, {"p": project}).status == "running"
+        # 数えている間の強制の中断でもシグナルを送らない
+        for _ in range(3):
+            stopping = manager.stop(stored.id, {"p": project}, force=True)
+            assert stopping is not None
+            assert stopping.status == "running"
+            assert stopping.force_count == 0
+        assert process.poll() is None
+        now[0] += stall
+        refreshed = manager.get(stored.id, {"p": project})
+        assert refreshed is not None
+        assert refreshed.status == "finished"
+        assert refreshed.return_code is None
+        assert stored.id not in manager.stalls
+        stopped = manager.stop(stored.id, {"p": project}, force=True)
+        assert stopped is not None and stopped.force_count == 0
+        assert process.poll() is None
     finally:
         process.kill()
         process.wait()
