@@ -1,4 +1,3 @@
-import copy
 import tempfile
 from dataclasses import asdict
 from pathlib import Path
@@ -9,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from omegaconf import DictConfig, OmegaConf
 from pydantic import BaseModel, model_validator
 
+from ml_dashboard.api.check_process import run_check_process
 from ml_dashboard.api.routes import (
     NOT_FOUND,
     RUN_PATH,
@@ -37,10 +37,6 @@ from ml_dashboard.core.model_spec import (
     set_model_spec,
 )
 from ml_dashboard.core.models import Progress, RunSource, RunSummary
-from ml_dashboard.core.project_modules import (
-    is_project_module,
-    project_modules,
-)
 from ml_dashboard.core.projects import (
     Project,
     ProjectError,
@@ -703,50 +699,10 @@ def rebuild_error(error: Exception, message: str) -> Exception:
     return rebuilt
 
 
-def with_project_classes(
-    cfg: DictConfig, project_dir: Path, package: str
-) -> DictConfig:
+def uses_custom_classes(cfg: DictConfig) -> bool:
     """
-    プロジェクトのモジュールの自作のクラスの名前に, 確かめごとの頭の名前を
-    付けた config を作る関数
-
-    Parameters
-    ----------
-    cfg: DictConfig
-        学習に使う config
-    project_dir: Path
-        プロジェクトのディレクトリ
-    package: str
-        確かめごとの頭の名前
-
-    Returns
-    ----------
-    renamed: DictConfig
-        名前を付け替えた config の写し, 付け替えが無ければ元の config
-    """
-    renamed = copy.deepcopy(cfg)
-    changed = False
-    for node in class_name_nodes(renamed):
-        # 値の参照が解決できないものなどは, 後の確認の誤りに任せて対象外
-        try:
-            name = node.get("name")
-        except Exception:
-            continue
-        if not isinstance(name, str) or "." not in name:
-            continue
-        if is_project_module(project_dir, name.partition(".")[0]):
-            node.name = f"{package}.{name}"
-            changed = True
-    if not changed:
-        return cfg
-
-    return renamed
-
-
-def class_name_nodes(cfg: DictConfig) -> list[DictConfig]:
-    """
-    config の中の, Optimizer と Scheduler のクラスの名前を持つ項目を集める
-    関数
+    config が Optimizer か Scheduler に自作のクラス (. を含む名前) を書いて
+    いるかを返す関数
 
     Parameters
     ----------
@@ -755,44 +711,47 @@ def class_name_nodes(cfg: DictConfig) -> list[DictConfig]:
 
     Returns
     ----------
-    nodes: list[DictConfig]
-        optimizer, scheduler, optimizers.<名前>, optimizers.<名前>.scheduler
-        のうち辞書のもの
+    custom: bool
+        . を含む名前があるか, 名前を読めない項目がある場合は True
     """
-    # 値の参照が解決できない項目は, 後の確認の誤りに任せて対象外
+    # 値の参照が解決できない名前も, 読み込む場合に備えて自作の扱い
     try:
-        found = [cfg.get("optimizer"), cfg.get("scheduler")]
-        optimizers = cfg.get("optimizers")
-        if isinstance(optimizers, DictConfig):
-            for entry in optimizers.values():
-                if isinstance(entry, DictConfig):
-                    found += [entry, entry.get("scheduler")]
+        names = class_names(cfg)
     except Exception:
-        return []
-    nodes = [node for node in found if isinstance(node, DictConfig)]
+        return True
+    custom = any("." in name for name in names)
 
-    return nodes
+    return custom
 
 
-def without_package(text: str, package: str) -> str:
+def class_names(cfg: DictConfig) -> list[str]:
     """
-    文から確かめごとの頭の名前を除く関数
+    config の Optimizer と Scheduler のクラスの名前を集める関数
 
     Parameters
     ----------
-    text: str
-        誤り, 注意, お知らせの文
-    package: str
-        確かめごとの頭の名前
+    cfg: DictConfig
+        学習に使う config
 
     Returns
     ----------
-    stripped: str
-        頭の名前を除いた文 (書いた名前のまま)
+    names: list[str]
+        optimizer.name, scheduler.name, optimizers.<名前>.name,
+        optimizers.<名前>.scheduler.name のうち文字列のもの
     """
-    stripped = text.replace(f"{package}.", "")
+    # optimizer と scheduler, 名前付きの Optimizer ごとの 2 つの項目
+    nodes = [cfg.get("optimizer"), cfg.get("scheduler")]
+    optimizers = cfg.get("optimizers")
+    if isinstance(optimizers, DictConfig):
+        for entry in optimizers.values():
+            if isinstance(entry, DictConfig):
+                nodes += [entry, entry.get("scheduler")]
+    names = [
+        node.get("name") for node in nodes if isinstance(node, DictConfig)
+    ]
+    names = [name for name in names if isinstance(name, str)]
 
-    return stripped
+    return names
 
 
 def check_loaded(
@@ -804,7 +763,7 @@ def check_loaded(
     Parameters
     ----------
     cfg: DictConfig
-        学習に使う config (自作のクラスの名前は頭の名前を付けたもの)
+        学習に使う config
     project_dir: Path
         プロジェクトのディレクトリ
 
@@ -928,26 +887,17 @@ def run_checks(
     import_ml_found()
     from ml_found.config import load_config
 
-    # 自作の Optimizer (custom_optim.Lion など) は, 学習と同じくプロジェクトの
-    # モジュールを先に探し, 確かめごとの頭の名前の下で読み込み
+    # 自作の Optimizer (custom_optim.Lion など) を書いた場合は, 学習と同じく
+    # プロジェクトのディレクトリから読むように別のプロセスで確認
     # (ダッシュボードのプロセスの sys.path と sys.modules は不変)
     project_dir = Path(project.path)
-    with project_modules(project_dir) as package:
-        try:
-            cfg, diff = load_config(str(default_path), str(path))
-            warnings, notes, value_error = check_loaded(
-                with_project_classes(cfg, project_dir, package), project_dir
-            )
-        except Exception as error:
-            # 文に出る頭の名前を除き, 書いた名前で表示
-            message = without_package(str(error), package)
-            if message == str(error):
-                raise
-            raise rebuild_error(error, message) from error.__cause__
-    warnings = [without_package(text, package) for text in warnings]
-    notes = [without_package(text, package) for text in notes]
-    if value_error is not None:
-        value_error = without_package(value_error, package)
+    cfg, diff = load_config(str(default_path), str(path))
+    if uses_custom_classes(cfg):
+        warnings, notes, value_error = run_check_process(
+            project_dir, default_path, path
+        )
+    else:
+        warnings, notes, value_error = check_loaded(cfg, project_dir)
 
     # config の requires に書いた機能をプロジェクトの Python で確かめ,
     # 足りなければ次の一手を添えた誤り (起動では覚えた結果を使わない確かめ)

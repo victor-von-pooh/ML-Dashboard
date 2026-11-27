@@ -4,6 +4,8 @@ import os
 import shutil
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from pathlib import Path
 from typing import Optional
 
@@ -11,7 +13,11 @@ import pytest
 from fastapi.testclient import TestClient
 from omegaconf import OmegaConf
 
-from ml_dashboard.api.jobs import describe_missing_path
+from ml_dashboard.api.check_process import (
+    describe_exception,
+    rebuild_exception,
+)
+from ml_dashboard.api.jobs import describe, describe_missing_path
 from ml_dashboard.core.model_spec import find_model_spec_copy, run_of_copy
 from ml_dashboard.core.models import RunModelSpec
 
@@ -436,6 +442,13 @@ class Mine(optim.SGD):
         if lr < LR_FLOOR:
             raise ValueError(f"lr は {LR_FLOOR} 以上にしてください")
         super(Mine, self).__init__(params, lr=lr)
+
+
+class Sched(optim.lr_scheduler.StepLR):
+    def __init__(self, optimizer, step_size=1, gamma=0.5):
+        if gamma < LR_FLOOR:
+            raise ValueError(f"gamma は {LR_FLOOR} 以上にしてください")
+        super(Sched, self).__init__(optimizer, step_size, gamma)
 '''
 
 
@@ -531,11 +544,257 @@ def test_validate_keeps_import_state(
     # 初めの確かめで ML-Found と PyTorch を読んでから, 前後を比較
     assert client.post(url, json={"text": text}).json()["ok"] is True
     path, modules = list(sys.path), set(sys.modules)
+    finders = list(sys.meta_path)
     assert client.post(url, json={"text": text}).json()["ok"] is True
     assert sys.path == path
     assert set(sys.modules) == modules
+    assert sys.meta_path == finders
     assert "same_optim" not in sys.modules
     assert "same_helper" not in sys.modules
+
+
+def test_validate_custom_scheduler_and_named(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    自作の Scheduler と名前付きの Optimizer の自作のクラスも, プロジェクトの
+    モジュールで確かめ, 誤りに書いた名前と Optimizer の名前を付けることを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    write_same_modules(project_dir, 0.5)
+    project_id = register(client, project_dir)
+    url = f"/api/projects/{project_id}/validate"
+
+    # 自作の Scheduler の値の誤り (下限はプロジェクトのモジュールのもの)
+    text = (
+        "scheduler:\n  name: same_optim.Sched\n  params:\n"
+        "    gamma: 0.1\n"
+    )
+    result = client.post(url, json={"text": text}).json()
+    assert result["ok"] is False
+    assert "gamma は 0.5 以上" in result["error"]
+    ok = text.replace("0.1", "0.9")
+    assert client.post(url, json={"text": ok}).json()["ok"] is True
+
+    # 名前付きの Optimizer は, 名前を付けた誤り
+    with (project_dir / "configs" / "default" / "train.yaml").open("a") as f:
+        f.write("optimizers:\n  main:\n    name: Adam\n    modules: [net]\n")
+    text = (
+        "optimizers:\n  main:\n    name: same_optim.Mine\n"
+        "    params:\n      lr: 0.2\n"
+    )
+    result = client.post(url, json={"text": text}).json()
+    assert result["ok"] is False
+    assert "lr は 0.5 以上" in result["error"]
+    missing = text.replace("same_optim.Mine", "same_optim.Missing")
+    result = client.post(url, json={"text": missing}).json()
+    assert result["ok"] is False
+    assert "optimizers.main" in result["error"]
+    assert "same_optim.Missing が見つかりません" in result["error"]
+    assert "same_optim" not in sys.modules
+
+
+def test_validate_resolves_like_training(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    自作のクラスのモジュールを, 学習と同じ探し方で読むことを確かめる関数
+
+    名前空間のパッケージ, パッケージの中の相対 import, importlib で読む
+    モジュールは読め, 最上位のモジュールの相対 import は学習と同じく誤り
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # __init__.py の無いディレクトリと, その中から読むモジュール
+    (project_dir / "nspkg").mkdir()
+    (project_dir / "lib").mkdir()
+    (project_dir / "lib" / "h.py").write_text("FLOOR = 0.0\n")
+    (project_dir / "hh.py").write_text("SCALE = 1.0\n")
+    (project_dir / "nspkg" / "opt.py").write_text(
+        "import importlib\n\nfrom torch import optim\n\n"
+        "from lib.h import FLOOR\n\n"
+        "SCALE = importlib.import_module('hh').SCALE\n\n\n"
+        "class Mine(optim.SGD):\n    pass\n"
+    )
+
+    # パッケージの中の相対 import
+    (project_dir / "pkgopt").mkdir()
+    (project_dir / "pkgopt" / "__init__.py").write_text("")
+    (project_dir / "pkgopt" / "base.py").write_text(
+        "from torch import optim\n\n\nclass Base(optim.SGD):\n    pass\n"
+    )
+    (project_dir / "pkgopt" / "core.py").write_text(
+        "from .base import Base\n\n\nclass Mine(Base):\n    pass\n"
+    )
+
+    # 最上位のモジュールの相対 import (学習でも読めない)
+    (project_dir / "toprel.py").write_text(
+        "from . import hh\n\n\nclass Mine:\n    pass\n"
+    )
+    project_id = register(client, project_dir)
+    url = f"/api/projects/{project_id}/validate"
+
+    for name, ok in [
+        ("nspkg.opt.Mine", True), ("pkgopt.core.Mine", True),
+        ("toprel.Mine", False)
+    ]:
+        text = f"optimizer:\n  name: {name}\n"
+        result = client.post(url, json={"text": text}).json()
+        assert result["ok"] is ok, (name, result)
+    for name in ["nspkg", "lib", "hh", "pkgopt", "toprel"]:
+        assert name not in sys.modules
+
+
+def test_validate_reports_import_error(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    自作のモジュールの読み込みのエラーを, 種類を付けて返すことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    (project_dir / "broken_optim.py").write_text("undefined_name\n")
+    (project_dir / "exit_optim.py").write_text(
+        "import sys\n\nsys.exit(3)\n"
+    )
+    project_id = register(client, project_dir)
+    url = f"/api/projects/{project_id}/validate"
+
+    result = client.post(
+        url, json={"text": "optimizer:\n  name: broken_optim.Mine\n"}
+    ).json()
+    assert result["ok"] is False
+    assert "NameError" in result["error"]
+    assert "undefined_name" in result["error"]
+    assert "broken_optim" not in sys.modules
+
+    # 結果を書かずに終わったプロセスは, 終了コードを添えた誤り
+    result = client.post(
+        url, json={"text": "optimizer:\n  name: exit_optim.Mine\n"}
+    ).json()
+    assert result["ok"] is False
+    assert "終了コード 3" in result["error"]
+
+
+def validate_ok(client: TestClient, project_id: str, text: str) -> bool:
+    """
+    config を確かめ, 起動できるかを返す関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_id: str
+        プロジェクトの ID
+    text: str
+        experiment の config の中身
+
+    Returns
+    ----------
+    ok: bool
+        誤りが無ければ True
+    """
+    result = client.post(
+        f"/api/projects/{project_id}/validate", json={"text": text}
+    ).json()
+    ok: bool = result["ok"]
+
+    return ok
+
+
+class CustomCheckError(Exception):
+    pass
+
+
+def test_validate_concurrently(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    同じ名前のモジュールを持つ 2 つのプロジェクトを同時に確かめても,
+    それぞれのモジュールを読むことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    other_dir = project_dir.parent / "other_task"
+    shutil.copytree(project_dir, other_dir)
+    write_same_modules(project_dir, 0.5)
+    write_same_modules(other_dir, 0.0)
+    ids = [register(client, project_dir), register(client, other_dir)] * 2
+    text = "optimizer:\n  name: same_optim.Mine\n  params:\n    lr: 0.2\n"
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        results = list(executor.map(
+            partial(validate_ok, client, text=text), ids
+        ))
+    assert results == [False, True, False, True]
+
+
+def test_rebuilt_exception_keeps_message() -> None:
+    """
+    確かめのプロセスから受け取ったエラーの表示が, 元のエラーと同じになる
+    ことを確かめる関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    None
+    """
+    try:
+        try:
+            raise ModuleNotFoundError("No module named 'x'")
+        except ImportError as error:
+            raise ValueError("x.Lion が見つかりません") from error
+    except ValueError as error:
+        chained = error
+    errors: list[Exception] = [
+        chained, CustomCheckError("自作の誤り"), KeyError("lr"),
+        UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+    ]
+    for error in errors:
+        rebuilt = rebuild_exception(describe_exception(error))
+        assert describe(rebuilt) == describe(error)
+        assert str(rebuilt) == str(error)
 
 
 def test_default_config_per_script(
