@@ -209,10 +209,9 @@ class JobInfo(BaseModel):
     hostname: str
     return_code: Optional[int]
     stop_requested: bool
-    # プロセスに割り込めるかどうか. このダッシュボードのプロセスが起動した
-    # か, 起動し直した後でも実験の run.json とプロセスの起動の時刻から同じ
-    # プロセスと確かめられたもの (後の処理中のプロセスに割り込めるかを
-    # 画面が決めるため)
+    # プロセスに割り込めるかどうか (JobManager.owns). 起動し直した後の
+    # 後の処理中のジョブは, 起動の時刻から同じプロセスと確かめられた場合
+    # だけ真 (後の処理中のプロセスに割り込めるかを画面が決めるため)
     attached: bool
     run_id: Optional[str]
     run: Optional[RunSummary]

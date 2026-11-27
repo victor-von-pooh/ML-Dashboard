@@ -411,11 +411,13 @@ def test_reused_pid_after_restart(
         assert manager.poll(reused) == (True, None)
         assert not manager.owns(reused, run_dir)
 
-        # プロセスがジョブより前に始まった (ジョブと関係の無いプロセス)
+        # プロセスがジョブより前に始まったと読める場合は同じとみなす
+        # (本物の pid は本物が終わった後にしか使い回されず, 時刻の読み違い
+        # で本物のジョブを終わったものにしないため)
         later = datetime.fromisoformat(created_at) + timedelta(hours=1)
         older = job_at(later.isoformat(timespec="seconds"))
-        assert core_jobs.same_process(older) is False
-        assert manager.poll(older) == (True, None)
+        assert core_jobs.same_process(older) is True
+        assert manager.poll(older) == (False, None)
 
         # 確かめられない場合 (起動の時刻を読めない, 時刻の無い記録) は今の
         # 振る舞い. 実行中の run.json なら割り込み, 後の処理中なら割り込まない
@@ -439,6 +441,49 @@ def test_reused_pid_after_restart(
         process.kill()
         process.wait()
 
+
+def test_stop_within_epoch(client: TestClient, project_dir: Path) -> None:
+    """
+    エポックの途中で止める要求が, STOP に now と書くことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 中身が now になるまで止まらない偽の学習 (区切りの要求では止まらない)
+    (project_dir / "train.py").write_text(
+        FAKE_TRAIN.replace(
+            'if (run / "STOP").exists():',
+            'if (run / "STOP").exists() and '
+            '(run / "STOP").read_text().strip() == "now":'
+        )
+    )
+    project_id = register(client, project_dir)
+    created = client.post(
+        f"/api/projects/{project_id}/jobs", json={"script": "train.py"}
+    )
+    job_id = created.json()["id"]
+    run_id = wait_for(client, job_id, "run_id", ...)["run_id"]
+
+    # エポックの区切りで止める要求の後でも, 途中で止める要求に切り替えられる
+    client.post(f"/api/jobs/{job_id}/stop", json={"force": False})
+    stopped = client.post(
+        f"/api/jobs/{job_id}/stop", json={"force": False, "now": True}
+    )
+    assert stopped.json()["stop_requested"] is True
+    stop_file = project_dir / "outputs" / run_id / "STOP"
+    assert stop_file.read_text(encoding="utf-8") == "now\n"
+    job = wait_for(client, job_id, "status", "finished")
+    assert job["run"]["status"] == "stopped"
+    output = client.get(f"/api/jobs/{job_id}/output").json()["text"]
+    assert "done stopped now" in output
 
 
 def test_force_stop(client: TestClient, project_dir: Path) -> None:

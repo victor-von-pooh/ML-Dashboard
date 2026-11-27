@@ -46,10 +46,10 @@ DROPPED_ENV = ("VIRTUAL_ENV", "PYTHONPATH", "PYTHONHOME")
 # 強制の中断を繰り返した回数ごとに送るシグナル
 FORCE_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGKILL)
 
-# ジョブの開始の時刻から, そのジョブのプロセスが始まるまでに許す秒数.
-# 開始の時刻はプロセスを作る直前に取り, ps の時刻と共に秒までなので,
-# 本物のプロセスは開始の時刻の直後に始まる
-JOB_START_SLACK_SEC = 10.0
+# ジョブの開始の時刻から, そのジョブのプロセスが始まるまでに許す秒数
+# (開始の時刻はプロセスを作る直前に取るので本物は直後に始まり, 時計の
+# 合わせ直しで ps の時刻がずれても本物を外さない幅)
+JOB_START_SLACK_SEC = 60.0
 
 JobStatus = Literal["running", "finished"]
 
@@ -151,8 +151,11 @@ def same_process(job: Job) -> Optional[bool]:
     Returns
     ----------
     same: Optional[bool]
-        プロセスがジョブの開始の時刻から JOB_START_SLACK_SEC の中で
-        始まっていれば True, その外 (前か後) なら別のプロセスとして False.
+        プロセスがジョブの開始の時刻から JOB_START_SLACK_SEC より後に
+        始まっていれば, 終わった後に pid を使い回した別のプロセスとして
+        False, それ以外は True (本物の pid は本物が終わった後にしか
+        使い回されないので, 前に始まったと読める場合 (夏時間の重なり, 時計の
+        戻り) も本物を終わったものにしない).
         確かめられない場合 (別の端末のジョブ, 起動の時刻を読めない環境,
         居ないプロセス, 開始の時刻を読めない記録) は None
     """
@@ -166,9 +169,9 @@ def same_process(job: Job) -> Optional[bool]:
     if started is None or created.tzinfo is None:
         return None
 
-    # どちらも秒までなので, 前には 1 秒の幅を許す
+    # ジョブの開始の時刻から幅を超えて後に始まったものだけを別のものに判定
     gap = (started - created).total_seconds()
-    same = -1 <= gap <= JOB_START_SLACK_SEC
+    same = gap <= JOB_START_SLACK_SEC
 
     return same
 
@@ -633,7 +636,8 @@ class JobManager:
             return False
 
         # 別のプロセスと分かれば送らない. 確かめられない場合は, 実行中は
-        # 送り, 後の処理中は送らない (どちらも確かめを足す前と同じ扱い)
+        # 学習のプロセスが居る見込みが高いので送り, 後の処理中は run.json
+        # だけでは使い回しと見分けられないので送らない決まり
         same = same_process(job)
         owned = same is True or (state == "running" and same is None)
 
