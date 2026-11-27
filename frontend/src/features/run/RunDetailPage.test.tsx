@@ -78,18 +78,31 @@ function jobOf(status: 'running' | 'finished'): JobInfo {
   } as unknown as JobInfo
 }
 
+/** 答えを変えられる API の様子 */
+interface ApiState {
+  /** ジョブが終わり, 推論の一式を書き出したか */
+  finished: boolean
+  /** 実験の詳細の答えを待たせる間の約束 (null は待たせない) */
+  runGate: Promise<void> | null
+}
+
 /**
  * API の頭 base の下に答える fetch. state.finished でジョブが終わり,
- * 同時に推論の一式を書き出した実験を返す
+ * 推論の一式を書き出した実験を返す
  */
-function stubApi(base: string, state: { finished: boolean }) {
+function stubApi(base: string, state: ApiState) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
     if (!url.startsWith(`${base}/`)) return new Response(null, { status: 404 })
     const path = decodeURIComponent(url.slice(base.length).split('?')[0]!)
     const run = `/projects/p1/runs/${RUN_ID}`
     if (path === '/jobs') return Response.json([jobOf(state.finished ? 'finished' : 'running')])
-    if (path === run) return Response.json(runOf(state.finished))
+    if (path === run) {
+      // 待たせる前に決めた中身を返す (待つ間に書き出した一式は, 次の読み直しで見える)
+      const finished = state.finished
+      if (state.runGate) await state.runGate
+      return Response.json(runOf(finished))
+    }
     if (path === `${run}/results`)
       return Response.json({
         evaluations: [],
@@ -135,7 +148,7 @@ describe('実験の詳細の次の段階への案内', () => {
   ])(
     '$label: 学習の後の処理の間は案内を出さず, ジョブが終わると開き直さずに一式の案内に変わる',
     async ({ basename, apiBase, embedded }) => {
-      const state = { finished: false }
+      const state: ApiState = { finished: false, runGate: null }
       const fetchMock = stubApi(apiBase, state)
       window.history.pushState({}, '', `${basename}/projects/p1/runs/${RUN_ID}`)
       render(
@@ -159,8 +172,23 @@ describe('実験の詳細の次の段階への案内', () => {
       expect(screen.queryByText('この実験を推論の段階で使うには')).not.toBeInTheDocument()
       expect(screen.queryByText(/学習の結果から作る/)).not.toBeInTheDocument()
 
-      // ジョブが終わる (一式を書き出す) と, ジョブの一覧の読み直しで実験の詳細も読み直す
+      // ジョブが終わっても, 実験の詳細を読み直し終えるまでは古いファイルの一覧
+      // (一式なし) で「学習の結果から作る」を出さない
+      let release = () => {}
+      state.runGate = new Promise((resolve) => {
+        release = resolve
+      })
       state.finished = true
+      await waitFor(
+        () => expect(screen.queryByText(/スクリプトが学習の後の処理/)).not.toBeInTheDocument(),
+        { timeout: 5000 },
+      )
+      expect(screen.queryByText('この実験を推論の段階で使うには')).not.toBeInTheDocument()
+      expect(screen.queryByText(/学習の結果から作る/)).not.toBeInTheDocument()
+
+      // 読み直した実験の詳細 (一式あり) で, 開き直さずに「実験の一覧から登録」の案内に変わる
+      state.runGate = null
+      release()
       expect(
         await screen.findByText(/実験の一覧から登録/, {}, { timeout: 5000 }),
       ).toBeInTheDocument()

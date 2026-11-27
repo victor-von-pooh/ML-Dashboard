@@ -1,5 +1,5 @@
 import { Play, TriangleAlert } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
 import {
@@ -88,8 +88,8 @@ export function RunDetailPage() {
   const activeJob = jobs.data?.find(
     (job) => job.status === 'running' && job.project_id === projectId && job.run_id === runId,
   )
-  // 読めなかった場合は, 案内を出し続けるために動いていないとみなす
-  const jobRunning = jobs.data ? activeJob !== undefined : jobs.error ? false : null
+  // 読めなかった場合 (読み直しの失敗も) は, 案内を出し続けるために動いていないとみなす
+  const jobState = jobs.error ? false : jobs.data ? activeJob !== undefined : null
 
   // 学習が終わったら, 最後のエポックの記録と学習の後の評価と見本を読み直す
   const wasRunning = useRef(false)
@@ -104,17 +104,31 @@ export function RunDetailPage() {
   }, [running, refetchHistory, refetchResults])
 
   // 学習のジョブが終わったら, 書き出した推論の一式 (ファイルの一覧) と学習の後の
-  // 評価と見本を読み直し, 開き直さずに次の段階への案内を出す
-  const wasJobRunning = useRef(false)
+  // 評価と見本を読み直し, 開き直さずに次の段階への案内を出す. 終わりを見てから
+  // 実験の詳細を読み直し終えるまでは, 一式の無い古いファイルの一覧で案内を決めない
+  // 動いているのを見たか (seen) と, 終わりを見たときの時刻 (endedAt). 描画の間に合わせ,
+  // 別の実験に移ったら初めから見る
+  const [watch, setWatch] = useState({ runId, seen: false, endedAt: null as number | null })
+  if (watch.runId !== runId) {
+    setWatch({ runId, seen: false, endedAt: null })
+  } else if (jobState === true && (!watch.seen || watch.endedAt !== null)) {
+    setWatch({ runId, seen: true, endedAt: null })
+  } else if (jobState === false && watch.seen && watch.endedAt === null) {
+    setWatch({ runId, seen: true, endedAt: jobs.error ? jobs.errorUpdatedAt : jobs.dataUpdatedAt })
+  }
   const refetchRun = run.refetch
   useEffect(() => {
-    if (wasJobRunning.current && jobRunning === false) {
-      void refetchRun()
-      void refetchHistory()
-      void refetchResults()
-    }
-    if (jobRunning !== null) wasJobRunning.current = jobRunning
-  }, [jobRunning, refetchRun, refetchHistory, refetchResults])
+    if (watch.endedAt === null) return
+    void refetchRun()
+    void refetchHistory()
+    void refetchResults()
+  }, [watch.endedAt, refetchRun, refetchHistory, refetchResults])
+  const rereading =
+    jobState === false &&
+    watch.runId === runId &&
+    watch.seen &&
+    (watch.endedAt === null || run.dataUpdatedAt < watch.endedAt)
+  const jobRunning = rereading ? null : jobState
   const [params, setParams] = useSearchParams()
   const requestedTab = toTab(params.get('tab'))
   const log = useLog(projectId, runId, requestedTab === 'log')
