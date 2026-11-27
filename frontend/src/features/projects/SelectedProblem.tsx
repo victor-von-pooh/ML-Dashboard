@@ -70,16 +70,14 @@ export function SelectedProblem({
             <div>
               <div className="font-medium">{data.problem}</div>
               <div className="font-mono text-xs text-ink-3">{data.id}</div>
-              {/* 場所は「記録したプロジェクト」を名前にした値 (definition) で読み上げる */}
+              {/* 場所は「記録したプロジェクト」を名前にした組 (group) で読み上げる. ARIA 1.3 では
+                  definition (dd) の名前を計算しないため, 名前を計算する役割にする */}
               {data.project_path && (
-                <dl className="mt-1 text-xs text-ink-2">
-                  <dt id={pathLabelId} className="inline">
-                    記録したプロジェクト<span aria-hidden>:</span>{' '}
-                  </dt>
-                  <dd aria-labelledby={pathLabelId} className="inline font-mono break-all">
-                    {data.project_path}
-                  </dd>
-                </dl>
+                <div role="group" aria-labelledby={pathLabelId} className="mt-1 text-xs text-ink-2">
+                  <span id={pathLabelId}>記録したプロジェクト</span>
+                  <span aria-hidden>:</span>{' '}
+                  <span className="font-mono break-all">{data.project_path}</span>
+                </div>
               )}
             </div>
             {data.reason && (

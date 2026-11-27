@@ -301,9 +301,9 @@ describe('殻で選んだ問題の設定', () => {
     expect(
       await within(card).findByText('このプロジェクトはまだ登録していません.'),
     ).toBeInTheDocument()
-    expect(
-      within(card).getByRole('definition', { name: '記録したプロジェクト' }),
-    ).toHaveTextContent(/^\/work\/fresh$/)
+    expect(within(card).getByRole('group', { name: '記録したプロジェクト' })).toHaveTextContent(
+      /^記録したプロジェクト: \/work\/fresh$/,
+    )
     fireEvent.click(within(card).getByRole('button', { name: '登録して開く' }))
     await waitFor(() => expect(window.location.pathname).toBe('/train/projects/p3'))
     const posted = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')
