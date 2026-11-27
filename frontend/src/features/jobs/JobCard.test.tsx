@@ -31,6 +31,7 @@ function job(extra: Partial<JobInfo> = {}): JobInfo {
     finished_at: null,
     stop_requested: false,
     force_count: 0,
+    attached: true,
     hostname: 'host',
     default_config: null,
     project_name: 'demo',
@@ -86,6 +87,14 @@ describe('JobCard', () => {
     )
     expect(screen.getByText('完了')).toBeInTheDocument()
     expect(screen.queryByText('後の処理中')).not.toBeInTheDocument()
+  })
+
+  it('起動し直した後は, 後の処理中のプロセスに割り込まず理由を出す', () => {
+    render(wrap(<JobCard job={job({ attached: false })} />))
+    expect(screen.getByText('後の処理中')).toBeInTheDocument()
+    const force = screen.getByRole('button', { name: /すぐに止める/ })
+    expect(force).toBeDisabled()
+    expect(force).toHaveAccessibleDescription(/ダッシュボードを起動し直したので/)
   })
 
   it('後の処理で止まったジョブは「完了」にしない', () => {

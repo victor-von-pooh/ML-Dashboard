@@ -45,10 +45,6 @@ DROPPED_ENV = ("VIRTUAL_ENV", "PYTHONPATH", "PYTHONHOME")
 # 強制の中断を繰り返した回数ごとに送るシグナル
 FORCE_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGKILL)
 
-# 起動し直した後にシグナルを送ってよい実験の状態. 完了は学習を終えて
-# 評価や推論の一式を書き出している途中 (プロセスがまだ動いている間)
-OWNED_STATUSES = ("running", "completed")
-
 JobStatus = Literal["running", "finished"]
 
 
@@ -568,8 +564,7 @@ class JobManager:
         ----------
         owned: bool
             このサーバーが起動したプロセスか, 起動し直した後でも実験の
-            run.json の pid とホスト名がジョブと同じで, 実行中か完了
-            (学習を終えて後の処理の途中) で, プロセスが動いているかどうか
+            run.json の pid とホスト名がジョブと同じで, 実行中かどうか
         """
         if job.id in self.processes:
             return True
@@ -578,7 +573,7 @@ class JobManager:
 
         status = read_json(run_dir / "run.json")
         owned = (
-            status.get("status") in OWNED_STATUSES
+            status.get("status") == "running"
             and status.get("pid") == job.pid
             and status.get("hostname") == socket.gethostname()
             and pid_alive(job.pid)

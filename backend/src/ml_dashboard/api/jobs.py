@@ -209,6 +209,9 @@ class JobInfo(BaseModel):
     hostname: str
     return_code: Optional[int]
     stop_requested: bool
+    # このダッシュボードのプロセスが起動したプロセスかどうか (起動し直した
+    # 後は偽. 後の処理中のプロセスに割り込めるかを画面が決めるため)
+    attached: bool
     run_id: Optional[str]
     run: Optional[RunSummary]
     progress: Optional[Progress]
@@ -1189,7 +1192,8 @@ def to_job_info(
     data = asdict(job)
     info = JobInfo(
         **data, project_name=project.name if project else None, run=run,
-        progress=progress, config_text=config_text
+        progress=progress, config_text=config_text,
+        attached=job.id in jobs.processes
     )
 
     return info

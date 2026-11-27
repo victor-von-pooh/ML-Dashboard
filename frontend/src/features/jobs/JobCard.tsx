@@ -90,6 +90,10 @@ export function JobCard({
   const status = jobStatus(job)
   // 学習を終え, スクリプトが評価や推論の一式を書き出している間
   const finishing = status === 'finishing'
+  // 起動し直した後の後の処理中のプロセスには割り込まない. run.json が完了の後は,
+  // 同じ pid を使い回した別のプロセスと見分けられないため
+  const detached = finishing && !job.attached
+  const forceNoteId = useId()
   const run = job.run
   const rerun = useRerunJob()
   const navigate = useNavigate()
@@ -196,8 +200,8 @@ export function JobCard({
             <Button
               variant="danger"
               icon={OctagonX}
-              disabled={stop.isPending}
-              aria-describedby={describedBy}
+              disabled={stop.isPending || detached}
+              aria-describedby={detached ? forceNoteId : describedBy}
               onClick={() => {
                 if (
                   window.confirm(
@@ -245,8 +249,16 @@ export function JobCard({
       {finishing && (
         <p className="mt-3 text-xs text-ink-2">
           学習を終えました. スクリプトが学習の後の処理 (評価や推論の一式の書き出しなど)
-          をしています. プロセスが終わると「完了」になります. 止める場合は「すぐに止める」で,
-          推論の一式は残りません.
+          をしています. プロセスが終わると「完了」になります.
+          {detached ? (
+            <span id={forceNoteId}>
+              {' '}
+              ダッシュボードを起動し直したので, 後の処理中のプロセスには割り込めません.
+              終わるのを待つか, 端末で止めてください.
+            </span>
+          ) : (
+            ' 止める場合は「すぐに止める」で, 推論の一式は残りません.'
+          )}
         </p>
       )}
       {running && !finishing && job.progress && (

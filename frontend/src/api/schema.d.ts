@@ -1630,6 +1630,8 @@ export interface components {
             return_code: number | null;
             /** Stop Requested */
             stop_requested: boolean;
+            /** Attached */
+            attached: boolean;
             /** Run Id */
             run_id: string | null;
             run: components["schemas"]["RunSummary"] | null;

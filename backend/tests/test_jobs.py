@@ -271,8 +271,11 @@ def test_force_stop_after_fit_restarted(
     client: TestClient, project_dir: Path, tmp_path: Path
 ) -> None:
     """
-    起動し直した後でも, 後の処理の途中のジョブをすぐに止められることを
-    確かめる関数
+    起動し直した後は, 後の処理の途中のジョブに割り込まないことを確かめる
+    関数
+
+    run.json が完了の後は pid の使い回しと見分けられないので, シグナルを
+    送らず, 画面がすぐに止めるを止める値 (attached が偽) を返す
 
     Parameters
     ----------
@@ -295,8 +298,10 @@ def test_force_stop_after_fit_restarted(
     job_id = created.json()["id"]
     job = wait_for(client, job_id, "run_id", ...)
     assert job["run"]["status"] == "completed"
+    # 起動したアプリからは割り込める
+    assert job["attached"] is True
 
-    # 同じ置き場の新しいアプリ (起動したプロセスを持たない) から強制の中断
+    # 同じ置き場の新しいアプリ (起動したプロセスを持たない)
     restarted = TestClient(
         create_app(
             tmp_path / "home", token="test-token",
@@ -304,19 +309,25 @@ def test_force_stop_after_fit_restarted(
         ),
         cookies={cookie_name("test-token"): "test-token"}
     )
+    job = restarted.get(f"/api/jobs/{job_id}").json()
+    assert job["status"] == "running"
+    assert job["attached"] is False
+
+    # 強制の中断でもシグナルを送らず (送った場合だけ数える回数が 0),
+    # プロセスは動いたまま
     stopped = restarted.post(
         f"/api/jobs/{job_id}/stop", json={"force": True}
     ).json()
-    assert stopped["stop_requested"] is True
-    # シグナルを送った場合だけ数える回数
-    assert stopped["force_count"] == 1
+    assert stopped["force_count"] == 0
+    time.sleep(0.2)
+    assert restarted.get(f"/api/jobs/{job_id}").json()["status"] == "running"
 
-    # 割り込みで一式を書かずに終わる (終わりは起動した側のアプリで回収)
+    # 一式を書き終えて終わる (終わりは起動した側のアプリで回収)
+    (project_dir / "GO").touch()
     job = wait_for(client, job_id, "status", "finished")
-    assert job["return_code"] != 0
+    assert job["return_code"] == 0
     run_dir = project_dir / "outputs" / job["run_id"]
-    assert not (run_dir / "inference" / "inference.yaml").exists()
-
+    assert (run_dir / "inference" / "inference.yaml").is_file()
 
 def test_stop_within_epoch(client: TestClient, project_dir: Path) -> None:
     """
