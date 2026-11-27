@@ -12,7 +12,7 @@ import {
   Trash2,
   TriangleAlert,
 } from 'lucide-react'
-import { useEffect, useId, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { encodeRunId, isCopyRefused, type RelaunchPlan, type Requirement } from '../../api/client'
@@ -71,24 +71,47 @@ export function LaunchPage() {
   const [params] = useSearchParams()
   const runId = params.get('run') || null
   const plan = useRelaunch(projectId, runId)
-  // 下書きの config があるかを開いたときに決めるため, プロジェクトの config の一覧を
-  // 読み直すまで待つ (少し前に読んだ一覧では, 消えた config をあるものと取り違えるため)
-  const project = useProject(projectId, true)
 
   // 実験の詳細で読んだ古い結果で始めないように, 開いてから読み直すまで待つ
   if (runId !== null && !plan.isFetchedAfterMount) return <Spinner />
-  if (!project.isFetchedAfterMount) return <Spinner />
-  // 実験の設定を読めない場合も, 理由を出して空の画面で起動できるようにする
+  // 実験の設定を読めない場合も, 理由を出して空の画面で起動できるようにする.
+  // 別の実験から開き直したら, 選んだものと書き換えた中身を作り直す
+  const key = `${projectId}:${runId ?? ''}`
   return (
-    <LaunchForm
-      // 別の実験から開き直したら, 選んだものと書き換えた中身を作り直す
-      key={`${projectId}:${runId ?? ''}`}
-      projectId={projectId}
-      runId={runId}
-      plan={plan.data ?? null}
-      planError={plan.error}
-    />
+    <DraftGate key={key} projectId={projectId} place={draftPlaceOf(projectId, runId)}>
+      <LaunchForm
+        projectId={projectId}
+        runId={runId}
+        plan={plan.data ?? null}
+        planError={plan.error}
+      />
+    </DraftGate>
   )
+}
+
+/** 学習の起動の画面の下書きの場所 (プロジェクトと元にした実験ごと) */
+function draftPlaceOf(projectId: string, runId: string | null): string {
+  return `launch:${projectId}:${runId ?? ''}`
+}
+
+/**
+ * 下書きがあれば, プロジェクトの config の一覧を読み直すまで待つ (少し前に読んだ一覧では,
+ * 消えた config をあるものと取り違えるため). 下書きが無ければ待たない
+ */
+function DraftGate({
+  projectId,
+  place,
+  children,
+}: {
+  projectId: string
+  place: string
+  children: ReactNode
+}) {
+  // 開いたときに決め, 開いた後に書いた下書きで待ち直さない
+  const [hasDraft] = useState(() => readDraft(place, isLaunchDraft) !== null)
+  const project = useProject(projectId, hasDraft)
+  if (hasDraft && !project.isFetchedAfterMount) return <Spinner />
+  return children
 }
 
 /** config とスクリプトを選び, 必要なら書き換えて学習を起動するフォーム */
@@ -115,24 +138,24 @@ function LaunchForm({
   // 実験から開いた場合は, その実験のスクリプトと config を最初に選択
   const fromRun = plan !== null && plan.reason == null ? plan : null
   const runText = fromRun?.config_text ?? ''
-  // 前に開いたときの保存していない書き換え (あれば戻す. 実験の中身を選んだ下書きは, 実験の
-  // 設定を読めたときだけ)
+  // 前に開いたときの保存していない書き換え (あれば戻す)
   const { project: chosenProblem } = useStage()
-  const draftPlace = `launch:${projectId}:${runId ?? ''}`
-  const [saved] = useState(() => {
-    const item = readDraft(draftPlace, isLaunchDraft)
-    return item && (item.value.configPath !== RUN_CONFIG || fromRun !== null) ? item : null
-  })
-  // 下書きの config が開いたときに無ければ (一覧に無く, 実験から開いた config でもない),
-  // 元の中身を読めず書き換えたかが分からないので戻さない. 理由と捨てるボタンだけを出す
+  const draftPlace = draftPlaceOf(projectId, runId)
+  const [saved] = useState(() => readDraft(draftPlace, isLaunchDraft))
+  // 下書きの元の中身を読めなければ, 書き換えたかが分からないので戻さない. 理由と下書きの中身と
+  // 捨てるボタンだけを出す. 実験の中身を選んだ下書きは実験の設定を読めないとき, それ以外は
+  // config が開いたときの一覧に無く, 実験から開いた config でもないとき
   const missing =
-    saved !== null &&
-    project.data !== undefined &&
-    saved.value.configPath !== RUN_CONFIG &&
-    saved.value.configPath !== fromRun?.config_path &&
-    !project.data.experiment_configs.includes(saved.value.configPath)
+    saved === null
+      ? false
+      : saved.value.configPath === RUN_CONFIG
+        ? fromRun === null
+        : project.data !== undefined &&
+          saved.value.configPath !== fromRun?.config_path &&
+          !project.data.experiment_configs.includes(saved.value.configPath)
   const [restored, setRestored] = useState(missing ? null : saved)
-  // 戻さなかった下書き. 捨てるか書き換えるまでは, 下書きを書きも消しもしない
+  // 戻さなかった下書き. 捨てるまで残す (書き換えた間だけ新しい下書きで置き換え, 元に戻すと
+  // 書き戻す)
   const [stale, setStale] = useState(missing ? saved : null)
   const [script, setScript] = useState<string | null>(
     restored ? restored.value.script : (fromRun?.script ?? null),
@@ -222,12 +245,14 @@ function LaunchForm({
     draft !== null &&
     draft.path === fromRun.config_path &&
     draft.text === runText
+  // 利用者の書き換え (下書きに残すもの)
+  const ownEdit = edited && !untouched && configPath !== null
   const discardDraft = useDraftWriter(
     draftPlace,
-    stale !== null
-      ? undefined
-      : edited && !untouched && configPath !== null
-        ? { script, configPath, text }
+    ownEdit
+      ? { script, configPath, text }
+      : stale !== null
+        ? undefined
         : knownEdited || configPath === null
           ? null
           : undefined,
@@ -237,6 +262,18 @@ function LaunchForm({
   const dropDraft = () => {
     if (stale === null) discardDraft()
   }
+  // 戻さなかった下書きがあり利用者の書き換えが無ければ (開いたとき, 書き換えを元に戻したか
+  // 捨てたとき), まだ書いていない書き換えを捨て, 戻さなかった下書きを書いた時刻のまま書き戻す
+  const keepStale = stale !== null && !ownEdit
+  const discardRef = useRef(discardDraft)
+  useEffect(() => {
+    discardRef.current = discardDraft
+  })
+  useEffect(() => {
+    if (!keepStale || stale === null) return
+    discardRef.current()
+    writeDraft(draftPlace, stale.value, stale.time)
+  }, [keepStale, stale, draftPlace])
 
   // 書き換えたまま再読み込みやタブを閉じる場合はブラウザで確認
   useEffect(() => {
@@ -293,8 +330,6 @@ function LaunchForm({
   const editText = (value: string) => {
     setFormError(null)
     setDraft({ path: configPath, text: value })
-    // 書き換えた中身を, 戻さなかった下書きの代わりに新しい下書きとして残す
-    setStale(null)
     validate.reset()
   }
 
@@ -341,8 +376,10 @@ function LaunchForm({
   // 呼び出しごとの callback でなく promise で待つ
   const startWith = <T,>(run: () => Promise<T>, done: (result: T) => void) => {
     if (formInvalid()) return
-    const kept = edited && !untouched && configPath !== null ? { script, configPath, text } : null
-    dropDraft()
+    const kept = ownEdit ? { script, configPath, text } : null
+    // 戻さなかった下書きは, 書き換えで置き換えていなければ残す
+    if (kept !== null) discardDraft()
+    else dropDraft()
     run().then(
       (result) => {
         if (mounted.current) done(result)
@@ -401,12 +438,20 @@ function LaunchForm({
 
       {activeBatch && <ActiveBatchNotice id={activeBatchId} batch={activeBatch} />}
 
-      {stale && (
+      {keepStale && (
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3 text-sm">
           <TriangleAlert className="size-4 shrink-0 text-warning-text" aria-hidden />
           <span role="status" className="min-w-0 flex-1">
-            下書きの config (<span className="font-mono break-all">{stale.value.configPath}</span>)
-            がありません. 書き換えたかが分からないので, 下書きを戻していません (
+            {stale.value.configPath === RUN_CONFIG ? (
+              <>実験 {runId} の設定を読めません. </>
+            ) : (
+              <>
+                下書きの config (
+                <span className="font-mono break-all">{stale.value.configPath}</span>)
+                がありません.{' '}
+              </>
+            )}
+            書き換えたかが分からないので, 下書きを戻していません (
             <span className="tabular">{new Date(stale.time).toLocaleString()}</span>)
           </span>
           <Button
@@ -421,6 +466,17 @@ function LaunchForm({
           >
             下書きを捨てる
           </Button>
+          {/* 戻さない中身も, 読むだけで見て写せるようにする */}
+          <details className="w-full">
+            <summary className="cursor-pointer text-xs text-ink-2">下書きの中身を見る</summary>
+            <textarea
+              readOnly
+              aria-label="下書きの中身"
+              value={stale.value.text}
+              rows={Math.min(12, stale.value.text.split('\n').length + 1)}
+              className="mt-2 w-full rounded-lg border border-line bg-bg p-2 font-mono text-xs"
+            />
+          </details>
         </div>
       )}
 

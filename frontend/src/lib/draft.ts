@@ -63,10 +63,11 @@ export function readDraft<T>(
  *
  * @param place - 下書きの場所
  * @param value - 書く中身
+ * @param time - 書いた時刻 (ISO 8601. 既定は今. 戻さなかった下書きを書き戻すときは元の時刻)
  */
-export function writeDraft(place: string, value: unknown): void {
+export function writeDraft(place: string, value: unknown, time = new Date().toISOString()): void {
   const drafts = readDrafts()
-  drafts[place] = { value, time: new Date().toISOString() }
+  drafts[place] = { value, time }
   if (!writeDrafts(drafts)) clearDraft(place)
 }
 
