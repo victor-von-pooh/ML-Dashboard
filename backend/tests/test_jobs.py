@@ -1,15 +1,28 @@
 import hashlib
 import json
 import os
+import shutil
+import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import pytest
 from fastapi.testclient import TestClient
 from omegaconf import OmegaConf
 
-from ml_dashboard.api.jobs import describe_missing_path
+from ml_dashboard.api import check_process, jobs
+from ml_dashboard.api.check_process import (
+    describe_exception,
+    rebuild_exception,
+)
+from ml_dashboard.api.jobs import (
+    describe,
+    describe_missing_path,
+    uses_custom_classes,
+)
 from ml_dashboard.core.model_spec import find_model_spec_copy, run_of_copy
 from ml_dashboard.core.models import RunModelSpec
 
@@ -419,6 +432,591 @@ def test_validate_custom_optimizer(
         json={"text": "optimizer:\n  name: my_optim_for_test.Mine\n"}
     ).json()
     assert result["ok"] is True, result["error"]
+
+
+# 同じ名前のモジュールを持つプロジェクトの自作の Optimizer (lr の下限は
+# 同じ名前の別のモジュールから読み込み)
+SAME_OPTIM = '''\
+from torch import optim
+
+from same_helper import LR_FLOOR
+
+
+class Mine(optim.SGD):
+    def __init__(self, params, lr=0.1):
+        if lr < LR_FLOOR:
+            raise ValueError(f"lr は {LR_FLOOR} 以上にしてください")
+        super(Mine, self).__init__(params, lr=lr)
+
+
+class Sched(optim.lr_scheduler.StepLR):
+    def __init__(self, optimizer, step_size=1, gamma=0.5):
+        if gamma < LR_FLOOR:
+            raise ValueError(f"gamma は {LR_FLOOR} 以上にしてください")
+        super(Sched, self).__init__(optimizer, step_size, gamma)
+'''
+
+
+def write_same_modules(project: Path, floor: float) -> None:
+    """
+    同じ名前の自作の Optimizer のモジュールをプロジェクトに書く関数
+
+    Parameters
+    ----------
+    project: Path
+        プロジェクトのディレクトリ
+    floor: float
+        Optimizer が受け付ける lr の下限
+
+    Returns
+    ----------
+    None
+    """
+    (project / "same_optim.py").write_text(SAME_OPTIM)
+    (project / "same_helper.py").write_text(f"LR_FLOOR = {floor}\n")
+
+
+def test_validate_same_module_names(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    同じ名前のモジュールを持つ 2 つのプロジェクトを順に確かめると, それぞれの
+    モジュールを読むことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    other_dir = project_dir.parent / "other_task"
+    shutil.copytree(project_dir, other_dir)
+    write_same_modules(project_dir, 0.5)
+    write_same_modules(other_dir, 0.0)
+    strict_id = register(client, project_dir)
+    loose_id = register(client, other_dir)
+    text = "optimizer:\n  name: same_optim.Mine\n  params:\n    lr: 0.2\n"
+
+    # 下限の違いで, どちらのプロジェクトのモジュールを読んだかを判定
+    # (順を入れ替えても前に読んだものを使わないことも確認)
+    for project_id, ok in [
+        (strict_id, False), (loose_id, True), (strict_id, False)
+    ]:
+        result = client.post(
+            f"/api/projects/{project_id}/validate", json={"text": text}
+        ).json()
+        assert result["ok"] is ok, result
+        if not ok:
+            assert "lr は 0.5 以上" in result["error"]
+
+    # 見つからないクラスの誤りは, 書いた名前のまま表示
+    missing = client.post(
+        f"/api/projects/{loose_id}/validate",
+        json={"text": "optimizer:\n  name: same_optim.Missing\n"}
+    ).json()
+    assert missing["ok"] is False
+    assert "same_optim.Missing が見つかりません" in missing["error"]
+
+
+def test_validate_keeps_import_state(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    確かめの後に sys.path と sys.modules が元のままであることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    write_same_modules(project_dir, 0.0)
+    project_id = register(client, project_dir)
+    url = f"/api/projects/{project_id}/validate"
+    text = "optimizer:\n  name: same_optim.Mine\n  params:\n    lr: 0.2\n"
+
+    # 初めの確かめで ML-Found と PyTorch を読んでから, 前後を比較
+    assert client.post(url, json={"text": text}).json()["ok"] is True
+    path, modules = list(sys.path), set(sys.modules)
+    finders = list(sys.meta_path)
+    assert client.post(url, json={"text": text}).json()["ok"] is True
+    assert sys.path == path
+    assert set(sys.modules) == modules
+    assert sys.meta_path == finders
+    assert "same_optim" not in sys.modules
+    assert "same_helper" not in sys.modules
+
+
+def test_validate_custom_scheduler_and_named(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    自作の Scheduler と名前付きの Optimizer の自作のクラスも, プロジェクトの
+    モジュールで確かめ, 誤りに書いた名前と Optimizer の名前を付けることを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    write_same_modules(project_dir, 0.5)
+    project_id = register(client, project_dir)
+    url = f"/api/projects/{project_id}/validate"
+
+    # 自作の Scheduler の値の誤り (下限はプロジェクトのモジュールのもの)
+    text = (
+        "scheduler:\n  name: same_optim.Sched\n  params:\n"
+        "    gamma: 0.1\n"
+    )
+    result = client.post(url, json={"text": text}).json()
+    assert result["ok"] is False
+    assert "gamma は 0.5 以上" in result["error"]
+    ok = text.replace("0.1", "0.9")
+    assert client.post(url, json={"text": ok}).json()["ok"] is True
+
+    # 名前付きの Optimizer は, 名前を付けた誤り
+    with (project_dir / "configs" / "default" / "train.yaml").open("a") as f:
+        f.write("optimizers:\n  main:\n    name: Adam\n    modules: [net]\n")
+    text = (
+        "optimizers:\n  main:\n    name: same_optim.Mine\n"
+        "    params:\n      lr: 0.2\n"
+    )
+    result = client.post(url, json={"text": text}).json()
+    assert result["ok"] is False
+    assert "lr は 0.5 以上" in result["error"]
+    missing = text.replace("same_optim.Mine", "same_optim.Missing")
+    result = client.post(url, json={"text": missing}).json()
+    assert result["ok"] is False
+    assert "optimizers.main" in result["error"]
+    assert "same_optim.Missing が見つかりません" in result["error"]
+    assert "same_optim" not in sys.modules
+
+
+def test_validate_resolves_like_training(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    自作のクラスのモジュールを, 学習と同じ探し方で読むことを確かめる関数
+
+    名前空間のパッケージ, パッケージの中の相対 import, importlib で読む
+    モジュールは読め, 最上位のモジュールの相対 import は学習と同じく誤り
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # __init__.py の無いディレクトリと, その中から読むモジュール
+    (project_dir / "nspkg").mkdir()
+    (project_dir / "lib").mkdir()
+    (project_dir / "lib" / "h.py").write_text("FLOOR = 0.0\n")
+    (project_dir / "hh.py").write_text("SCALE = 1.0\n")
+    (project_dir / "nspkg" / "opt.py").write_text(
+        "import importlib\n\nfrom torch import optim\n\n"
+        "from lib.h import FLOOR\n\n"
+        "SCALE = importlib.import_module('hh').SCALE\n\n\n"
+        "class Mine(optim.SGD):\n    pass\n"
+    )
+
+    # パッケージの中の相対 import
+    (project_dir / "pkgopt").mkdir()
+    (project_dir / "pkgopt" / "__init__.py").write_text("")
+    (project_dir / "pkgopt" / "base.py").write_text(
+        "from torch import optim\n\n\nclass Base(optim.SGD):\n    pass\n"
+    )
+    (project_dir / "pkgopt" / "core.py").write_text(
+        "from .base import Base\n\n\nclass Mine(Base):\n    pass\n"
+    )
+
+    # 最上位のモジュールの相対 import (学習でも読めない)
+    (project_dir / "toprel.py").write_text(
+        "from . import hh\n\n\nclass Mine:\n    pass\n"
+    )
+    project_id = register(client, project_dir)
+    url = f"/api/projects/{project_id}/validate"
+
+    for name, ok in [
+        ("nspkg.opt.Mine", True), ("pkgopt.core.Mine", True),
+        ("toprel.Mine", False)
+    ]:
+        text = f"optimizer:\n  name: {name}\n"
+        result = client.post(url, json={"text": text}).json()
+        assert result["ok"] is ok, (name, result)
+    for name in ["nspkg", "lib", "hh", "pkgopt", "toprel"]:
+        assert name not in sys.modules
+
+
+def test_validate_reports_import_error(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    自作のモジュールの読み込みのエラーを, 種類を付けて返すことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    (project_dir / "broken_optim.py").write_text("undefined_name\n")
+    (project_dir / "exit_optim.py").write_text(
+        "import sys\n\nsys.exit(3)\n"
+    )
+    project_id = register(client, project_dir)
+    url = f"/api/projects/{project_id}/validate"
+
+    result = client.post(
+        url, json={"text": "optimizer:\n  name: broken_optim.Mine\n"}
+    ).json()
+    assert result["ok"] is False
+    assert "NameError" in result["error"]
+    assert "undefined_name" in result["error"]
+    assert "broken_optim" not in sys.modules
+
+    # 結果を書かずに終わったプロセスは, 終了コードを添えた誤り
+    result = client.post(
+        url, json={"text": "optimizer:\n  name: exit_optim.Mine\n"}
+    ).json()
+    assert result["ok"] is False
+    assert "終了コード 3" in result["error"]
+
+
+def validate_ok(client: TestClient, project_id: str, text: str) -> bool:
+    """
+    config を確かめ, 起動できるかを返す関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_id: str
+        プロジェクトの ID
+    text: str
+        experiment の config の中身
+
+    Returns
+    ----------
+    ok: bool
+        誤りが無ければ True
+    """
+    result = client.post(
+        f"/api/projects/{project_id}/validate", json={"text": text}
+    ).json()
+    ok: bool = result["ok"]
+
+    return ok
+
+
+class CustomCheckError(Exception):
+    pass
+
+
+def test_validate_concurrently(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    同じ名前のモジュールを持つ 2 つのプロジェクトを同時に確かめても,
+    それぞれのモジュールを読むことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    other_dir = project_dir.parent / "other_task"
+    shutil.copytree(project_dir, other_dir)
+    write_same_modules(project_dir, 0.5)
+    write_same_modules(other_dir, 0.0)
+    ids = [register(client, project_dir), register(client, other_dir)] * 2
+    text = "optimizer:\n  name: same_optim.Mine\n  params:\n    lr: 0.2\n"
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        results = list(executor.map(
+            partial(validate_ok, client, text=text), ids
+        ))
+    assert results == [False, True, False, True]
+
+
+def test_rebuilt_exception_keeps_message() -> None:
+    """
+    確かめのプロセスから受け取ったエラーの表示が, 元のエラーと同じになる
+    ことを確かめる関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    None
+    """
+    try:
+        try:
+            raise ModuleNotFoundError("No module named 'x'")
+        except ImportError as error:
+            raise ValueError("x.Lion が見つかりません") from error
+    except ValueError as error:
+        chained = error
+    errors: list[Exception] = [
+        chained, CustomCheckError("自作の誤り"), KeyError("lr"),
+        UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+    ]
+    for error in errors:
+        rebuilt = rebuild_exception(describe_exception(error))
+        assert describe(rebuilt) == describe(error)
+        assert str(rebuilt) == str(error)
+
+
+# 孫のプロセスを起こし, その pid を書く自作の Optimizer のモジュール
+# (標準エラー出力を受け継ぐ. 待つ秒数は後で埋める)
+SPAWN_OPTIM = '''\
+import subprocess
+import time
+from pathlib import Path
+
+from torch import optim
+
+child = subprocess.Popen(["sleep", "30"])
+Path("grandchild.pid").write_text(str(child.pid))
+time.sleep({wait})
+
+
+class Mine(optim.SGD):
+    pass
+'''
+
+
+def is_gone(pid: int) -> bool:
+    """
+    プロセスが 5 秒以内に無くなるかを返す関数
+
+    Parameters
+    ----------
+    pid: int
+        プロセスの ID
+
+    Returns
+    ----------
+    gone: bool
+        無くなった場合は True
+    """
+    gone = False
+    for _ in range(50):
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            gone = True
+            break
+        time.sleep(0.1)
+
+    return gone
+
+
+def test_validate_with_grandchild(
+    client: TestClient, project_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    自作のモジュールが孫のプロセスを起こしても, 待ち切りを待たずに結果を
+    受け取り, 孫のプロセスを止めることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        待ち切りの秒数の差し替えに使用
+
+    Returns
+    ----------
+    None
+    """
+    monkeypatch.setattr(check_process, "CHECK_TIMEOUT", 20)
+    (project_dir / "spawn_optim.py").write_text(SPAWN_OPTIM.format(wait=0))
+    project_id = register(client, project_dir)
+
+    started = time.monotonic()
+    result = client.post(
+        f"/api/projects/{project_id}/validate",
+        json={"text": "optimizer:\n  name: spawn_optim.Mine\n"}
+    ).json()
+    assert result["ok"] is True, result
+    assert time.monotonic() - started < 15
+    pid = int((project_dir / "grandchild.pid").read_text())
+    assert is_gone(pid)
+
+
+def test_validate_timeout(
+    client: TestClient, project_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    終わらない確かめを待ち切りで誤りにし, 孫のプロセスごと止めることを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        待ち切りの秒数の差し替えに使用
+
+    Returns
+    ----------
+    None
+    """
+    monkeypatch.setattr(check_process, "CHECK_TIMEOUT", 10)
+    (project_dir / "spawn_optim.py").write_text(SPAWN_OPTIM.format(wait=60))
+    project_id = register(client, project_dir)
+
+    started = time.monotonic()
+    result = client.post(
+        f"/api/projects/{project_id}/validate",
+        json={"text": "optimizer:\n  name: spawn_optim.Mine\n"}
+    ).json()
+    assert result["ok"] is False
+    assert "10 秒で終わりませんでした" in result["error"]
+    assert time.monotonic() - started < 30
+    pid = int((project_dir / "grandchild.pid").read_text())
+    assert is_gone(pid)
+
+
+def test_validate_ignores_prints(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    自作のモジュールの print が確かめの結果を壊さないことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    (project_dir / "noisy_optim.py").write_text(
+        "import sys\n\nfrom torch import optim\n\n"
+        "print('{\"error\": 1}')\nprint('not json', file=sys.stderr)\n\n\n"
+        "class Mine(optim.SGD):\n    pass\n"
+    )
+    project_id = register(client, project_dir)
+    result = client.post(
+        f"/api/projects/{project_id}/validate",
+        json={"text": "optimizer:\n  name: noisy_optim.Mine\n"}
+    ).json()
+    assert result["ok"] is True, result
+
+
+def test_uses_custom_classes() -> None:
+    """
+    別のプロセスで確かめる config の見分け方を確かめる関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    None
+    """
+    cases = [
+        ({"optimizer": {"name": "Adam"}}, False),
+        ({"optimizer": {"name": "torch.optim.AdamW"}}, False),
+        ({"scheduler": {"name": "torch.optim.lr_scheduler.StepLR"}}, False),
+        ({"optimizer": {"name": "custom_optim.Lion"}}, True),
+        ({"scheduler": {"name": "my_sched.Warm"}}, True),
+        ({"optimizers": {"main": {"name": "custom_optim.Lion"}}}, True),
+        ({"optimizers": {"main": {"scheduler": {"name": "s.W"}}}}, True),
+        # 値の参照を解決できない名前は, 読み込む場合に備えて別のプロセス
+        ({"optimizer": {"name": "${missing.name}"}}, True)
+    ]
+    for content, custom in cases:
+        cfg = OmegaConf.create(content)
+        assert uses_custom_classes(cfg) is custom, content
+
+
+def test_validate_torch_class_in_process(
+    client: TestClient, project_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    torch. で始まる名前は, 別のプロセスを使わずに確かめることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        別のプロセスの確かめの差し替えに使用
+
+    Returns
+    ----------
+    None
+    """
+    monkeypatch.setattr(jobs, "run_check_process", fail_check_process)
+    project_id = register(client, project_dir)
+    result = client.post(
+        f"/api/projects/{project_id}/validate",
+        json={"text": "optimizer:\n  name: torch.optim.AdamW\n"}
+    ).json()
+    assert result["ok"] is True, result
+
+
+def fail_check_process(*args: Any) -> None:
+    """
+    別のプロセスの確かめが呼ばれたらテストを失敗させる関数
+
+    Parameters
+    ----------
+    *args: Any
+        確かめの引数 (使わない)
+
+    Returns
+    ----------
+    None
+    """
+    raise AssertionError("別のプロセスで確かめました")
 
 
 def test_default_config_per_script(

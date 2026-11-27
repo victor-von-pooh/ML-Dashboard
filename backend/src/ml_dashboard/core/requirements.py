@@ -298,7 +298,8 @@ def to_report(
 
 def stop_group(process: subprocess.Popen[str]) -> None:
     """
-    待ち切りの確かめのプロセスを, 子のプロセスごと止める関数
+    確かめのプロセスを, 子のプロセスごと止める関数 (待ち切りと, 終わった
+    後に残った子のプロセスの片付けに使用)
 
     Parameters
     ----------
