@@ -1,7 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
-import '../../src/index.css'
+import './stage.css'
 import { StageApp } from '../../src/StageApp'
 
 // 通しのテスト (e2e/stage.spec.ts) で, 殻の下に載せた形の根の部品を描く.
