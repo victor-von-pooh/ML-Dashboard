@@ -2,7 +2,15 @@ import { Play, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
-import { useHistory, useLog, useProject, useRelaunch, useResults, useRun } from '../../api/hooks'
+import {
+  useHistory,
+  useJobs,
+  useLog,
+  useProject,
+  useRelaunch,
+  useResults,
+  useRun,
+} from '../../api/hooks'
 import { CopyButton } from '../requirements/RequirementCard'
 import {
   Button,
@@ -74,6 +82,14 @@ export function RunDetailPage() {
   const history = useHistory(projectId, runId, running)
   // task.yaml, evaluations/, samples/, policy/, trajectories/ (無い実験は空で, 何の実験かの欄と評価, 見本, 方策, 軌跡のタブを出さない)
   const results = useResults(projectId, runId, running)
+  // この実験の学習のジョブのうち動いているもの. run.json が完了でも, 動いている間は
+  // 学習のスクリプトが推論の一式などを書き出している途中 (ジョブの一覧の run_id で結ぶ)
+  const jobs = useJobs()
+  const activeJob = jobs.data?.find(
+    (job) => job.status === 'running' && job.project_id === projectId && job.run_id === runId,
+  )
+  // 読めなかった場合は, 案内を出し続けるために動いていないとみなす
+  const jobRunning = jobs.data ? activeJob !== undefined : jobs.error ? false : null
 
   // 学習が終わったら, 最後のエポックの記録と学習の後の評価と見本を読み直す
   const wasRunning = useRef(false)
@@ -86,6 +102,19 @@ export function RunDetailPage() {
     }
     wasRunning.current = running
   }, [running, refetchHistory, refetchResults])
+
+  // 学習のジョブが終わったら, 書き出した推論の一式 (ファイルの一覧) と学習の後の
+  // 評価と見本を読み直し, 開き直さずに次の段階への案内を出す
+  const wasJobRunning = useRef(false)
+  const refetchRun = run.refetch
+  useEffect(() => {
+    if (wasJobRunning.current && jobRunning === false) {
+      void refetchRun()
+      void refetchHistory()
+      void refetchResults()
+    }
+    if (jobRunning !== null) wasJobRunning.current = jobRunning
+  }, [jobRunning, refetchRun, refetchHistory, refetchResults])
   const [params, setParams] = useSearchParams()
   const requestedTab = toTab(params.get('tab'))
   const log = useLog(projectId, runId, requestedTab === 'log')
@@ -130,8 +159,9 @@ export function RunDetailPage() {
   // 開いた場合 (共有したリンクなど) は学習曲線を表示
   const series = seriesOf(data.files)
   const evaluations = results.data?.evaluations ?? []
-  // 次の段階への案内 (モデルの定義か推論の一式を持つ完了した実験)
-  const { show: showNextStage, hasBundle } = nextStage(data)
+  // 次の段階への案内 (モデルの定義か推論の一式を持つ完了した実験. 学習のジョブが
+  // 動いている間は, 案内の代わりに後の処理の途中であることを出す)
+  const { show: showNextStage, hasBundle, finishing } = nextStage({ ...data, jobRunning })
   const hasFile = (path: string) => data.files.some((file) => file.path === path)
   // 学習の記録が無く評価だけを持つ実験 (学習曲線の代わりに評価のタブへ案内する)
   const untrained =
@@ -210,6 +240,18 @@ export function RunDetailPage() {
           hasModel={data.model != null}
           path={data.path ?? null}
         />
+      )}
+      {finishing && activeJob && (
+        <p className="mb-4 flex flex-wrap items-center gap-2 text-xs text-ink-2">
+          <StatusBadge status="finishing" />
+          <span>
+            学習を終え, スクリプトが学習の後の処理 (評価や推論の一式の書き出しなど) をしています.
+            終わるとこの実験を推論の段階で使う方法が出ます.
+          </span>
+          <Link to={`/jobs/${activeJob.id}`} className="text-accent-text hover:underline">
+            ジョブを開く
+          </Link>
+        </p>
       )}
       {data.error && <ErrorBox error={data.error} live={false} />}
       {data.notices.map((notice) => (
