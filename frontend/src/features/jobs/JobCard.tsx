@@ -90,8 +90,9 @@ export function JobCard({
   const status = jobStatus(job)
   // 学習を終え, スクリプトが評価や推論の一式を書き出している間
   const finishing = status === 'finishing'
-  // 起動し直した後の後の処理中のプロセスには割り込まない. run.json が完了の後は,
-  // 同じ pid を使い回した別のプロセスと見分けられないため
+  // 起動し直した後の後の処理中のプロセスには, 同じプロセスと確かめられた場合
+  // (attached) だけ割り込む. run.json が完了の後は, run.json だけでは同じ pid を
+  // 使い回した別のプロセスと見分けられないため
   const detached = finishing && !job.attached
   const forceNoteId = useId()
   const run = job.run
@@ -253,8 +254,8 @@ export function JobCard({
           {detached ? (
             <span id={forceNoteId}>
               {' '}
-              ダッシュボードを起動し直したので, 後の処理中のプロセスには割り込めません.
-              終わるのを待つか, 端末で止めてください.
+              ダッシュボードを起動し直した後で, 同じプロセスと確かめられないので,
+              後の処理中のプロセスには割り込めません. 終わるのを待つか, 端末で止めてください.
             </span>
           ) : (
             ' 止める場合は「すぐに止める」で, 推論の一式は残りません.'

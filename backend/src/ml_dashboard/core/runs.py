@@ -4,6 +4,7 @@ import json
 import math
 import os
 import re
+import subprocess
 from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
@@ -77,6 +78,9 @@ MAX_HEADER_BYTES = 1024 * 1024
 
 # 詳細の画面に返す model_summary.csv の行数の上限
 MAX_MODEL_SUMMARY_ROWS = 2000
+
+# プロセスの起動の時刻を読む ps を待つ秒数
+PS_TIMEOUT_SEC = 2.0
 
 
 class RunNotFoundError(Exception):
@@ -1030,6 +1034,36 @@ def pid_alive(pid: Any) -> bool:
     alive = True
 
     return alive
+
+
+def process_started(pid: int) -> Optional[datetime]:
+    """
+    プロセスが始まった時刻を ps で読む関数
+
+    Parameters
+    ----------
+    pid: int
+        プロセスの番号
+
+    Returns
+    ----------
+    started: Optional[datetime]
+        始まった時刻 (秒まで, ローカルのタイムゾーン付き). 読めない環境
+        (ps が無い, Windows など) と居ないプロセスは None
+    """
+    try:
+        output = subprocess.run(
+            ["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True,
+            text=True, timeout=PS_TIMEOUT_SEC, check=False,
+            env={**os.environ, "LC_ALL": "C"}
+        ).stdout
+        started: Optional[datetime] = datetime.strptime(
+            " ".join(output.split()), "%a %b %d %H:%M:%S %Y"
+        ).astimezone()
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+    return started
 
 
 def read_progress(run_dir: Path) -> Optional[Progress]:

@@ -23,7 +23,7 @@ from ml_dashboard.core.env_refs import (
     read_texts,
     redact,
 )
-from ml_dashboard.core.jobs import Job, JobManager
+from ml_dashboard.core.jobs import Job, JobManager, JobSignalError
 from ml_dashboard.core.loader import import_ml_found
 from ml_dashboard.core.model_spec import (
     CopyRefusedError,
@@ -74,6 +74,11 @@ BAD_REQUEST: dict[int | str, dict[str, str]] = {
 # 学習の準備で環境に入れている間の応答
 INSTALLING: dict[int | str, dict[str, str]] = {
     409: {"description": "学習の準備で環境に入れている"}
+}
+
+# プロセスに割り込む権限が無い場合の応答
+SIGNAL_DENIED: dict[int | str, dict[str, str]] = {
+    409: {"description": "プロセスに割り込む権限が無い"}
 }
 
 # 起動の前にあるかを確かめるパスの項目の名前の最後の語 (_ か - で区切った語.
@@ -209,8 +214,9 @@ class JobInfo(BaseModel):
     hostname: str
     return_code: Optional[int]
     stop_requested: bool
-    # このダッシュボードのプロセスが起動したプロセスかどうか (起動し直した
-    # 後は偽. 後の処理中のプロセスに割り込めるかを画面が決めるため)
+    # プロセスに割り込めるかどうか (JobManager.owns). 起動し直した後の
+    # 後の処理中のジョブは, 起動の時刻から同じプロセスと確かめられた場合
+    # だけ真 (後の処理中のプロセスに割り込めるかを画面が決めるため)
     attached: bool
     run_id: Optional[str]
     run: Optional[RunSummary]
@@ -1175,6 +1181,7 @@ def to_job_info(
     """
     run = None
     progress = None
+    run_dir = None
     if project is not None and job.run_id is not None:
         try:
             output_dirs = jobs.output_dirs(job, project)
@@ -1193,7 +1200,7 @@ def to_job_info(
     info = JobInfo(
         **data, project_name=project.name if project else None, run=run,
         progress=progress, config_text=config_text,
-        attached=job.id in jobs.processes
+        attached=job.status == "running" and jobs.owns(job, run_dir)
     )
 
     return info
@@ -1907,7 +1914,9 @@ def read_relaunch(
     return plan
 
 
-@router.post("/jobs/{job_id}/stop", responses=NOT_FOUND)
+@router.post(
+    "/jobs/{job_id}/stop", responses={**NOT_FOUND, **SIGNAL_DENIED}
+)
 def stop_job(request: Request, job_id: str, body: StopRequest) -> JobInfo:
     """
     ジョブの学習を止める関数
@@ -1927,7 +1936,10 @@ def stop_job(request: Request, job_id: str, body: StopRequest) -> JobInfo:
         更新したジョブ
     """
     projects = project_map(request)
-    job = get_jobs(request).stop(job_id, projects, body.force, body.now)
+    try:
+        job = get_jobs(request).stop(job_id, projects, body.force, body.now)
+    except JobSignalError as error:
+        raise HTTPException(409, str(error)) from error
     if job is None:
         raise HTTPException(404, f"ジョブが見つかりません: {job_id}")
     info = to_job_info(get_jobs(request), job, projects.get(job.project_id))

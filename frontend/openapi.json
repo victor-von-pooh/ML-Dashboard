@@ -1341,6 +1341,9 @@
           "404": {
             "description": "プロジェクトか実験が見つからない"
           },
+          "409": {
+            "description": "プロセスに割り込む権限が無い"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
