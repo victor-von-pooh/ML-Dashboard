@@ -76,7 +76,7 @@ def test_standalone_checks(
     assert cookie_name("secret") in moved.cookies
     assert client.get("/api/projects").json() == []
 
-    # トークンから作らない名前の Cookie では呼べない
+    # トークンから作らない名前の Cookie での 401
     fixed = TestClient(standalone, cookies={"ml_dashboard_token": "secret"})
     assert fixed.get("/api/projects").status_code == 401
 
@@ -95,7 +95,7 @@ def test_standalone_checks(
     assert other.status_code == 400
 
     # 既定のホスト名は 127.0.0.1 と localhost (テストの名前は受け付けない)
-    default = TestClient(create_app(tmp_path / "home", token="secret"))
+    default = TestClient(create_app(tmp_path / "home2", token="secret"))
     assert default.get("/api/auth?token=secret").status_code == 400
 
     # 画面の配信と, 無い API と仕様の画面の 404 (根の仕様の画面も出さず,
@@ -130,7 +130,7 @@ def test_create_api_mounted(tmp_path: Path, project_dir: Path) -> None:
     shell.mount("/api/train", create_api(tmp_path / "home"))
     client = TestClient(shell)
 
-    # トークン無しで, 別の Origin からも呼べる (確かめは殻の役目)
+    # トークン無しで, 別の Origin からの呼び出しも可能 (確かめは殻の役目)
     created = client.post(
         "/api/train/projects", json={"path": str(project_dir)},
         headers={"origin": "http://other.example"}
@@ -141,16 +141,16 @@ def test_create_api_mounted(tmp_path: Path, project_dir: Path) -> None:
     assert len(runs) == 2
     assert (tmp_path / "home" / "projects.json").is_file()
 
-    # 例外ハンドラも mount の下で動く (壊れた登録簿は 500 と理由)
+    # mount の下の例外ハンドラ (壊れた登録簿は 500 と理由)
     (tmp_path / "home" / "projects.json").write_text("[", encoding="utf-8")
     broken = client.get("/api/train/projects")
     assert broken.status_code == 500 and broken.json()["detail"]
 
-    # /auth も仕様の画面も持たない
+    # /auth と仕様の画面の 404
     for path in ["/auth", "/openapi.json", "/docs", "/redoc"]:
         assert client.get(f"/api/train{path}").status_code == 404, path
 
-    # 2 度呼んでも誤りにならず, 別の置き場の別のアプリ
+    # 2 度目の呼び出しも誤りにならず, 別の置き場の別のアプリ
     again = TestClient(create_api(tmp_path / "other"))
     assert again.get("/projects").json() == []
 
@@ -175,7 +175,7 @@ def test_create_api_problems_dir(
     ----------
     None
     """
-    # 渡した問題の設定の置き場に 1 つ置く (環境変数の置き場とは別)
+    # 渡した問題の設定の置き場 (環境変数の置き場とは別) に 1 つの記録
     problems_dir = tmp_path / "shared" / "problems"
     path = problems_dir / "churn" / "problem.yaml"
     path.parent.mkdir(parents=True)
@@ -193,15 +193,15 @@ def test_create_api_problems_dir(
     assert listed["root"] == str(problems_dir)
     assert [item["problem"] for item in listed["projects"]] == ["試し"]
 
-    # 監視する指標と向きも同じ置き場から読む
+    # problems_dir を渡さなければ ML_PATHFINDER_HOME の下の problems
+    default = TestClient(create_api(tmp_path / "home2"))
+    expected = pathfinder_home.resolve() / "problems"
+    assert default.get("/problems/projects").json()["root"] == str(expected)
+
+    # 監視する指標と向きも同じ置き場から (ML-Quest が無ければ飛ばす)
     pytest.importorskip("ml_quest")
     training = client.get("/api/train/problems/training").json()
     assert training["root"] == str(problems_dir)
-
-    # problems_dir を渡さなければ ML_PATHFINDER_HOME の下の problems
-    default = TestClient(create_api(tmp_path / "home"))
-    expected = pathfinder_home.resolve() / "problems"
-    assert default.get("/problems/projects").json()["root"] == str(expected)
 
 
 def test_jobs_mounted_apps(tmp_path: Path, project_dir: Path) -> None:
@@ -244,7 +244,7 @@ def test_jobs_mounted_apps(tmp_path: Path, project_dir: Path) -> None:
         assert job.status_code == 201, job.text
         started[prefix] = job.json()["id"]
 
-    # 終わりまで見られ, 出力が読め, 一覧はそれぞれのジョブだけ
+    # 終わりと出力の確認, 一覧はそれぞれのジョブだけ
     for prefix, job_id in started.items():
         job = wait_finished(client, f"{prefix}/jobs/{job_id}")
         assert job["return_code"] == 0

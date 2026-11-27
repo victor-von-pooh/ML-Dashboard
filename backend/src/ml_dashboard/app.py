@@ -127,7 +127,7 @@ async def check_token(
     # 学習を起動できるので, 同じ端末の他の利用者からも使えないように確認
     token: str = request.app.state.token
     path = request.url.path
-    # トークンを受け取る GET /api/auth だけを除く (他のメソッドは確かめる)
+    # トークンを受け取る GET /api/auth だけの除外 (他のメソッドは確かめの対象)
     opening = path == AUTH_PATH and request.method == "GET"
     if path.startswith(API_PREFIX) and not opening:
         given = [
@@ -368,7 +368,7 @@ def create_api(
     app: FastAPI
         頭なしの経路を持つアプリ (仕様の画面は閉じる)
     """
-    # 手元のファイルを読めるので, 仕様の画面は出さない
+    # 手元のファイルを読めるので, 仕様の画面は非公開
     # (仕様の書き出しは build_openapi)
     app = FastAPI(
         title=TITLE, version=VERSION, generate_unique_id_function=route_id,
