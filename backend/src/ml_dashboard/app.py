@@ -200,7 +200,7 @@ def get_token(token: Optional[str]) -> str:
     Parameters
     ----------
     token: Optional[str]
-        指定されたトークン, None の場合は環境変数かランダムに作成
+        指定されたトークン, None か空の場合は環境変数かランダムに作成
 
     Returns
     ----------
@@ -256,6 +256,36 @@ async def copy_refused(request: Request, error: Exception) -> Response:
     return response
 
 
+def static_file(static_dir: Path, path: str) -> Optional[Path]:
+    """
+    要求されたパスに当たる画面の置き場のファイルを探す関数
+
+    Parameters
+    ----------
+    static_dir: Path
+        ビルド済みの画面のディレクトリ
+    path: str
+        要求されたパス
+
+    Returns
+    ----------
+    target: Optional[Path]
+        画面の置き場の中のファイル, 無い場合は None
+        (NUL の字や長すぎる名前のように調べられない場合も None)
+    """
+    if not path:
+        return None
+
+    try:
+        target = (static_dir / path).resolve()
+        if not (target.is_relative_to(static_dir) and target.is_file()):
+            return None
+    except (ValueError, OSError):
+        return None
+
+    return target
+
+
 def serve_index(request: Request, path: str) -> FileResponse:
     """
     画面のファイルか, 画面の中の移動先として index.html を返す関数
@@ -277,8 +307,8 @@ def serve_index(request: Request, path: str) -> FileResponse:
         raise HTTPException(404, "API が見つかりません")
 
     static_dir: Path = request.app.state.static_dir
-    target = (static_dir / path).resolve()
-    if path and target.is_relative_to(static_dir) and target.is_file():
+    target = static_file(static_dir, path)
+    if target is not None:
         response = FileResponse(target)
         return response
 
@@ -306,12 +336,14 @@ def mount_frontend(app: FastAPI, static_dir: Path) -> None:
         return
 
     # JavaScript や CSS などのファイルと, 他のパスの index.html の配信
+    # (HEAD も GET と同じく受け付け)
     app.state.static_dir = static_dir
     app.mount(
         "/assets", StaticFiles(directory=static_dir / "assets"), name="assets"
     )
     app.add_api_route(
-        "/{path:path}", serve_index, methods=["GET"], include_in_schema=False
+        "/{path:path}", serve_index, methods=["GET", "HEAD"],
+        include_in_schema=False
     )
 
 
@@ -436,7 +468,8 @@ def create_app(
     data_dir: Optional[Path] = None
         ダッシュボードのデータの置き場, None の場合は既定の場所
     token: Optional[str] = None
-        API の呼び出しに求めるトークン, None の場合は環境変数かランダムに作成
+        API の呼び出しに求めるトークン, None か空の場合は環境変数か
+        ランダムに作成
     allowed_hosts: Optional[list[str]] = None
         受け付けるホスト名, None の場合は 127.0.0.1 と localhost
 
@@ -454,8 +487,9 @@ def create_app(
     # トークンの無い呼び出し, 他のサイトからの書き込み,
     # 他のホスト名での接続 (DNS rebinding) の拒否
     app.state.token = get_token(token)
-    if token is None and not os.environ.get(TOKEN_ENV):
-        # 開発用のサーバーなど, トークンを渡さずに作った場合は開き方を表示
+    if not token and not os.environ.get(TOKEN_ENV):
+        # 開発用のサーバーなど, トークンを渡さずに (空で) 作った場合は
+        # ランダムに作ったトークンでの開き方を表示
         print(
             f"ML-Dashboard のトークン: {AUTH_PATH}?token={app.state.token}",
             flush=True
