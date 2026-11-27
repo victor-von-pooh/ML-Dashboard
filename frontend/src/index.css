@@ -1,4 +1,6 @@
 @import 'tailwindcss';
+/* 段階に固有の CSS (殻はこれだけを別に読む) */
+@import './stage.css';
 
 /* クラスで切り替えるダークモード */
 @custom-variant dark (&:where(.dark, .dark *));
@@ -104,9 +106,4 @@ body {
   color: var(--text);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
-}
-
-/* 数値の桁をそろえる */
-.tabular {
-  font-variant-numeric: tabular-nums;
 }

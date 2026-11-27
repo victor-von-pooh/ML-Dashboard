@@ -2,7 +2,7 @@ import clsx from 'clsx'
 import { Info, ShieldCheck } from 'lucide-react'
 import { useMemo } from 'react'
 
-import { runFileUrl, type Evaluation, type RunFile } from '../../api/client'
+import { useApi, type Evaluation, type RunFile } from '../../api/client'
 import { LineChart, type ChartSeries } from '../../components/LineChart'
 import { Card } from '../../components/ui'
 import { seriesVar } from '../../lib/colors'
@@ -626,6 +626,7 @@ export function EvaluationsTab({
   projectId?: string
   runId?: string
 }) {
+  const { runFileUrl } = useApi()
   const anomaly = evaluations.some((evaluation) => isAnomalyEvaluation(evaluation.name))
   const uplift = evaluations.some((evaluation) => isUpliftEvaluation(evaluation.name))
   const price = evaluations.some((evaluation) => isPriceEvaluation(evaluation.name))

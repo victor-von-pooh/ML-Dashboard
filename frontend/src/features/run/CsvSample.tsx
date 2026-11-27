@@ -3,7 +3,7 @@ import clsx from 'clsx'
 import { Download } from 'lucide-react'
 import { useId, useState } from 'react'
 
-import { runFileUrl, type Sample } from '../../api/client'
+import { useApi, type Sample } from '../../api/client'
 import { Card, ErrorBox, Spinner } from '../../components/ui'
 import { alignColumns, parseCsv, type CsvTable } from '../../lib/csv'
 import { formatBytes } from '../../lib/format'
@@ -151,6 +151,7 @@ function CompareSide({
   runId: string
   columns: string[] | undefined
 }) {
+  const { runFileUrl } = useApi()
   const url = runFileUrl(projectId, runId, sample.path)
   const { large, table } = useCsv(url, sample)
   const label = `${sample.name} の${sampleEpochLabel(sample.epoch)} (並べた表)`
@@ -215,6 +216,7 @@ export function CsvCompare({
   projectId: string
   runId: string
 }) {
+  const { runFileUrl } = useApi()
   const [left, setLeft] = useState(0)
   const [right, setRight] = useState(1)
   // 一覧が減った場合は範囲の中に戻す

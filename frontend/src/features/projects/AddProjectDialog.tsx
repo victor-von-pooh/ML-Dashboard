@@ -2,9 +2,10 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ClipboardList, FolderSearch, Plus, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 
-import { api, type ProjectCandidate } from '../../api/client'
-import { keys, useRecordedProjects, useScanProjects } from '../../api/hooks'
+import { useApi, type ProjectCandidate, type RecordedProject } from '../../api/client'
+import { keys, useProblemProject, useRecordedProjects, useScanProjects } from '../../api/hooks'
 import { Button, ErrorBox, Spinner } from '../../components/ui'
+import { problemIdOf, useStage } from '../../lib/stage'
 
 /**
  * ML-Pathfinder の問題の設定に記録された, 登録していないプロジェクトの一覧.
@@ -23,20 +24,34 @@ function RecordedProjects({
   onBusy: (busy: boolean) => void
 }) {
   const client = useQueryClient()
+  const api = useApi()
+  const stage = useStage()
+  // 殻で選んだ問題の設定が記録したプロジェクト (同じプロジェクトなら選びを移さないため)
+  const chosen = useProblemProject(stage.project)
   const recorded = useRecordedProjects(open)
   const titleId = useId()
   const [added, setAdded] = useState<string | null>(null)
   const register = useMutation({
-    mutationFn: (path: string) => api.addProject({ path }),
+    mutationFn: (item: RecordedProject) => api.addProject({ path: item.path }),
     onMutate: () => {
       setAdded(null)
       onBusy(true)
     },
-    onSuccess: (project) => setAdded(project.name),
+    onSuccess: (project, item) => {
+      setAdded(project.name)
+      // 置き場の問題の設定から登録したので, 殻の選びをその問題の設定にする. 同じ識別子と,
+      // 殻で選んだ問題の設定も同じプロジェクトを記録している場合は知らせない (一覧は同じ
+      // プロジェクトを記録した問題の設定のうち新しい 1 件だけを出すので, 殻の選びを優先する)
+      const problem = problemIdOf(item.problem_path)
+      if (problem === null || problem === stage.project) return
+      if (stage.project !== null && chosen.data?.project_path === item.path) return
+      stage.onProjectChange(problem)
+    },
     onSettled: async () => {
       await Promise.all([
         client.invalidateQueries({ queryKey: keys.projects, exact: true }),
         client.invalidateQueries({ queryKey: keys.recorded }),
+        client.invalidateQueries({ queryKey: keys.problemProjects }),
       ])
       onBusy(false)
     },
@@ -90,7 +105,7 @@ function RecordedProjects({
               </div>
               <Button
                 icon={Plus}
-                onClick={() => register.mutate(item.path)}
+                onClick={() => register.mutate(item)}
                 disabled={busy || register.isPending}
                 aria-label={`${item.name} を登録`}
               >
@@ -117,6 +132,7 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose: ()
   const inputRef = useRef<HTMLInputElement>(null)
   const titleId = useId()
   const client = useQueryClient()
+  const api = useApi()
   const scan = useScanProjects()
   const [path, setPath] = useState('')
   const [candidates, setCandidates] = useState<ProjectCandidate[]>([])
@@ -182,7 +198,10 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose: ()
         break
       }
     }
-    await client.invalidateQueries({ queryKey: keys.projects, exact: true })
+    await Promise.all([
+      client.invalidateQueries({ queryKey: keys.projects, exact: true }),
+      client.invalidateQueries({ queryKey: keys.problemProjects }),
+    ])
     setAdding(false)
     if (!failed) dialogRef.current?.close()
   }

@@ -23,6 +23,7 @@ import type { EvaluationValue, GuardCheck } from '../../api/client'
 import { useStableId } from '../../lib/a11y'
 import { formatMetric } from '../../lib/format'
 import { metricLabel } from '../../lib/metrics'
+import { outsideStage } from '../../lib/stage'
 import { GUARD_LABELS, diffTone, guardDetail, type EvaluationColumn } from '../../lib/evaluations'
 
 const GUARD_STYLE: Record<GuardCheck['state'], { icon: LucideIcon; className: string }> = {
@@ -113,7 +114,8 @@ export function GuardBadge({ guard }: { guard: GuardCheck | null | undefined }) 
       if (!wrapper.current?.contains(event.target as Node)) close()
     }
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') close()
+      // 殻の上の帯など, 部品の外で押した Esc では閉じない
+      if (event.key === 'Escape' && !outsideStage(event.target)) close()
     }
     const onOther = (event: Event) => {
       if ((event as CustomEvent<string>).detail !== detailId) close()

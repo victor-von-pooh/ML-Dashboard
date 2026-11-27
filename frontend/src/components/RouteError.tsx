@@ -26,9 +26,10 @@ export function RouteError() {
     <div className="mx-auto max-w-2xl px-4 py-16">
       <EmptyState icon={TriangleAlert} title="画面を表示できませんでした">
         <p className="mb-4 font-mono text-xs break-all">{message}</p>
-        <a href="/" className="text-accent-text hover:underline">
+        {/* basename の下のプロジェクトの一覧へ (殻の下では根が殻の画面を指すため) */}
+        <Link to="/" className="text-accent-text hover:underline">
           プロジェクトの一覧に戻る
-        </a>
+        </Link>
       </EmptyState>
     </div>
   )

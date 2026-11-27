@@ -3,6 +3,8 @@ import { FolderKanban, LayoutGrid, ListChecks, Moon, Sun } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router'
 
 import { useProjects, useRunningJobCount } from '../api/hooks'
+import logo from '../assets/logo.svg'
+import { useStage } from '../lib/stage'
 import { useTheme } from '../lib/themeContext'
 
 function ThemeToggle() {
@@ -33,6 +35,8 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
 export function Layout() {
   const projects = useProjects()
   const runningJobs = useRunningJobCount()
+  // 殻の下では, アプリの名前と明暗の切り替えを殻の上の帯が持つ
+  const { embedded } = useStage()
 
   return (
     <div className="flex h-full">
@@ -44,14 +48,21 @@ export function Layout() {
         本文へ移る
       </a>
       <aside className="hidden w-60 shrink-0 flex-col border-r border-line bg-surface md:flex">
-        <div className="flex items-center justify-between px-4 py-4">
-          <NavLink to="/" className="flex items-center gap-2 font-semibold tracking-tight">
-            <img src="/favicon.svg" alt="" className="size-6" />
-            ML-Dashboard
-          </NavLink>
-          <ThemeToggle />
-        </div>
-        <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-4">
+        {!embedded && (
+          <div className="flex items-center justify-between px-4 py-4">
+            <NavLink to="/" className="flex items-center gap-2 font-semibold tracking-tight">
+              <img src={logo} alt="" className="size-6" />
+              ML-Dashboard
+            </NavLink>
+            <ThemeToggle />
+          </div>
+        )}
+        <nav
+          className={clsx(
+            'flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-4',
+            embedded && 'pt-4',
+          )}
+        >
           <NavLink to="/" end className={linkClass}>
             <LayoutGrid className="size-4" aria-hidden />
             プロジェクト
@@ -83,14 +94,16 @@ export function Layout() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* 狭い画面ではサイドバーの代わりに上の帯を出す */}
-        <header className="flex items-center justify-between border-b border-line bg-surface px-4 py-3 md:hidden">
-          <NavLink to="/" className="flex items-center gap-2 font-semibold">
-            <img src="/favicon.svg" alt="" className="size-6" />
-            ML-Dashboard
-          </NavLink>
-          <ThemeToggle />
-        </header>
+        {/* 狭い画面ではサイドバーの代わりに上の帯を出す (殻の下では殻の帯が持つ) */}
+        {!embedded && (
+          <header className="flex items-center justify-between border-b border-line bg-surface px-4 py-3 md:hidden">
+            <NavLink to="/" className="flex items-center gap-2 font-semibold">
+              <img src={logo} alt="" className="size-6" />
+              ML-Dashboard
+            </NavLink>
+            <ThemeToggle />
+          </header>
+        )}
         <main id="main" tabIndex={-1} className="min-h-0 flex-1 overflow-y-auto outline-none">
           <div className="mx-auto max-w-7xl px-4 py-6 md:px-8 md:py-8">
             <Outlet />
