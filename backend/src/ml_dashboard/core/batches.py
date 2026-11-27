@@ -2,7 +2,6 @@ import os
 import re
 import shutil
 import socket
-import subprocess
 import tempfile
 import threading
 import time
@@ -21,7 +20,7 @@ from ml_dashboard.core.models import (
     BatchOwner,
     CandidateState,
 )
-from ml_dashboard.core.runs import pid_alive
+from ml_dashboard.core.runs import pid_alive, process_started
 
 # まとまりの ID の形 (ジョブの ID と同じく, 置き場の外を指さないため)
 BATCH_ID = re.compile(r"[0-9a-f]{12}")
@@ -32,9 +31,6 @@ POLL_SEC = 2.0
 # このプロセスが起動した時刻 (持ち主の見分けに使う. モジュールを読んだときに
 # 1 回だけ, マイクロ秒まで取る)
 PROCESS_STARTED_AT = datetime.now().astimezone().isoformat()
-
-# プロセスの起動の時刻を読む ps を待つ秒数
-PS_TIMEOUT_SEC = 2.0
 
 # 待つ候補と学習中の候補の状態
 ACTIVE_STATES = ("waiting", "running")
@@ -78,36 +74,6 @@ def is_active(batch: Batch) -> bool:
     )
 
     return active
-
-
-def process_started(pid: int) -> Optional[datetime]:
-    """
-    プロセスが始まった時刻を ps で読む関数
-
-    Parameters
-    ----------
-    pid: int
-        プロセスの番号
-
-    Returns
-    ----------
-    started: Optional[datetime]
-        始まった時刻 (秒まで, ローカルのタイムゾーン付き). 読めない環境
-        (ps が無い, Windows など) と居ないプロセスは None
-    """
-    try:
-        output = subprocess.run(
-            ["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True,
-            text=True, timeout=PS_TIMEOUT_SEC, check=False,
-            env={**os.environ, "LC_ALL": "C"}
-        ).stdout
-        started: Optional[datetime] = datetime.strptime(
-            " ".join(output.split()), "%a %b %d %H:%M:%S %Y"
-        ).astimezone()
-    except (OSError, ValueError, subprocess.SubprocessError):
-        return None
-
-    return started
 
 
 def pid_reused(owner: BatchOwner) -> bool:

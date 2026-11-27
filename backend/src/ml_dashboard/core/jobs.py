@@ -26,6 +26,7 @@ from ml_dashboard.core.runs import (
     make_run_id,
     parse_started_at,
     pid_alive,
+    process_started,
     read_json,
     resolve_run_dir,
 )
@@ -44,6 +45,11 @@ DROPPED_ENV = ("VIRTUAL_ENV", "PYTHONPATH", "PYTHONHOME")
 
 # 強制の中断を繰り返した回数ごとに送るシグナル
 FORCE_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGKILL)
+
+# ジョブの開始の時刻から, そのジョブのプロセスが始まるまでに許す秒数.
+# 開始の時刻はプロセスを作る直前に取り, ps の時刻と共に秒までなので,
+# 本物のプロセスは開始の時刻の直後に始まる
+JOB_START_SLACK_SEC = 10.0
 
 JobStatus = Literal["running", "finished"]
 
@@ -128,6 +134,43 @@ def is_job_id(job_id: str) -> bool:
     valid = JOB_ID.match(job_id) is not None
 
     return valid
+
+
+def same_process(job: Job) -> Optional[bool]:
+    """
+    ジョブの pid のプロセスが, ジョブが起動したプロセスかを確かめる関数
+
+    ダッシュボードを起動し直した後は, 記録の pid を別のプロセスが使い回して
+    いる場合があるので, プロセスが始まった時刻とジョブの開始の時刻を比べる
+
+    Parameters
+    ----------
+    job: Job
+        ジョブ
+
+    Returns
+    ----------
+    same: Optional[bool]
+        プロセスがジョブの開始の時刻から JOB_START_SLACK_SEC の中で
+        始まっていれば True, その外 (前か後) なら別のプロセスとして False.
+        確かめられない場合 (別の端末のジョブ, 起動の時刻を読めない環境,
+        居ないプロセス, 開始の時刻を読めない記録) は None
+    """
+    if job.pid is None or job.hostname != socket.gethostname():
+        return None
+    started = process_started(job.pid)
+    try:
+        created = datetime.fromisoformat(job.created_at)
+    except ValueError:
+        return None
+    if started is None or created.tzinfo is None:
+        return None
+
+    # どちらも秒までなので, 前には 1 秒の幅を許す
+    gap = (started - created).total_seconds()
+    same = -1 <= gap <= JOB_START_SLACK_SEC
+
+    return same
 
 
 class JobManager:
@@ -401,6 +444,11 @@ class JobManager:
         if not pid_alive(job.pid):
             return True, None
 
+        # pid を別のプロセスが使い回していれば終了扱い (確かめられない場合は
+        # 実行中のまま)
+        if same_process(job) is False:
+            return True, None
+
         return False, None
 
     def refresh(self, job: Job, project: Optional[Project]) -> Job:
@@ -564,7 +612,10 @@ class JobManager:
         ----------
         owned: bool
             このサーバーが起動したプロセスか, 起動し直した後でも実験の
-            run.json の pid とホスト名がジョブと同じで, 実行中かどうか
+            run.json の pid とホスト名がジョブと同じで, プロセスが動いていて,
+            次のどちらかかどうか. run.json が実行中で, 別のプロセスと
+            分からない (確かめられない場合も含む). run.json が完了 (後の
+            処理中) で, 同じプロセスと確かめられた
         """
         if job.id in self.processes:
             return True
@@ -572,12 +623,19 @@ class JobManager:
             return False
 
         status = read_json(run_dir / "run.json")
-        owned = (
-            status.get("status") == "running"
+        state = status.get("status")
+        if not (
+            state in ("running", "completed")
             and status.get("pid") == job.pid
             and status.get("hostname") == socket.gethostname()
             and pid_alive(job.pid)
-        )
+        ):
+            return False
+
+        # 別のプロセスと分かれば送らない. 確かめられない場合は, 実行中は
+        # 送り, 後の処理中は送らない (どちらも確かめを足す前と同じ扱い)
+        same = same_process(job)
+        owned = same is True or (state == "running" and same is None)
 
         return owned
 

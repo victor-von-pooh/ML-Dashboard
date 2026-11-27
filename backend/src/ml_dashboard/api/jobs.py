@@ -209,8 +209,10 @@ class JobInfo(BaseModel):
     hostname: str
     return_code: Optional[int]
     stop_requested: bool
-    # このダッシュボードのプロセスが起動したプロセスかどうか (起動し直した
-    # 後は偽. 後の処理中のプロセスに割り込めるかを画面が決めるため)
+    # プロセスに割り込めるかどうか. このダッシュボードのプロセスが起動した
+    # か, 起動し直した後でも実験の run.json とプロセスの起動の時刻から同じ
+    # プロセスと確かめられたもの (後の処理中のプロセスに割り込めるかを
+    # 画面が決めるため)
     attached: bool
     run_id: Optional[str]
     run: Optional[RunSummary]
@@ -1175,6 +1177,7 @@ def to_job_info(
     """
     run = None
     progress = None
+    run_dir = None
     if project is not None and job.run_id is not None:
         try:
             output_dirs = jobs.output_dirs(job, project)
@@ -1193,7 +1196,7 @@ def to_job_info(
     info = JobInfo(
         **data, project_name=project.name if project else None, run=run,
         progress=progress, config_text=config_text,
-        attached=job.id in jobs.processes
+        attached=job.status == "running" and jobs.owns(job, run_dir)
     )
 
     return info

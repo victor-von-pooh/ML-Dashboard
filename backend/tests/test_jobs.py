@@ -2,9 +2,12 @@ import hashlib
 import json
 import os
 import shutil
+import socket
+import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
 from functools import partial
 from pathlib import Path
 from typing import Any, Optional
@@ -24,6 +27,7 @@ from ml_dashboard.api.jobs import (
     uses_custom_classes,
 )
 from ml_dashboard.app import cookie_name, create_app
+from ml_dashboard.core import jobs as core_jobs
 from ml_dashboard.core.model_spec import find_model_spec_copy, run_of_copy
 from ml_dashboard.core.models import RunModelSpec
 
@@ -268,14 +272,16 @@ def test_job_running_after_fit(
 
 
 def test_force_stop_after_fit_restarted(
-    client: TestClient, project_dir: Path, tmp_path: Path
+    client: TestClient, project_dir: Path, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """
-    起動し直した後は, 後の処理の途中のジョブに割り込まないことを確かめる
-    関数
+    起動し直した後は, 後の処理の途中のジョブに, 同じプロセスと確かめられた
+    場合だけ割り込むことを確かめる関数
 
-    run.json が完了の後は pid の使い回しと見分けられないので, シグナルを
-    送らず, 画面がすぐに止めるを止める値 (attached が偽) を返す
+    run.json が完了の後は run.json だけでは pid の使い回しと見分けられない
+    ので, プロセスの起動の時刻を確かめられない場合はシグナルを送らず,
+    画面がすぐに止めるを止める値 (attached が偽) を返す
 
     Parameters
     ----------
@@ -285,6 +291,8 @@ def test_force_stop_after_fit_restarted(
         プロジェクトのディレクトリ
     tmp_path: Path
         pytest が用意する一時ディレクトリ (client のデータの置き場の親)
+    monkeypatch: pytest.MonkeyPatch
+        pytest の差し替え
 
     Returns
     ----------
@@ -309,68 +317,128 @@ def test_force_stop_after_fit_restarted(
         ),
         cookies={cookie_name("test-token"): "test-token"}
     )
+
+    # 起動の時刻を読めない環境では, 動いたままで割り込まない
+    # (強制の中断でもシグナルを送らず, 送った場合だけ数える回数が 0)
+    with monkeypatch.context() as patch:
+        patch.setattr(core_jobs, "process_started", lambda pid: None)
+        job = restarted.get(f"/api/jobs/{job_id}").json()
+        assert job["status"] == "running"
+        assert job["attached"] is False
+        stopped = restarted.post(
+            f"/api/jobs/{job_id}/stop", json={"force": True}
+        ).json()
+        assert stopped["force_count"] == 0
+        time.sleep(0.2)
+        job = restarted.get(f"/api/jobs/{job_id}").json()
+        assert job["status"] == "running"
+
+    if core_jobs.process_started(os.getpid()) is None:
+        (project_dir / "GO").touch()
+        wait_for(client, job_id, "status", "finished")
+        pytest.skip("ps でプロセスの起動の時刻を読めない環境")
+
+    # 同じプロセスと確かめられれば, 起動し直した後でも割り込める
     job = restarted.get(f"/api/jobs/{job_id}").json()
     assert job["status"] == "running"
-    assert job["attached"] is False
-
-    # 強制の中断でもシグナルを送らず (送った場合だけ数える回数が 0),
-    # プロセスは動いたまま
+    assert job["attached"] is True
     stopped = restarted.post(
         f"/api/jobs/{job_id}/stop", json={"force": True}
     ).json()
-    assert stopped["force_count"] == 0
-    time.sleep(0.2)
-    assert restarted.get(f"/api/jobs/{job_id}").json()["status"] == "running"
+    assert stopped["force_count"] == 1
 
-    # 一式を書き終えて終わる (終わりは起動した側のアプリで回収)
-    (project_dir / "GO").touch()
+    # 一式を書かずに止まる (終わりは起動した側のアプリで回収)
     job = wait_for(client, job_id, "status", "finished")
-    assert job["return_code"] == 0
+    assert job["return_code"] != 0
     run_dir = project_dir / "outputs" / job["run_id"]
-    assert (run_dir / "inference" / "inference.yaml").is_file()
+    assert not (run_dir / "inference" / "inference.yaml").exists()
 
-def test_stop_within_epoch(client: TestClient, project_dir: Path) -> None:
+
+def test_reused_pid_after_restart(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """
-    エポックの途中で止める要求が, STOP に now と書くことを確かめる関数
+    起動し直した後, 記録の pid を別のプロセスが使い回していれば, ジョブを
+    終わったものにし, 本物のジョブは動いたままにすることを確かめる関数
 
     Parameters
     ----------
-    client: TestClient
-        API を呼ぶクライアント
-    project_dir: Path
-        プロジェクトのディレクトリ
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        pytest の差し替え
 
     Returns
     ----------
     None
     """
-    # 中身が now になるまで止まらない偽の学習 (区切りの要求では止まらない)
-    (project_dir / "train.py").write_text(
-        FAKE_TRAIN.replace(
-            'if (run / "STOP").exists():',
-            'if (run / "STOP").exists() and '
-            '(run / "STOP").read_text().strip() == "now":'
-        )
-    )
-    project_id = register(client, project_dir)
-    created = client.post(
-        f"/api/projects/{project_id}/jobs", json={"script": "train.py"}
-    )
-    job_id = created.json()["id"]
-    run_id = wait_for(client, job_id, "run_id", ...)["run_id"]
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
 
-    # エポックの区切りで止める要求の後でも, 途中で止める要求に切り替えられる
-    client.post(f"/api/jobs/{job_id}/stop", json={"force": False})
-    stopped = client.post(
-        f"/api/jobs/{job_id}/stop", json={"force": False, "now": True}
+    # ジョブの開始の時刻を取ってから起動したプロセス (本物のジョブ)
+    created_at = core_jobs.now_iso()
+    process = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(60)"],
+        start_new_session=True
     )
-    assert stopped.json()["stop_requested"] is True
-    stop_file = project_dir / "outputs" / run_id / "STOP"
-    assert stop_file.read_text(encoding="utf-8") == "now\n"
-    job = wait_for(client, job_id, "status", "finished")
-    assert job["run"]["status"] == "stopped"
-    output = client.get(f"/api/jobs/{job_id}/output").json()["text"]
-    assert "done stopped now" in output
+    try:
+        if core_jobs.process_started(process.pid) is None:
+            pytest.skip("ps でプロセスの起動の時刻を読めない環境")
+        (run_dir / "run.json").write_text(json.dumps({
+            "status": "completed", "pid": process.pid,
+            "hostname": socket.gethostname()
+        }))
+
+        def job_at(created: str) -> core_jobs.Job:
+            # 起動し直した後の記録 (このアプリが起動したプロセスを持たない)
+            return core_jobs.Job(
+                id="0123456789ab", project_id="p", script="train.py",
+                config="c.yaml", created_at=created, pid=process.pid,
+                status="running", return_code=None, run_id=None,
+                finished_at=None, stop_requested=False
+            )
+
+        manager = core_jobs.JobManager(tmp_path)
+        job = job_at(created_at)
+        assert core_jobs.same_process(job) is True
+        assert manager.poll(job) == (False, None)
+        assert manager.owns(job, run_dir)
+
+        # プロセスがジョブより後に始まった (終わった後に pid を使い回した)
+        earlier = datetime.fromisoformat(created_at) - timedelta(hours=1)
+        reused = job_at(earlier.isoformat(timespec="seconds"))
+        assert core_jobs.same_process(reused) is False
+        assert manager.poll(reused) == (True, None)
+        assert not manager.owns(reused, run_dir)
+
+        # プロセスがジョブより前に始まった (ジョブと関係の無いプロセス)
+        later = datetime.fromisoformat(created_at) + timedelta(hours=1)
+        older = job_at(later.isoformat(timespec="seconds"))
+        assert core_jobs.same_process(older) is False
+        assert manager.poll(older) == (True, None)
+
+        # 確かめられない場合 (起動の時刻を読めない, 時刻の無い記録) は今の
+        # 振る舞い. 実行中の run.json なら割り込み, 後の処理中なら割り込まない
+        monkeypatch.setattr(core_jobs, "process_started", lambda pid: None)
+        assert core_jobs.same_process(reused) is None
+        assert manager.poll(reused) == (False, None)
+        assert not manager.owns(reused, run_dir)
+        (run_dir / "run.json").write_text(json.dumps({
+            "status": "running", "pid": process.pid,
+            "hostname": socket.gethostname()
+        }))
+        assert manager.owns(reused, run_dir)
+        monkeypatch.undo()
+        assert core_jobs.same_process(job_at("2026-11-01T00:00:00")) is None
+        assert core_jobs.same_process(job_at("壊れた時刻")) is None
+
+        # 実行中の run.json でも, 使い回しと分かれば割り込まない
+        assert not manager.owns(reused, run_dir)
+        assert manager.owns(job, run_dir)
+    finally:
+        process.kill()
+        process.wait()
+
 
 
 def test_force_stop(client: TestClient, project_dir: Path) -> None:
