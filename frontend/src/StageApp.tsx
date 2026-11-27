@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react'
 import { createBrowserRouter, RouterProvider, useLocation, useNavigate } from 'react-router'
 
@@ -122,6 +123,36 @@ function makeRouter(basename: string) {
   )
 }
 
+/** 部品の中のルーター */
+type StageRouter = ReturnType<typeof makeRouter>
+
+/**
+ * 付けている間だけ生きるルーターを持つ (付けたときに作り, 外すときに捨てる)
+ *
+ * 戻ると進むの見張りを残さないため. 作るのを見張りの登録 (effect) に置くので, StrictMode の
+ * 2 度の付け外しでも生きているルーターは 1 つで, 外せば全て捨てる. 経路の頭は最初の値を使う
+ *
+ * @param basename - 画面の経路の頭
+ * @returns ルーター (付ける前は null)
+ */
+function useMountedRouter(basename: string): StageRouter | null {
+  const [store] = useState(() => {
+    let router: StageRouter | null = null
+    return {
+      subscribe(notify: () => void) {
+        router = makeRouter(basename)
+        notify()
+        return () => {
+          router?.dispose()
+          router = null
+        }
+      },
+      get: () => router,
+    }
+  })
+  return useSyncExternalStore(store.subscribe, store.get)
+}
+
 /**
  * 学習・評価の段階の画面の根の部品
  *
@@ -130,17 +161,8 @@ function makeRouter(basename: string) {
  */
 export function StageApp({ basename, apiBase, project, onProjectChange, embedded }: StageAppProps) {
   const [queryClient] = useState(makeQueryClient)
-  // ルーターは部品ごとに 1 つ (殻は段階を移るたびに部品を作り直す)
-  const [router] = useState(() => makeRouter(basename))
-  // 外されたらルーターを捨てる (戻ると進むの見張りを残さないため). StrictMode の外して
-  // すぐ付け直す動きでは捨てないように, 1 拍待ち, 付け直されたら取りやめる
-  const disposing = useRef<number | undefined>(undefined)
-  useEffect(() => {
-    window.clearTimeout(disposing.current)
-    return () => {
-      disposing.current = window.setTimeout(() => router.dispose())
-    }
-  }, [router])
+  // ルーターは部品ごとに 1 つ (殻は段階を移るたびに部品を作り直す). 経路の頭は最初の値を使う
+  const router = useMountedRouter(basename)
   const api = useMemo(() => createApi(apiBase), [apiBase])
   // 部品が殻に知らせた値 (返ってきたときにプロジェクトの画面へ移さないため)
   const reported = useRef<string | null | undefined>(undefined)
@@ -168,7 +190,7 @@ export function StageApp({ basename, apiBase, project, onProjectChange, embedded
             <ReportedBackContext.Provider value={reportedBack}>
               {/* 部品の範囲の印 (殻の画面で押したキーを拾わないため. 箱は作らない) */}
               <div data-stage-root className="contents">
-                <RouterProvider router={router} />
+                {router && <RouterProvider router={router} />}
               </div>
             </ReportedBackContext.Provider>
           </StageContext.Provider>

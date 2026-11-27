@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ProblemProject, ProjectDetail, ProjectInfo, RecordedProjects } from './api/client'
@@ -253,6 +254,39 @@ describe('StageApp', () => {
     // 殻が切り替えると読み直す (グラフはこの値で描き直す)
     act(() => document.documentElement.classList.add('dark'))
     await waitFor(() => expect(probe).toHaveTextContent('dark'))
+  })
+
+  it('StrictMode で描いて外すと, 戻ると進むの見張りを残さない', async () => {
+    stubApi()
+    window.history.pushState({}, '', '/train')
+    const add = vi.spyOn(window, 'addEventListener')
+    const remove = vi.spyOn(window, 'removeEventListener')
+    /** popstate の見張りを付けた数と外した数 */
+    const count = (spy: typeof add | typeof remove) =>
+      spy.mock.calls.filter(([type]) => type === 'popstate').length
+    const view = render(
+      <StrictMode>
+        <StageApp
+          basename="/train"
+          apiBase="/api/train"
+          project={null}
+          onProjectChange={() => {}}
+          onProjectsChange={() => {}}
+          embedded
+        />
+      </StrictMode>,
+    )
+    expect(await screen.findByRole('link', { name: 'sales' })).toHaveAttribute(
+      'href',
+      '/train/projects/p1',
+    )
+    // 描いている間に生きている見張りは 1 つ
+    expect(count(add) - count(remove)).toBe(1)
+    view.unmount()
+    expect(count(add)).toBeGreaterThan(0)
+    expect(count(remove)).toBe(count(add))
+    add.mockRestore()
+    remove.mockRestore()
   })
 })
 
