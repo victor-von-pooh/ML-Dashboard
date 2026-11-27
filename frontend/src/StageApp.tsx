@@ -8,7 +8,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from 'react'
 import { createBrowserRouter, RouterProvider, useLocation, useNavigate } from 'react-router'
 
@@ -126,31 +125,62 @@ function makeRouter(basename: string) {
 /** 部品の中のルーター */
 type StageRouter = ReturnType<typeof makeRouter>
 
+/** 部品ごとのルーターの入れ物 (生きているルーターを 1 つだけ持つ) */
+class RouterHolder {
+  /** 生きているルーター (捨てた後は null) */
+  private router: StageRouter | null = null
+
+  /** 画面の経路の頭 */
+  private readonly basename: string
+
+  /** @param basename - 画面の経路の頭 */
+  constructor(basename: string) {
+    this.basename = basename
+  }
+
+  /** 生きているルーターがあるか */
+  get alive(): boolean {
+    return this.router !== null
+  }
+
+  /** 生きているルーター (無ければ作る) */
+  get(): StageRouter {
+    this.router ??= makeRouter(this.basename)
+    return this.router
+  }
+
+  /** 生きているルーターを捨てる */
+  dispose(): void {
+    this.router?.dispose()
+    this.router = null
+  }
+}
+
 /**
- * 付けている間だけ生きるルーターを持つ (付けたときに作り, 外すときに捨てる)
+ * 付けている間だけ生きるルーターを持つ (最初の描画で作り, 外すときに捨てる)
  *
- * 戻ると進むの見張りを残さないため. 作るのを見張りの登録 (effect) に置くので, StrictMode の
- * 2 度の付け外しでも生きているルーターは 1 つで, 外せば全て捨てる. 経路の頭は最初の値を使う
+ * `createBrowserRouter` は作るときに戻ると進むの見張り (`popstate`) を付けるので, 2 度
+ * 走る `useState` の初期化では作らず (初期化で作るのは空の入れ物だけ), 描画で入れ物に
+ * 1 つだけ作る. 外すとき (layout effect の後始末) に捨て, 付け直されたとき (StrictMode の
+ * 2 度目の付け) だけ作り直して塗る前に描き直す. 使うときの起動では付け直しが無いので,
+ * 最初の描画からルーターを出し, 描き直しも無い. 経路の頭は最初の値を使う
  *
  * @param basename - 画面の経路の頭
- * @returns ルーター (付ける前は null)
+ * @returns 生きているルーター
  */
-function useMountedRouter(basename: string): StageRouter | null {
-  const [store] = useState(() => {
-    let router: StageRouter | null = null
-    return {
-      subscribe(notify: () => void) {
-        router = makeRouter(basename)
-        notify()
-        return () => {
-          router?.dispose()
-          router = null
-        }
-      },
-      get: () => router,
+function useMountedRouter(basename: string): StageRouter {
+  const [holder] = useState(() => new RouterHolder(basename))
+  // 付け直したときに作り直したルーター (描き直すため)
+  const [, setRemade] = useState<StageRouter | null>(null)
+  useLayoutEffect(() => {
+    if (!holder.alive) {
+      // StrictMode の付け直しのときだけ走る (使うときの起動では付け直しが無い)
+      // oxlint-disable-next-line react/set-state-in-effect -- StrictMode の付け直しのときだけ走るため
+      setRemade(holder.get())
     }
-  })
-  return useSyncExternalStore(store.subscribe, store.get)
+    return () => holder.dispose()
+  }, [holder])
+  return holder.get()
 }
 
 /**
@@ -190,7 +220,7 @@ export function StageApp({ basename, apiBase, project, onProjectChange, embedded
             <ReportedBackContext.Provider value={reportedBack}>
               {/* 部品の範囲の印 (殻の画面で押したキーを拾わないため. 箱は作らない) */}
               <div data-stage-root className="contents">
-                {router && <RouterProvider router={router} />}
+                <RouterProvider router={router} />
               </div>
             </ReportedBackContext.Provider>
           </StageContext.Provider>

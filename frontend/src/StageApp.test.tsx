@@ -255,38 +255,77 @@ describe('StageApp', () => {
     act(() => document.documentElement.classList.add('dark'))
     await waitFor(() => expect(probe).toHaveTextContent('dark'))
   })
+})
+
+/** window の popstate の見張りを付けた数と外した数を数える */
+function watchPopstate() {
+  const add = vi.spyOn(window, 'addEventListener')
+  const remove = vi.spyOn(window, 'removeEventListener')
+  const count = (spy: typeof add | typeof remove) =>
+    spy.mock.calls.filter(([type]) => type === 'popstate').length
+  return { added: () => count(add), removed: () => count(remove) }
+}
+
+/** 殻の下の形の StageApp (StrictMode の中に置くかを選ぶ) */
+function renderRoot(strict: boolean) {
+  window.history.pushState({}, '', '/train')
+  const app = (
+    <StageApp
+      basename="/train"
+      apiBase="/api/train"
+      project={null}
+      onProjectChange={() => {}}
+      onProjectsChange={() => {}}
+      embedded
+    />
+  )
+  return render(strict ? <StrictMode>{app}</StrictMode> : app)
+}
+
+describe('ルーターの見張り', () => {
+  afterEach(() => vi.restoreAllMocks())
 
   it('StrictMode で描いて外すと, 戻ると進むの見張りを残さない', async () => {
     stubApi()
-    window.history.pushState({}, '', '/train')
-    const add = vi.spyOn(window, 'addEventListener')
-    const remove = vi.spyOn(window, 'removeEventListener')
-    /** popstate の見張りを付けた数と外した数 */
-    const count = (spy: typeof add | typeof remove) =>
-      spy.mock.calls.filter(([type]) => type === 'popstate').length
-    const view = render(
-      <StrictMode>
-        <StageApp
-          basename="/train"
-          apiBase="/api/train"
-          project={null}
-          onProjectChange={() => {}}
-          onProjectsChange={() => {}}
-          embedded
-        />
-      </StrictMode>,
-    )
+    const popstate = watchPopstate()
+    const view = renderRoot(true)
     expect(await screen.findByRole('link', { name: 'sales' })).toHaveAttribute(
       'href',
       '/train/projects/p1',
     )
     // 描いている間に生きている見張りは 1 つ
-    expect(count(add) - count(remove)).toBe(1)
+    expect(popstate.added() - popstate.removed()).toBe(1)
     view.unmount()
-    expect(count(add)).toBeGreaterThan(0)
-    expect(count(remove)).toBe(count(add))
-    add.mockRestore()
-    remove.mockRestore()
+    expect(popstate.added()).toBeGreaterThan(0)
+    expect(popstate.removed()).toBe(popstate.added())
+  })
+
+  it('StrictMode で付け直した後も, 戻ると進むで画面が移る', async () => {
+    stubApi()
+    renderRoot(true)
+    await screen.findByRole('link', { name: 'sales' })
+    fireEvent.click(screen.getByRole('link', { name: /ジョブ/ }))
+    await waitFor(() => expect(window.location.pathname).toBe('/train/jobs'))
+    expect(screen.queryByRole('link', { name: 'sales' })).not.toBeInTheDocument()
+    act(() => window.history.back())
+    expect(await screen.findByRole('link', { name: 'sales' })).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/train')
+    act(() => window.history.forward())
+    await waitFor(() => expect(window.location.pathname).toBe('/train/jobs'))
+    await waitFor(() =>
+      expect(screen.queryByRole('link', { name: 'sales' })).not.toBeInTheDocument(),
+    )
+  })
+
+  it('StrictMode の外 (使うときの起動) ではルーターを 1 度だけ作り, 外すと捨てる', async () => {
+    stubApi()
+    const popstate = watchPopstate()
+    const view = renderRoot(false)
+    await screen.findByRole('link', { name: 'sales' })
+    expect(popstate.added()).toBe(1)
+    expect(popstate.removed()).toBe(0)
+    view.unmount()
+    expect(popstate.removed()).toBe(1)
   })
 })
 
