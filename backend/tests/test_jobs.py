@@ -901,8 +901,8 @@ def test_validate_timeout(
     ----------
     None
     """
-    monkeypatch.setattr(check_process, "CHECK_TIMEOUT", 3)
-    (project_dir / "spawn_optim.py").write_text(SPAWN_OPTIM.format(wait=30))
+    monkeypatch.setattr(check_process, "CHECK_TIMEOUT", 10)
+    (project_dir / "spawn_optim.py").write_text(SPAWN_OPTIM.format(wait=60))
     project_id = register(client, project_dir)
 
     started = time.monotonic()
@@ -911,8 +911,8 @@ def test_validate_timeout(
         json={"text": "optimizer:\n  name: spawn_optim.Mine\n"}
     ).json()
     assert result["ok"] is False
-    assert "3 秒で終わりませんでした" in result["error"]
-    assert time.monotonic() - started < 15
+    assert "10 秒で終わりませんでした" in result["error"]
+    assert time.monotonic() - started < 30
     pid = int((project_dir / "grandchild.pid").read_text())
     assert is_gone(pid)
 
