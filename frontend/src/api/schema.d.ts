@@ -127,7 +127,8 @@ export interface paths {
          *
          *     Parameters
          *     ----------
-         *     None
+         *     request: Request
+         *         リクエスト
          *
          *     Returns
          *     ----------

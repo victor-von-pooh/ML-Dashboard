@@ -1,9 +1,11 @@
 from pathlib import Path
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from starlette.routing import Mount
 
-from ml_dashboard.app import create_app
+from ml_dashboard.app import cookie_name, create_app
 
 # ML-Found が書く train.log の例
 LOG_TEXT = """\
@@ -75,6 +77,28 @@ def write_run(
     return run_dir
 
 
+def api_app(client: TestClient) -> FastAPI:
+    """
+    単独の起動のアプリが /api に mount した API だけのアプリを返す関数
+
+    Parameters
+    ----------
+    client: TestClient
+        create_app のアプリのクライアント
+
+    Returns
+    ----------
+    api: FastAPI
+        API だけのアプリ (登録簿とジョブの管理を app.state に持つ)
+    """
+    for route in client.app.routes:  # type: ignore[attr-defined]
+        if isinstance(route, Mount) and route.path == "/api":
+            api: FastAPI = route.app
+            return api
+
+    raise AssertionError("/api に mount したアプリがありません")
+
+
 @pytest.fixture
 def project_dir(tmp_path: Path) -> Path:
     """
@@ -107,6 +131,32 @@ def project_dir(tmp_path: Path) -> Path:
     return project
 
 
+@pytest.fixture(autouse=True)
+def pathfinder_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """
+    ML-Pathfinder の置き場を一時ディレクトリにする関数
+
+    アプリは作ったときに問題の設定の置き場を決めるので, アプリを作る
+    fixture より先に環境変数を置く (手元の置き場を読まないためにも)
+
+    Parameters
+    ----------
+    tmp_path: Path
+        一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        環境変数の差し替え
+
+    Returns
+    ----------
+    home: Path
+        一時ディレクトリの下の pathfinder (無いこともある)
+    """
+    home = tmp_path / "pathfinder"
+    monkeypatch.setenv("ML_PATHFINDER_HOME", str(home))
+
+    return home
+
+
 @pytest.fixture
 def client(tmp_path: Path) -> TestClient:
     """
@@ -123,8 +173,11 @@ def client(tmp_path: Path) -> TestClient:
         API を呼ぶクライアント
     """
     test_client = TestClient(
-        create_app(tmp_path / "home", token="test-token"),
-        cookies={"ml_dashboard_token": "test-token"}
+        create_app(
+            tmp_path / "home", token="test-token",
+            allowed_hosts=["testserver"]
+        ),
+        cookies={cookie_name("test-token"): "test-token"}
     )
 
     return test_client

@@ -18,7 +18,7 @@ from ml_dashboard.core.requirements import (
     requires_status,
 )
 
-router = APIRouter(prefix="/api")
+router = APIRouter()
 
 
 class RequiresRequest(BaseModel):

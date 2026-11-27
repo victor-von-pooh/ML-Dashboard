@@ -61,7 +61,7 @@ from ml_dashboard.core.runs import (
     summarize_run,
 )
 
-router = APIRouter(prefix="/api")
+router = APIRouter()
 
 # config の大きさの上限 (誤って大きなファイルを送った場合の保護)
 MAX_CONFIG_BYTES = 200_000

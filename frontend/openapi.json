@@ -130,7 +130,7 @@
     "/api/problems/training": {
       "get": {
         "summary": "List Problem Trainings",
-        "description": "ML-Pathfinder の問題の設定ごとの, 学習で監視する指標と向きを返す関数\n\nParameters\n----------\nNone\n\nReturns\n----------\nresult: ProblemTrainings\n    問題の設定ごとの監視する指標と向きか, 渡せない理由 (更新の新しい\n    順)",
+        "description": "ML-Pathfinder の問題の設定ごとの, 学習で監視する指標と向きを返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\n\nReturns\n----------\nresult: ProblemTrainings\n    問題の設定ごとの監視する指標と向きか, 渡せない理由 (更新の新しい\n    順)",
         "operationId": "list_problem_trainings",
         "responses": {
           "200": {

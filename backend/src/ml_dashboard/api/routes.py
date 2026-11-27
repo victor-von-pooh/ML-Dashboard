@@ -59,9 +59,8 @@ from ml_dashboard.core.runs import (
     resolve_run_file,
     summarize_run,
 )
-from ml_dashboard.core.settings import get_problems_dir
 
-router = APIRouter(prefix="/api")
+router = APIRouter()
 
 # 実験の ID (<name>/<日付>/<時刻>) を 3 つの部分で受けるパス
 RUN_PATH = "/projects/{project_id}/runs/{name}/{date}/{time}"
@@ -319,7 +318,8 @@ def list_recorded_projects(request: Request) -> RecordedProjects:
         (更新の新しい順)
     """
     registered = {project.path for project in get_store(request).load()}
-    result = recorded_projects(get_problems_dir(), registered)
+    problems_dir: Path = request.app.state.problems_dir
+    result = recorded_projects(problems_dir, registered)
 
     return result
 
@@ -369,13 +369,14 @@ def load_library(name: str, attribute: str) -> ModuleType:
     "/problems/training",
     responses={501: {"description": "ML-Quest が入っていないか古い"}}
 )
-def list_problem_trainings() -> ProblemTrainings:
+def list_problem_trainings(request: Request) -> ProblemTrainings:
     """
     ML-Pathfinder の問題の設定ごとの, 学習で監視する指標と向きを返す関数
 
     Parameters
     ----------
-    None
+    request: Request
+        リクエスト
 
     Returns
     ----------
@@ -386,7 +387,8 @@ def list_problem_trainings() -> ProblemTrainings:
     # 値は ML-Quest の受け渡しから受け取る (無ければ 501 で, 他の機能は
     # そのまま使える)
     quest = load_library("ml_quest", "handoff")
-    result = problem_trainings(get_problems_dir(), quest)
+    problems_dir: Path = request.app.state.problems_dir
+    result = problem_trainings(problems_dir, quest)
 
     return result
 
