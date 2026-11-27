@@ -122,6 +122,68 @@ function makeRouter(basename: string) {
   )
 }
 
+/** 部品の中のルーター */
+type StageRouter = ReturnType<typeof makeRouter>
+
+/** 部品ごとのルーターの入れ物 (生きているルーターを 1 つだけ持つ) */
+class RouterHolder {
+  /** 生きているルーター (捨てた後は null) */
+  private router: StageRouter | null = null
+
+  /** 画面の経路の頭 */
+  private readonly basename: string
+
+  /** @param basename - 画面の経路の頭 */
+  constructor(basename: string) {
+    this.basename = basename
+  }
+
+  /** 生きているルーターがあるか */
+  get alive(): boolean {
+    return this.router !== null
+  }
+
+  /** 生きているルーター (無ければ作る) */
+  get(): StageRouter {
+    this.router ??= makeRouter(this.basename)
+    return this.router
+  }
+
+  /** 生きているルーターを捨てる */
+  dispose(): void {
+    this.router?.dispose()
+    this.router = null
+  }
+}
+
+/**
+ * 付けている間だけ生きるルーターを持つ (描画のときに作り, 外すときに捨てる)
+ *
+ * `createBrowserRouter` は作るときに戻ると進むの見張り (`popstate`) を付けるので, 2 度
+ * 走る `useState` の初期化では作らず (初期化で作るのは空の入れ物だけ), 描画で入れ物に
+ * 作る. 確定しなかった描画 (Suspense の中断など) で作ったルーターは捨てない (今の殻では
+ * StageApp の付けが中断しないため). 外すとき (layout effect の後始末) に捨て, 付け直されたとき (StrictMode の
+ * 2 度目の付け) だけ作り直して塗る前に描き直す. 使うときの起動では付け直しが無いので,
+ * 最初の描画からルーターを出し, 描き直しも無い. 経路の頭は最初の値を使う
+ *
+ * @param basename - 画面の経路の頭
+ * @returns 生きているルーター
+ */
+function useMountedRouter(basename: string): StageRouter {
+  const [holder] = useState(() => new RouterHolder(basename))
+  // 付け直したときに作り直したルーター (描き直すため)
+  const [, setRemade] = useState<StageRouter | null>(null)
+  useLayoutEffect(() => {
+    if (!holder.alive) {
+      // StrictMode の付け直しのときだけ走る (使うときの起動では付け直しが無い)
+      // oxlint-disable-next-line react/set-state-in-effect -- StrictMode の付け直しのときだけ走るため
+      setRemade(holder.get())
+    }
+    return () => holder.dispose()
+  }, [holder])
+  return holder.get()
+}
+
 /**
  * 学習・評価の段階の画面の根の部品
  *
@@ -130,17 +192,8 @@ function makeRouter(basename: string) {
  */
 export function StageApp({ basename, apiBase, project, onProjectChange, embedded }: StageAppProps) {
   const [queryClient] = useState(makeQueryClient)
-  // ルーターは部品ごとに 1 つ (殻は段階を移るたびに部品を作り直す)
-  const [router] = useState(() => makeRouter(basename))
-  // 外されたらルーターを捨てる (戻ると進むの見張りを残さないため). StrictMode の外して
-  // すぐ付け直す動きでは捨てないように, 1 拍待ち, 付け直されたら取りやめる
-  const disposing = useRef<number | undefined>(undefined)
-  useEffect(() => {
-    window.clearTimeout(disposing.current)
-    return () => {
-      disposing.current = window.setTimeout(() => router.dispose())
-    }
-  }, [router])
+  // ルーターは部品ごとに 1 つ (殻は段階を移るたびに部品を作り直す). 経路の頭は最初の値を使う
+  const router = useMountedRouter(basename)
   const api = useMemo(() => createApi(apiBase), [apiBase])
   // 部品が殻に知らせた値 (返ってきたときにプロジェクトの画面へ移さないため)
   const reported = useRef<string | null | undefined>(undefined)
