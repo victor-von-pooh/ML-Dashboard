@@ -1,3 +1,0 @@
-/* 足場の root (e2e/stage/) の外にある画面の部品の class も Tailwind に拾わせる */
-@import '../../src/index.css';
-@source '../../src';

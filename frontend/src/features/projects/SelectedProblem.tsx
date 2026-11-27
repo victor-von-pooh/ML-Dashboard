@@ -70,8 +70,8 @@ export function SelectedProblem({
             <div>
               <div className="font-medium">{data.problem}</div>
               <div className="font-mono text-xs text-ink-3">{data.id}</div>
-              {/* 場所は「記録したプロジェクト」を名前にした組 (group) で読み上げる. ARIA 1.3 では
-                  definition (dd) の名前を計算しないため, 名前を計算する役割にする */}
+              {/* 場所は「記録したプロジェクト」を名前にした組 (group) で読み上げる. Playwright の名前の
+                  計算は ARIA 1.3 に従い, term と definition の名前を計算しないため */}
               {data.project_path && (
                 <div role="group" aria-labelledby={pathLabelId} className="mt-1 text-xs text-ink-2">
                   <span id={pathLabelId}>記録したプロジェクト</span>
