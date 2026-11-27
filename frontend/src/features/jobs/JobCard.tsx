@@ -201,7 +201,9 @@ export function JobCard({
               onClick={() => {
                 if (
                   window.confirm(
-                    'プロセスに割り込んで学習を止めますか? (Ctrl-C と同じ)\n今のエポックの結果は記録されません.',
+                    finishing
+                      ? 'プロセスに割り込んで学習の後の処理を止めますか? (Ctrl-C と同じ)\n推論の一式は残りません.'
+                      : 'プロセスに割り込んで学習を止めますか? (Ctrl-C と同じ)\n今のエポックの結果は記録されません.',
                   )
                 ) {
                   stop.mutate({ jobId: job.id, force: true })

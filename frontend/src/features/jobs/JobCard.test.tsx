@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { JobInfo } from '../../api/client'
 import { JobCard } from './JobCard'
@@ -51,6 +51,10 @@ function job(extra: Partial<JobInfo> = {}): JobInfo {
   } as JobInfo
 }
 
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
 describe('JobCard', () => {
   it('推論の一式を書き出すまで「完了」を出さず, 後の処理の途中であることを出す', () => {
     const { rerender } = render(wrap(<JobCard job={job()} />))
@@ -61,7 +65,11 @@ describe('JobCard', () => {
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
     // エポックで止める要求を読む学習は終えたので, すぐに止めるだけを出す
     expect(screen.queryByRole('button', { name: /エポック/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /すぐに止める/ })).toBeInTheDocument()
+    // 止める前の確かめは, 一式が残らないことを伝える
+    const confirm = vi.fn(() => false)
+    vi.stubGlobal('confirm', confirm)
+    fireEvent.click(screen.getByRole('button', { name: /すぐに止める/ }))
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('推論の一式は残りません'))
 
     // プロセスが終わる (一式を書き終える) と完了
     rerender(

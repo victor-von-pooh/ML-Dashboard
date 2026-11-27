@@ -23,6 +23,7 @@ from ml_dashboard.api.jobs import (
     describe_missing_path,
     uses_custom_classes,
 )
+from ml_dashboard.app import cookie_name, create_app
 from ml_dashboard.core.model_spec import find_model_spec_copy, run_of_copy
 from ml_dashboard.core.models import RunModelSpec
 
@@ -68,7 +69,7 @@ print("done", status["status"], kind or "epoch", flush=True)
 # fit の終わりに完了を書き, その後に評価と推論の一式を書き出すスクリプト.
 # 一式の書き出しは, テストが置く GO を待ってから (最大 60 秒)
 BUNDLE_TRAIN = '''\
-import json, os, time
+import json, os, socket, time
 from datetime import datetime
 from pathlib import Path
 
@@ -77,7 +78,10 @@ day, clock = now.strftime("%Y-%m-%d"), now.strftime("%H-%M-%S")
 run = Path("outputs/demo") / day / clock
 run.mkdir(parents=True)
 (run / "config.yaml").write_text("experiment:\\n  name: demo\\n")
-status = {"status": "completed", "pid": os.getpid(), "planned_epochs": 1}
+status = {
+    "status": "completed", "pid": os.getpid(),
+    "hostname": socket.gethostname(), "planned_epochs": 1
+}
 (run / "run.json").write_text(json.dumps(status))
 for _ in range(1200):
     if Path("GO").exists():
@@ -261,6 +265,57 @@ def test_job_running_after_fit(
     assert job["return_code"] == 0
     assert job["run"]["status"] == "completed"
     assert (run_dir / "inference" / "inference.yaml").is_file()
+
+
+def test_force_stop_after_fit_restarted(
+    client: TestClient, project_dir: Path, tmp_path: Path
+) -> None:
+    """
+    起動し直した後でも, 後の処理の途中のジョブをすぐに止められることを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ (client のデータの置き場の親)
+
+    Returns
+    ----------
+    None
+    """
+    (project_dir / "train.py").write_text(BUNDLE_TRAIN)
+    project_id = register(client, project_dir)
+    created = client.post(
+        f"/api/projects/{project_id}/jobs", json={"script": "train.py"}
+    )
+    job_id = created.json()["id"]
+    job = wait_for(client, job_id, "run_id", ...)
+    assert job["run"]["status"] == "completed"
+
+    # 同じ置き場の新しいアプリ (起動したプロセスを持たない) から強制の中断
+    restarted = TestClient(
+        create_app(
+            tmp_path / "home", token="test-token",
+            allowed_hosts=["testserver"]
+        ),
+        cookies={cookie_name("test-token"): "test-token"}
+    )
+    stopped = restarted.post(
+        f"/api/jobs/{job_id}/stop", json={"force": True}
+    ).json()
+    assert stopped["stop_requested"] is True
+    # シグナルを送った場合だけ数える回数
+    assert stopped["force_count"] == 1
+
+    # 割り込みで一式を書かずに終わる (終わりは起動した側のアプリで回収)
+    job = wait_for(client, job_id, "status", "finished")
+    assert job["return_code"] != 0
+    run_dir = project_dir / "outputs" / job["run_id"]
+    assert not (run_dir / "inference" / "inference.yaml").exists()
 
 
 def test_stop_within_epoch(client: TestClient, project_dir: Path) -> None:
