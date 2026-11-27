@@ -1,8 +1,16 @@
 import { Play, TriangleAlert } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
-import { useHistory, useLog, useProject, useRelaunch, useResults, useRun } from '../../api/hooks'
+import {
+  useHistory,
+  useJobs,
+  useLog,
+  useProject,
+  useRelaunch,
+  useResults,
+  useRun,
+} from '../../api/hooks'
 import { CopyButton } from '../requirements/RequirementCard'
 import {
   Button,
@@ -17,7 +25,8 @@ import { tabPanelProps, useStableId } from '../../lib/a11y'
 import { formatDateTime, formatDuration, formatMetric } from '../../lib/format'
 import { groupImageSeries } from '../../lib/images'
 import { validInterval } from '../../lib/metrics'
-import { nextStage } from '../../lib/nextStage'
+import { jobPhaseOf, nextStage } from '../../lib/nextStage'
+import { jobStatus } from '../../lib/progress'
 import type { RunFile } from '../../api/client'
 import { EvaluationsTab } from './EvaluationsTab'
 import { PolicyTab } from './PolicyTab'
@@ -74,6 +83,16 @@ export function RunDetailPage() {
   const history = useHistory(projectId, runId, running)
   // task.yaml, evaluations/, samples/, policy/, trajectories/ (無い実験は空で, 何の実験かの欄と評価, 見本, 方策, 軌跡のタブを出さない)
   const results = useResults(projectId, runId, running)
+  // この実験を学習したジョブ (ダッシュボードから起動したもの. ジョブの一覧の project_id と
+  // run_id で結ぶ). run.json が完了でも, 動いている間は学習のスクリプトが推論の一式などを
+  // 書き出している途中. 読めなかった場合 (読み直しの失敗も) は, 案内を出し続けるために
+  // ジョブが無いものとみなす
+  const jobs = useJobs()
+  const { phase, job: ownJob } = jobs.error
+    ? { phase: 'none' as const, job: null }
+    : jobs.data
+      ? jobPhaseOf(jobs.data, projectId, runId)
+      : { phase: null, job: null }
 
   // 学習が終わったら, 最後のエポックの記録と学習の後の評価と見本を読み直す
   const wasRunning = useRef(false)
@@ -86,6 +105,36 @@ export function RunDetailPage() {
     }
     wasRunning.current = running
   }, [running, refetchHistory, refetchResults])
+
+  // 学習のジョブが終わったら, 書き出した推論の一式 (ファイルの一覧) と学習の後の
+  // 評価と見本を読み直し, 開き直さずに次の段階への案内を出す. 終わりを見てから実験の
+  // 詳細の読み直しが解けるまでは, 一式の無い古いファイルの一覧で案内を決めない.
+  // 動いているのを見たか (seen), 終わりを見たか (ended), 読み直しが解けたか (reread) を
+  // 描画の間に合わせ, 別の実験に移ったら初めから見る
+  const [watch, setWatch] = useState({ runId, seen: false, ended: false, reread: false })
+  if (watch.runId !== runId) {
+    setWatch({ runId, seen: false, ended: false, reread: false })
+  } else if (phase === 'running' && (!watch.seen || watch.ended)) {
+    setWatch({ runId, seen: true, ended: false, reread: false })
+  } else if (phase !== null && phase !== 'running' && watch.seen && !watch.ended) {
+    setWatch({ runId, seen: true, ended: true, reread: false })
+  }
+  const refetchRun = run.refetch
+  const awaitingReread = watch.runId === runId && watch.ended && !watch.reread
+  useEffect(() => {
+    if (!awaitingReread) return
+    void refetchHistory()
+    void refetchResults()
+    // 読み直しが解けたら (失敗しても) 今の中身で案内を決める. 別の実験に移っていれば捨てる
+    void refetchRun().finally(() =>
+      setWatch((current) =>
+        current.runId === runId && current.ended ? { ...current, reread: true } : current,
+      ),
+    )
+  }, [awaitingReread, runId, refetchRun, refetchHistory, refetchResults])
+  const rereading =
+    phase !== null && phase !== 'running' && watch.runId === runId && watch.seen && !watch.reread
+  const jobPhase = rereading ? null : phase
   const [params, setParams] = useSearchParams()
   const requestedTab = toTab(params.get('tab'))
   const log = useLog(projectId, runId, requestedTab === 'log')
@@ -130,8 +179,14 @@ export function RunDetailPage() {
   // 開いた場合 (共有したリンクなど) は学習曲線を表示
   const series = seriesOf(data.files)
   const evaluations = results.data?.evaluations ?? []
-  // 次の段階への案内 (モデルの定義か推論の一式を持つ完了した実験)
-  const { show: showNextStage, hasBundle } = nextStage(data)
+  // 次の段階への案内 (モデルの定義か推論の一式を持つ完了した実験. 学習のジョブが
+  // 動いている間と後の処理で止まった場合は, 案内の代わりにジョブの様子を出す)
+  const {
+    show: showNextStage,
+    hasBundle,
+    finishing,
+    halted,
+  } = nextStage({ ...data, job: jobPhase })
   const hasFile = (path: string) => data.files.some((file) => file.path === path)
   // 学習の記録が無く評価だけを持つ実験 (学習曲線の代わりに評価のタブへ案内する)
   const untrained =
@@ -210,6 +265,32 @@ export function RunDetailPage() {
           hasModel={data.model != null}
           path={data.path ?? null}
         />
+      )}
+      {finishing && ownJob && (
+        <p className="mb-4 flex flex-wrap items-center gap-2 text-xs text-ink-2">
+          <StatusBadge status="finishing" />
+          <span>
+            学習を終え, スクリプトが学習の後の処理 (評価や推論の一式の書き出しなど) をしています.
+            終わるとこの実験を推論の段階で使う方法が出ます.
+          </span>
+          <Link to={`/jobs/${ownJob.id}`} className="text-accent-text hover:underline">
+            ジョブを開く
+          </Link>
+        </p>
+      )}
+      {halted && ownJob && (
+        <p className="mb-4 flex flex-wrap items-center gap-2 text-xs text-ink-2">
+          <StatusBadge status={jobStatus(ownJob)} />
+          <span>
+            学習のジョブが学習の後の処理 (評価や推論の一式の書き出しなど) の途中で
+            {jobStatus(ownJob) === 'stopped' ? '止まりました' : '失敗しました'}.
+            推論の一式を書き終えていない場合があるので, 推論の段階で使う方法は出しません.
+            ジョブの出力を確かめてください.
+          </span>
+          <Link to={`/jobs/${ownJob.id}`} className="text-accent-text hover:underline">
+            ジョブを開く
+          </Link>
+        </p>
       )}
       {data.error && <ErrorBox error={data.error} live={false} />}
       {data.notices.map((notice) => (
