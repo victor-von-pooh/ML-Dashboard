@@ -251,8 +251,11 @@ def test_force_stop(client: TestClient, project_dir: Path) -> None:
     ----------
     None
     """
+    # 短い眠りを繰り返す学習の代わり. 1 回の長い time.sleep は, 眠りに入る
+    # 直前に届いた割り込みを眠りの終わりまで扱わないため
     (project_dir / "train.py").write_text(
-        "import time\nprint('start', flush=True)\ntime.sleep(30)\n"
+        "import time\nprint('start', flush=True)\n"
+        "for _ in range(600):\n    time.sleep(0.05)\n"
     )
     project_id = register(client, project_dir)
     created = client.post(

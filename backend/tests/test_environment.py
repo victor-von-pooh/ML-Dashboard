@@ -1,6 +1,7 @@
 import json
 import sys
 import time
+import uuid
 from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,6 +13,7 @@ from fastapi.testclient import TestClient
 from ml_dashboard.core import environment
 from ml_dashboard.core.environment import EnvironmentJobs
 from ml_dashboard.core.jobs import JobManager
+from ml_dashboard.core.loader import import_ml_found
 from ml_dashboard.core.requirements import REPORT_CACHE, REPORT_MARK
 
 from conftest import api_app
@@ -583,9 +585,42 @@ def wait_for_file(
     return command
 
 
+@pytest.fixture
+def absent_feature() -> Iterator[str]:
+    """
+    どの環境にも無いモジュールを要る機能を, ダッシュボードの ML-Found の
+    登録簿に加える関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    name: str
+        機能の名前 (テストの後に登録簿から除く)
+    """
+    import_ml_found()
+    from ml_found.utils.requirements import (
+        register_requirement,
+        unregister_requirement,
+    )
+
+    # 毎回作る名前のモジュールなので, どの環境にも入っていないもの
+    name = "absent_feature"
+    module = f"absent_{uuid.uuid4().hex}"
+    register_requirement(
+        name, "テストの中で作る, どこにも無い依存",
+        [{"kind": "module", "name": module}],
+        {"kind": "pip", "packages": [module.replace("_", "-")]}
+    )
+    yield name
+    unregister_requirement(name)
+
+
 def test_busy_environment(
     client: TestClient, project_dir: Path, tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch, absent_feature: str
 ) -> None:
     """
     環境のジョブが動いている間は, もう 1 つのジョブと学習の起動を断る
@@ -601,25 +636,37 @@ def test_busy_environment(
         pytest が用意する一時ディレクトリ
     monkeypatch: pytest.MonkeyPatch
         差し替えに使う
+    absent_feature: str
+        どの環境にも無いモジュールを要る機能の名前
 
     Returns
     ----------
     None
     """
+    from ml_found import describe_requirements
+
     monkeypatch.setattr(environment, "install_command", wait_for_file)
     config = project_dir / "configs" / "default" / "train.yaml"
     config.write_text(
         "experiment:\n  name: demo\n  output_dir: outputs\n"
-        "requires: [eda]\n",
+        f"requires: [{absent_feature}]\n",
         encoding="utf-8"
+    )
+
+    # プロジェクトの Python は, 登録した機能を確かめた結果を返すもの
+    # (別のプロセスの ML-Found の登録簿には, テストで加えた機能が無いため)
+    payload = json.dumps(
+        {"requirements": describe_requirements([absent_feature])}
     )
     python = tmp_path / "env" / "bin" / "python"
     python.parent.mkdir(parents=True)
-    python.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+    python.write_text(
+        f"#!/bin/sh\necho '{REPORT_MARK}{payload}'\n", encoding="utf-8"
+    )
     python.chmod(0o755)
     project_id = register(client, project_dir, str(python))
     readiness = client.get(f"/api/projects/{project_id}/readiness").json()
-    assert readiness["missing"] == ["eda"]
+    assert readiness["missing"] == [absent_feature]
     assert len(readiness["commands"]) == 1
 
     url = f"/api/projects/{project_id}/environment"
