@@ -3713,6 +3713,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description プロセスに割り込む権限が無い */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {

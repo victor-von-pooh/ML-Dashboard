@@ -31,6 +31,7 @@ from ml_dashboard.core import jobs as core_jobs
 from ml_dashboard.core.model_spec import find_model_spec_copy, run_of_copy
 from ml_dashboard.core.models import RunModelSpec
 
+from conftest import api_app
 from test_api import register
 
 # ML-Found の学習の代わりに, 状態のファイルを書いて STOP を待つスクリプト
@@ -408,6 +409,7 @@ def test_reused_pid_after_restart(
         earlier = datetime.fromisoformat(created_at) - timedelta(hours=1)
         reused = job_at(earlier.isoformat(timespec="seconds"))
         assert core_jobs.same_process(reused) is False
+        assert manager.poll(reused, run_dir) == (True, None)
         assert manager.poll(reused) == (True, None)
         assert not manager.owns(reused, run_dir)
 
@@ -415,9 +417,19 @@ def test_reused_pid_after_restart(
         # (本物の pid は本物が終わった後にしか使い回されず, 時刻の読み違い
         # で本物のジョブを終わったものにしないため)
         later = datetime.fromisoformat(created_at) + timedelta(hours=1)
-        older = job_at(later.isoformat(timespec="seconds"))
-        assert core_jobs.same_process(older) is True
-        assert manager.poll(older) == (False, None)
+        ahead = job_at(later.isoformat(timespec="seconds"))
+        assert core_jobs.same_process(ahead) is True
+        assert manager.poll(ahead, run_dir) == (False, None)
+
+        # 幅の境目 (開始の時刻から 59 秒は同じ, 61 秒は別)
+        start = datetime.fromisoformat(created_at)
+        for gap, same in ((59, True), (61, False)):
+            with monkeypatch.context() as patch:
+                patch.setattr(
+                    core_jobs, "process_started",
+                    lambda pid, gap=gap: start + timedelta(seconds=gap)
+                )
+                assert core_jobs.same_process(job) is same
 
         # 確かめられない場合 (起動の時刻を読めない, 時刻の無い記録) は今の
         # 振る舞い. 実行中の run.json なら割り込み, 後の処理中なら割り込まない
@@ -434,12 +446,122 @@ def test_reused_pid_after_restart(
         assert core_jobs.same_process(job_at("2026-11-01T00:00:00")) is None
         assert core_jobs.same_process(job_at("壊れた時刻")) is None
 
-        # 実行中の run.json でも, 使い回しと分かれば割り込まない
+        # 実行中の run.json なら, 使い回しと読めても終わったものにしない
+        # (時計の合わせ直しで ps の時刻がずれた本物を戻せなくしないため).
+        # ただし割り込まない
+        assert manager.poll(reused, run_dir) == (False, None)
         assert not manager.owns(reused, run_dir)
         assert manager.owns(job, run_dir)
     finally:
         process.kill()
         process.wait()
+
+
+def test_force_stop_reused_pid(
+    client: TestClient, project_dir: Path, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    起動し直した後, 完了の run.json と使い回しの pid のジョブに強制の中断を
+    送っても, シグナルを送らずに終わったものにすることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ (client のデータの置き場の親)
+    monkeypatch: pytest.MonkeyPatch
+        pytest の差し替え
+
+    Returns
+    ----------
+    None
+    """
+    (project_dir / "train.py").write_text(BUNDLE_TRAIN)
+    project_id = register(client, project_dir)
+    created = client.post(
+        f"/api/projects/{project_id}/jobs", json={"script": "train.py"}
+    )
+    job_id = created.json()["id"]
+    job = wait_for(client, job_id, "run_id", ...)
+    assert job["run"]["status"] == "completed"
+
+    # 同じ置き場の新しいアプリで, pid のプロセスが 1 時間後に始まったと読む
+    restarted = TestClient(
+        create_app(
+            tmp_path / "home", token="test-token",
+            allowed_hosts=["testserver"]
+        ),
+        cookies={cookie_name("test-token"): "test-token"}
+    )
+    start = datetime.fromisoformat(job["created_at"])
+    process = api_app(client).state.jobs.processes[job_id]
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                core_jobs, "process_started",
+                lambda pid: start + timedelta(hours=1)
+            )
+            stopped = restarted.post(
+                f"/api/jobs/{job_id}/stop", json={"force": True}
+            ).json()
+        assert stopped["status"] == "finished"
+        assert stopped["return_code"] is None
+        assert stopped["force_count"] == 0
+        # 本物のプロセスはシグナルを受けずに動いたまま
+        assert process.poll() is None
+    finally:
+        (project_dir / "GO").touch()
+        process.wait(timeout=30)
+    assert process.returncode == 0
+
+
+def test_permission_denied_force_stop(
+    client: TestClient, project_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    別のユーザーのプロセスでシグナルを送れない場合は, 理由を 409 で返す
+    ことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        pytest の差し替え
+
+    Returns
+    ----------
+    None
+    """
+    (project_dir / "train.py").write_text(BUNDLE_TRAIN)
+    project_id = register(client, project_dir)
+    created = client.post(
+        f"/api/projects/{project_id}/jobs", json={"script": "train.py"}
+    )
+    job_id = created.json()["id"]
+    wait_for(client, job_id, "run_id", ...)
+
+    def denied(pid: int, number: int) -> None:
+        raise PermissionError("Operation not permitted")
+
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(core_jobs.os, "killpg", denied)
+            response = client.post(
+                f"/api/jobs/{job_id}/stop", json={"force": True}
+            )
+        assert response.status_code == 409
+        assert "権限がありません" in response.json()["detail"]
+        assert client.get(f"/api/jobs/{job_id}").json()["force_count"] == 0
+    finally:
+        (project_dir / "GO").touch()
+        wait_for(client, job_id, "status", "finished")
 
 
 def test_stop_within_epoch(client: TestClient, project_dir: Path) -> None:

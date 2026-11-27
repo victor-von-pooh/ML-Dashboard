@@ -136,6 +136,11 @@ def is_job_id(job_id: str) -> bool:
     return valid
 
 
+class JobSignalError(Exception):
+    # ジョブのプロセスにシグナルを送れなかった誤り
+    pass
+
+
 def same_process(job: Job) -> Optional[bool]:
     """
     ジョブの pid のプロセスが, ジョブが起動したプロセスかを確かめる関数
@@ -418,7 +423,9 @@ class JobManager:
 
         return None
 
-    def poll(self, job: Job) -> tuple[bool, Optional[int]]:
+    def poll(
+        self, job: Job, run_dir: Optional[Path] = None
+    ) -> tuple[bool, Optional[int]]:
         """
         ジョブのプロセスが終わったかを確かめる関数
 
@@ -426,6 +433,8 @@ class JobManager:
         ----------
         job: Job
             ジョブ
+        run_dir: Optional[Path] = None
+            ジョブの実験のディレクトリ, 見つからない場合は None
 
         Returns
         ----------
@@ -447,10 +456,13 @@ class JobManager:
         if not pid_alive(job.pid):
             return True, None
 
-        # pid を別のプロセスが使い回していれば終了扱い (確かめられない場合は
-        # 実行中のまま)
+        # pid を別のプロセスが使い回していれば終了扱い. ただし実験の run.json
+        # が実行中なら実行中のまま (時計の合わせ直しで ps の時刻がずれた本物を
+        # 終わったものにすると戻せないため). 確かめられない場合も実行中のまま
         if same_process(job) is False:
-            return True, None
+            status = read_json(run_dir / "run.json") if run_dir else {}
+            if status.get("status") != "running":
+                return True, None
 
         return False, None
 
@@ -475,17 +487,20 @@ class JobManager:
 
         before = asdict(job)
 
+        # 実験のディレクトリを探して記録 (プロセスの確かめに run.json を使用)
+        run_dir = self.find_run(job, project) if project else None
+
         # プロセスが終わっていれば終了コードを記録
-        finished, return_code = self.poll(job)
+        finished, return_code = self.poll(job, run_dir)
         if finished:
             job.status = "finished"
             job.return_code = return_code
             job.finished_at = now_iso()
             self.processes.pop(job.id, None)
 
-        # 実験のディレクトリを探して記録
-        if project is not None:
-            self.find_run(job, project)
+            # run.json を書かない版の実験は終わった後に結び付け
+            if project is not None and run_dir is None:
+                self.find_run(job, project)
 
         # 変わった場合だけ保存
         if asdict(job) != before:
@@ -591,6 +606,12 @@ class JobManager:
                     os.killpg(job.pid or 0, FORCE_SIGNALS[number])
                 except ProcessLookupError:
                     pass
+                except PermissionError as error:
+                    # 別のユーザーのプロセスには送れないので, 理由を返却
+                    raise JobSignalError(
+                        "プロセスに割り込む権限がありません (別のユーザーの"
+                        "プロセス). 端末で止めてください"
+                    ) from error
                 if force:
                     job.force_count += 1
 

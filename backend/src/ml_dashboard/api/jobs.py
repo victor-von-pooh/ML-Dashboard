@@ -23,7 +23,7 @@ from ml_dashboard.core.env_refs import (
     read_texts,
     redact,
 )
-from ml_dashboard.core.jobs import Job, JobManager
+from ml_dashboard.core.jobs import Job, JobManager, JobSignalError
 from ml_dashboard.core.loader import import_ml_found
 from ml_dashboard.core.model_spec import (
     CopyRefusedError,
@@ -74,6 +74,11 @@ BAD_REQUEST: dict[int | str, dict[str, str]] = {
 # 学習の準備で環境に入れている間の応答
 INSTALLING: dict[int | str, dict[str, str]] = {
     409: {"description": "学習の準備で環境に入れている"}
+}
+
+# プロセスに割り込む権限が無い場合の応答
+SIGNAL_DENIED: dict[int | str, dict[str, str]] = {
+    409: {"description": "プロセスに割り込む権限が無い"}
 }
 
 # 起動の前にあるかを確かめるパスの項目の名前の最後の語 (_ か - で区切った語.
@@ -1909,7 +1914,9 @@ def read_relaunch(
     return plan
 
 
-@router.post("/jobs/{job_id}/stop", responses=NOT_FOUND)
+@router.post(
+    "/jobs/{job_id}/stop", responses={**NOT_FOUND, **SIGNAL_DENIED}
+)
 def stop_job(request: Request, job_id: str, body: StopRequest) -> JobInfo:
     """
     ジョブの学習を止める関数
@@ -1929,7 +1936,10 @@ def stop_job(request: Request, job_id: str, body: StopRequest) -> JobInfo:
         更新したジョブ
     """
     projects = project_map(request)
-    job = get_jobs(request).stop(job_id, projects, body.force, body.now)
+    try:
+        job = get_jobs(request).stop(job_id, projects, body.force, body.now)
+    except JobSignalError as error:
+        raise HTTPException(409, str(error)) from error
     if job is None:
         raise HTTPException(404, f"ジョブが見つかりません: {job_id}")
     info = to_job_info(get_jobs(request), job, projects.get(job.project_id))
