@@ -763,7 +763,8 @@ def test_force_stop_once_reused_pid(
             job = core_jobs.Job(
                 id=job_id, project_id="p", script="train.py",
                 config="c.yaml", created_at=created_at, pid=process.pid,
-                status="running", return_code=None, run_id=None,
+                status="running", return_code=None,
+                run_id="demo/2026-11-01/00-00-00",
                 finished_at=None, stop_requested=False
             )
             manager.job_dir(job_id).mkdir(parents=True)
@@ -793,6 +794,43 @@ def test_force_stop_once_reused_pid(
             assert job.pid_reused
         loaded = manager.load(reused_id)
         assert loaded is not None and loaded.pid_reused
+
+        # 画面の割り込めるか (attached) は, ロックの外で印を書き換えず,
+        # 保存した印と今の起動の時刻の読みから owns と同じ結論を出す
+        for name, value in (
+            ("resolve_run_dir", lambda dirs, run_id: run_dir),
+            ("summarize_run", lambda root, path: None),
+            ("read_progress", lambda path: None)
+        ):
+            monkeypatch.setattr(jobs, name, value)
+        monkeypatch.setattr(
+            core_jobs.JobManager, "output_dirs",
+            lambda self, job, project: [run_dir.parents[2]]
+        )
+        readings: tuple[tuple[Optional[datetime], bool, bool], ...] = (
+            (start, True, True),
+            (start + timedelta(hours=1), False, False),
+            (None, False, True)
+        )
+        for started, reused_owned, real_owned in readings:
+            with monkeypatch.context() as patch:
+                patch.setattr(
+                    core_jobs, "process_started",
+                    lambda pid, started=started: started
+                )
+                for current in (manager, restart()):
+                    for job_id, owned in (
+                        (reused_id, reused_owned), (real_id, real_owned)
+                    ):
+                        job = current.load(job_id)
+                        assert job is not None
+                        before = job.pid_reused
+                        info = jobs.to_job_info(current, job, project)
+                        assert info.attached is owned
+                        assert current.owns(job, run_dir) is owned
+                        assert job.pid_reused is before
+            real = manager.load(real_id)
+            assert real is not None and not real.pid_reused
 
         # 次は起動の時刻を読めない. 使い回しと読んだジョブには送らず,
         # 一度も使い回しと読んでいないジョブには今と同じく送る

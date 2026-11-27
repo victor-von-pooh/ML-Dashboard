@@ -538,6 +538,9 @@ class JobManager:
         使い回しと読んだ後に本物へ戻ることは無いため (同じプロセスと読めた
         ときは印に関わらず送れるので, 消さなくても本物を止められる)
 
+        印を書き換えるのはロックの中の読み直し (poll. refresh が保存し,
+        中断も中で読み直す) だけ. owns は印を書き換えず判定だけをする
+
         Parameters
         ----------
         job: Job
@@ -787,8 +790,10 @@ class JobManager:
         # 別のプロセスと分かれば送らない. 確かめられない場合は, 実行中は
         # 学習のプロセスが居る見込みが高いので送り, 後の処理中は run.json
         # だけでは使い回しと見分けられないので送らない決まり. ただし前に
-        # 使い回しと読んだジョブは, 一度の読み損ないで送らないため送らない
-        same = self.check_process(job)
+        # 使い回しと読んだジョブは, 一度の読み損ないで送らないため送らない.
+        # 印は書き換えない (ロックの外の画面の情報からも呼ぶため. 印を付ける
+        # のはロックの中の poll)
+        same = same_process(job)
         owned = same is True or (
             state == "running" and same is None and not job.pid_reused
         )
