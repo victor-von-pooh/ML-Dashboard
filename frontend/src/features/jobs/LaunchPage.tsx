@@ -9,6 +9,7 @@ import {
   RefreshCw,
   RotateCcw,
   ShieldCheck,
+  Trash2,
   TriangleAlert,
 } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
@@ -70,9 +71,13 @@ export function LaunchPage() {
   const [params] = useSearchParams()
   const runId = params.get('run') || null
   const plan = useRelaunch(projectId, runId)
+  // 下書きの config があるかを開いたときに決めるため, プロジェクトの config の一覧を
+  // 読み直すまで待つ (少し前に読んだ一覧では, 消えた config をあるものと取り違えるため)
+  const project = useProject(projectId, true)
 
   // 実験の詳細で読んだ古い結果で始めないように, 開いてから読み直すまで待つ
   if (runId !== null && !plan.isFetchedAfterMount) return <Spinner />
+  if (!project.isFetchedAfterMount) return <Spinner />
   // 実験の設定を読めない場合も, 理由を出して空の画面で起動できるようにする
   return (
     <LaunchForm
@@ -114,10 +119,21 @@ function LaunchForm({
   // 設定を読めたときだけ)
   const { project: chosenProblem } = useStage()
   const draftPlace = `launch:${projectId}:${runId ?? ''}`
-  const [restored, setRestored] = useState(() => {
-    const saved = readDraft(draftPlace, isLaunchDraft)
-    return saved && (saved.value.configPath !== RUN_CONFIG || fromRun !== null) ? saved : null
+  const [saved] = useState(() => {
+    const item = readDraft(draftPlace, isLaunchDraft)
+    return item && (item.value.configPath !== RUN_CONFIG || fromRun !== null) ? item : null
   })
+  // 下書きの config が開いたときに無ければ (一覧に無く, 実験から開いた config でもない),
+  // 元の中身を読めず書き換えたかが分からないので戻さない. 理由と捨てるボタンだけを出す
+  const missing =
+    saved !== null &&
+    project.data !== undefined &&
+    saved.value.configPath !== RUN_CONFIG &&
+    saved.value.configPath !== fromRun?.config_path &&
+    !project.data.experiment_configs.includes(saved.value.configPath)
+  const [restored, setRestored] = useState(missing ? null : saved)
+  // 戻さなかった下書き. 捨てるか書き換えるまでは, 下書きを書きも消しもしない
+  const [stale, setStale] = useState(missing ? saved : null)
   const [script, setScript] = useState<string | null>(
     restored ? restored.value.script : (fromRun?.script ?? null),
   )
@@ -208,13 +224,19 @@ function LaunchForm({
     draft.text === runText
   const discardDraft = useDraftWriter(
     draftPlace,
-    edited && !untouched && configPath !== null
-      ? { script, configPath, text }
-      : knownEdited || configPath === null
-        ? null
-        : undefined,
+    stale !== null
+      ? undefined
+      : edited && !untouched && configPath !== null
+        ? { script, configPath, text }
+        : knownEdited || configPath === null
+          ? null
+          : undefined,
     chosenProblem,
   )
+  // 書き換えを捨てて下書きを消す (戻さなかった下書きは, 捨てるボタンを押すまで残す)
+  const dropDraft = () => {
+    if (stale === null) discardDraft()
+  }
 
   // 書き換えたまま再読み込みやタブを閉じる場合はブラウザで確認
   useEffect(() => {
@@ -239,7 +261,7 @@ function LaunchForm({
     setChosenPath(path)
     setDraft(null)
     // 捨てた書き換えは, 新しい config を読む間に外されても下書きに残さない
-    discardDraft()
+    dropDraft()
     setRestored(null)
     validate.reset()
   }
@@ -263,7 +285,7 @@ function LaunchForm({
     if (switching) {
       setChosenPath(matched)
       setDraft(null)
-      discardDraft()
+      dropDraft()
       setRestored(null)
     }
   }
@@ -271,6 +293,8 @@ function LaunchForm({
   const editText = (value: string) => {
     setFormError(null)
     setDraft({ path: configPath, text: value })
+    // 書き換えた中身を, 戻さなかった下書きの代わりに新しい下書きとして残す
+    setStale(null)
     validate.reset()
   }
 
@@ -318,7 +342,7 @@ function LaunchForm({
   const startWith = <T,>(run: () => Promise<T>, done: (result: T) => void) => {
     if (formInvalid()) return
     const kept = edited && !untouched && configPath !== null ? { script, configPath, text } : null
-    discardDraft()
+    dropDraft()
     run().then(
       (result) => {
         if (mounted.current) done(result)
@@ -376,6 +400,29 @@ function LaunchForm({
       />
 
       {activeBatch && <ActiveBatchNotice id={activeBatchId} batch={activeBatch} />}
+
+      {stale && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3 text-sm">
+          <TriangleAlert className="size-4 shrink-0 text-warning-text" aria-hidden />
+          <span role="status" className="min-w-0 flex-1">
+            下書きの config (<span className="font-mono break-all">{stale.value.configPath}</span>)
+            がありません. 書き換えたかが分からないので, 下書きを戻していません (
+            <span className="tabular">{new Date(stale.time).toLocaleString()}</span>)
+          </span>
+          <Button
+            variant="secondary"
+            icon={Trash2}
+            onClick={() => {
+              discardDraft()
+              setStale(null)
+              // 押したボタンごと知らせが消えるので, config の欄に移る
+              document.getElementById(configId)?.focus()
+            }}
+          >
+            下書きを捨てる
+          </Button>
+        </div>
+      )}
 
       {restored && (
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3 text-sm">

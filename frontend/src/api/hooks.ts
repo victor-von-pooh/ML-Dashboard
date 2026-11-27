@@ -44,9 +44,19 @@ export function useProjects() {
   return useQuery({ queryKey: keys.projects, queryFn: api.listProjects })
 }
 
-export function useProject(id: string) {
+/**
+ * プロジェクトの詳細
+ *
+ * @param fresh - 開いたときにキャッシュが新しくても読み直すか (開いたときの config の一覧で
+ *   決めることがある画面のため)
+ */
+export function useProject(id: string, fresh = false) {
   const api = useApi()
-  return useQuery({ queryKey: keys.project(id), queryFn: () => api.getProject(id) })
+  return useQuery({
+    queryKey: keys.project(id),
+    queryFn: () => api.getProject(id),
+    ...(fresh ? { refetchOnMount: 'always' as const } : {}),
+  })
 }
 
 export function useRuns(projectId: string) {

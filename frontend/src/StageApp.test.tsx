@@ -437,6 +437,53 @@ describe('外したときの下書き', () => {
     expect(launchDraft()).toBeUndefined()
   })
 
+  it('消えた config を指す下書きは戻さず, 理由と捨てるボタンを出して捨てると消す', async () => {
+    stubApi()
+    const gone = { script: 'train.py', configPath: 'configs/experiment/gone.yaml', text: 'x: 1\n' }
+    window.localStorage.setItem(
+      'ml-dashboard:drafts',
+      JSON.stringify({ 'launch:p1:': { value: gone, time: new Date().toISOString() } }),
+    )
+    renderStage('/train/projects/p1/launch')
+    // 理由は場所と時刻を別の要素に分けて出すので, 知らせの全体の文字で探す
+    const notice = await screen.findByText(
+      (_, element) =>
+        element?.getAttribute('role') === 'status' &&
+        /下書きの config \(configs\/experiment\/gone\.yaml\) がありません/.test(
+          element.textContent ?? '',
+        ),
+    )
+    expect(notice).toBeInTheDocument()
+    expect(screen.queryByText(/下書きから戻しました/)).not.toBeInTheDocument()
+    // 画面はいつもの選び方で開き, 下書きの中身は戻さない
+    const editor = screen.getByRole('textbox', { name: 'config の中身' })
+    await waitFor(() => expect(editor).toHaveValue(CONFIG_TEXT))
+    // 書き換えていないものとして黙って消さない
+    await new Promise((resolve) => setTimeout(resolve, 1200))
+    expect(launchDraft()?.value.text).toBe('x: 1\n')
+    fireEvent.click(screen.getByRole('button', { name: '下書きを捨てる' }))
+    expect(launchDraft()).toBeUndefined()
+    expect(notice).not.toBeInTheDocument()
+  })
+
+  it('消えた config を指す下書きは, 書き換えると新しい下書きに置き換わる', async () => {
+    stubApi()
+    const gone = { script: 'train.py', configPath: 'configs/experiment/gone.yaml', text: 'x: 1\n' }
+    window.localStorage.setItem(
+      'ml-dashboard:drafts',
+      JSON.stringify({ 'launch:p1:': { value: gone, time: new Date().toISOString() } }),
+    )
+    renderStage('/train/projects/p1/launch')
+    const editor = await screen.findByRole('textbox', { name: 'config の中身' })
+    await waitFor(() => expect(editor).toHaveValue(CONFIG_TEXT))
+    expect(screen.getByRole('button', { name: '下書きを捨てる' })).toBeInTheDocument()
+    fireEvent.change(editor, { target: { value: 'trainer:\n  epochs: 9\n' } })
+    expect(screen.queryByRole('button', { name: '下書きを捨てる' })).not.toBeInTheDocument()
+    await waitFor(() => expect(launchDraft()?.value.text).toBe('trainer:\n  epochs: 9\n'), {
+      timeout: 3000,
+    })
+  })
+
   it('殻が問題の設定を替えたときも待たずに書く', async () => {
     const view = await editLaunch({ project: 'sales' })
     expect(launchDraft()).toBeUndefined()
