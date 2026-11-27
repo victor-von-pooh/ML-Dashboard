@@ -1,12 +1,12 @@
 import builtins
 import json
-import os
-import signal
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Optional
+
+from ml_dashboard.core.requirements import stop_group
 
 # 確かめのプロセスを待つ秒数 (自作のクラスの読み込みが止まった場合の上限)
 CHECK_TIMEOUT = 120
@@ -96,30 +96,6 @@ def rebuild_exception(info: dict[str, Any]) -> Exception:
     return error
 
 
-def stop_group(process: subprocess.Popen[str]) -> None:
-    """
-    待ち切りの確かめのプロセスを, 子のプロセスごと止める関数
-
-    Parameters
-    ----------
-    process: subprocess.Popen[str]
-        確かめのプロセス (別のグループで起動したもの)
-
-    Returns
-    ----------
-    None
-    """
-    # 孫のプロセスが残らないように, グループごとに停止
-    try:
-        os.killpg(process.pid, signal.SIGKILL)
-    except OSError:
-        process.kill()
-    try:
-        process.communicate(timeout=5)
-    except subprocess.TimeoutExpired:
-        pass
-
-
 def run_check_process(
     project_dir: Path, default_path: Path, path: Path
 ) -> tuple[list[str], list[str], Optional[str]]:
@@ -148,33 +124,38 @@ def run_check_process(
     value_error: Optional[str]
         引数の値の誤り, 無ければ None
     """
-    # 結果は一時ファイルで受け取り (自作のモジュールの print と分けるため)
+    # 結果と標準エラー出力は一時ファイルで受け取り (自作のモジュールの print
+    # と分け, 標準エラー出力を受け継いだ孫のプロセスの終わりを待たないため)
     # -m で動かすと, 作業ディレクトリ (プロジェクト) が sys.path の先頭
     with tempfile.TemporaryDirectory() as directory:
         result_path = Path(directory) / "result.json"
+        stderr_path = Path(directory) / "stderr.txt"
         command = [
             sys.executable, "-m", "ml_dashboard.api.check_process",
             str(default_path), str(path), str(result_path), str(project_dir)
         ]
-        try:
-            process = subprocess.Popen(
-                command, cwd=project_dir, stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                text=True, encoding="utf-8", errors="replace",
-                start_new_session=True
-            )
-        except OSError as error:
-            raise ValueError(
-                f"確かめのプロセスを動かせません: {error}"
-            ) from error
-        try:
-            _, stderr = process.communicate(timeout=CHECK_TIMEOUT)
-        except subprocess.TimeoutExpired:
-            stop_group(process)
-            raise ValueError(
-                f"自作のクラスの確かめが {CHECK_TIMEOUT} 秒で"
-                "終わりませんでした"
-            ) from None
+        with stderr_path.open("w", encoding="utf-8") as stderr_file:
+            try:
+                process = subprocess.Popen(
+                    command, cwd=project_dir, stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL, stderr=stderr_file,
+                    text=True, start_new_session=True
+                )
+            except OSError as error:
+                raise ValueError(
+                    f"確かめのプロセスを動かせません: {error}"
+                ) from error
+            try:
+                process.wait(timeout=CHECK_TIMEOUT)
+            except subprocess.TimeoutExpired:
+                raise ValueError(
+                    f"自作のクラスの確かめが {CHECK_TIMEOUT} 秒で"
+                    "終わりませんでした"
+                ) from None
+            finally:
+                # 自作のモジュールが起こして残った孫のプロセスも停止
+                stop_group(process)
+        stderr = stderr_path.read_text(encoding="utf-8", errors="replace")
         try:
             result = json.loads(result_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):

@@ -701,8 +701,8 @@ def rebuild_error(error: Exception, message: str) -> Exception:
 
 def uses_custom_classes(cfg: DictConfig) -> bool:
     """
-    config が Optimizer か Scheduler に自作のクラス (. を含む名前) を書いて
-    いるかを返す関数
+    config が Optimizer か Scheduler に自作のクラス (. を含み, torch. で
+    始まらない名前) を書いているかを返す関数
 
     Parameters
     ----------
@@ -712,14 +712,17 @@ def uses_custom_classes(cfg: DictConfig) -> bool:
     Returns
     ----------
     custom: bool
-        . を含む名前があるか, 名前を読めない項目がある場合は True
+        自作のクラスの名前があるか, 名前を読めない項目がある場合は True
     """
     # 値の参照が解決できない名前も, 読み込む場合に備えて自作の扱い
+    # torch のクラス (torch.optim.AdamW など) はダッシュボードも読み込み済み
     try:
         names = class_names(cfg)
     except Exception:
         return True
-    custom = any("." in name for name in names)
+    custom = any(
+        "." in name and name.partition(".")[0] != "torch" for name in names
+    )
 
     return custom
 
