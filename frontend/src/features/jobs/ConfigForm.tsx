@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight, Info, TriangleAlert } from 'lucide-react'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 
-import { api, type ClassSpec, type ParamSpec } from '../../api/client'
+import { useApi, type ClassSpec, type ParamSpec } from '../../api/client'
 import { Card, ErrorBox, Spinner } from '../../components/ui'
 import {
   checkParamValue,
@@ -450,6 +450,7 @@ export function ConfigForm({
   onMonitorCleared: () => void
   onChange: (text: string) => void
 }) {
+  const api = useApi()
   const registry = useQuery({
     queryKey: ['registry'],
     queryFn: api.getRegistry,

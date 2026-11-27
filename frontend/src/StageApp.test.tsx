@@ -269,6 +269,21 @@ describe('殻で選んだ問題の設定', () => {
     expect(onProjectChange).not.toHaveBeenCalled()
   })
 
+  it('殻が選び直したら, 外した絞りをまた付ける', async () => {
+    stubApi()
+    const view = renderStage('/train', { project: 'sales' })
+    fireEvent.click(await screen.findByRole('button', { name: '全てのプロジェクトを出す' }))
+    const main = screen.getByRole('main')
+    expect(within(main).getByRole('link', { name: 'churn' })).toBeInTheDocument()
+    view.rerender({ project: 'fresh' })
+    await screen.findByText('新しい課題')
+    view.rerender({ project: 'sales' })
+    expect(
+      await screen.findByRole('button', { name: '全てのプロジェクトを出す' }),
+    ).toBeInTheDocument()
+    expect(within(main).queryByRole('link', { name: 'churn' })).toBeNull()
+  })
+
   it('登録していなければ「登録して開く」で登録して実験の一覧に移る (殻には知らせない)', async () => {
     const fetchMock = stubApi()
     const { onProjectChange } = renderStage('/train', { project: 'fresh' })
@@ -358,11 +373,14 @@ describe('部品の範囲の外のキー', () => {
 describe('外したときの下書き', () => {
   /** 学習の起動の画面を開き, config の中身を書き換える */
   async function editLaunch(props: Partial<StageAppProps> = {}) {
-    stubApi()
+    const fetchMock = stubApi()
     const view = renderStage('/train/projects/p1/launch', props)
     const editor = await screen.findByLabelText('config の中身')
     await waitFor(() => expect(editor).toHaveValue(CONFIG_TEXT))
     fireEvent.change(editor, { target: { value: 'trainer:\n  epochs: 9\n' } })
+    // 起動の画面のフォーム (登録簿, config の解決) も apiBase の下に呼ぶ
+    await waitFor(() => expect(calledUrls(fetchMock)).toContain('/api/train/registry'))
+    expect(calledUrls(fetchMock).every((url) => url.startsWith('/api/train/'))).toBe(true)
     return view
   }
 

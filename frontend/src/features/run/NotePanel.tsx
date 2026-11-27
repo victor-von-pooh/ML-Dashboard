@@ -66,7 +66,10 @@ export function NotePanel({ projectId, runId }: { projectId: string; runId: stri
   // 何も書いていない実験では, 1 行にたたんで学習曲線を押し下げないようにする
   const [open, setOpen] = useState(false)
   const text = draft ?? saved.note
-  const dirty = draft !== null && draft !== saved.note
+  // 保存したメモを読む前は書きかけと扱わない (読む前の空のメモと比べて, 外すときの保存で
+  // タグと星を空にしないため)
+  const loaded = notes.data !== undefined
+  const dirty = loaded && draft !== null && draft !== saved.note
 
   // 星とタグの変更では書きかけのメモは保存しない (保存のボタンか欄を離れたときだけ)
   const store = (next: Partial<RunNote>) => save.mutate({ runId, note: { ...saved, ...next } })
@@ -87,11 +90,7 @@ export function NotePanel({ projectId, runId }: { projectId: string; runId: stri
   // 書きかけを下書きに残す (殻の中で段階を移るなど, 確かめなしに外されても戻せるように).
   // 保存したメモを読む間は, 書きかけかが分からないので触らない
   const { project: chosenProblem } = useStage()
-  useDraftWriter(
-    draftPlace,
-    dirty ? text : notes.data !== undefined ? null : undefined,
-    chosenProblem,
-  )
+  useDraftWriter(draftPlace, dirty ? text : loaded ? null : undefined, chosenProblem)
 
   // 書きかけのまま再読み込みやタブを閉じる場合はブラウザで確認
   useEffect(() => {

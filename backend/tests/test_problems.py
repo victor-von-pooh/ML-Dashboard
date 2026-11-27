@@ -263,7 +263,8 @@ def test_problem_project(
     project_id = register(client, project_dir)
     assert client.get(url).json()["project_id"] == project_id
 
-    # 記録の無いもの, 記録の場所が無いもの, 新しい版は理由を返す
+    # 記録の無いもの, 記録の場所が無いもの, 新しい版, 読めないものは理由を
+    # 返す
     write_problem(home, "draft", {"format_version": 2, "name": "下書き"}, 0)
     write_problem(home, "gone", {
         "format_version": 2, "name": "消した",
@@ -272,9 +273,12 @@ def test_problem_project(
     write_problem(home, "future", {
         "format_version": 3, "project": {"path": str(project_dir)}
     }, 0)
+    broken = home / "problems" / "broken" / "problem.yaml"
+    broken.parent.mkdir()
+    broken.write_text("name: [\n")
     for key, word in (
         ("draft", "記録がありません"), ("gone", "無いか"),
-        ("future", "新しい版")
+        ("future", "新しい版"), ("broken", "読めません")
     ):
         body = client.get(f"/api/problems/{key}/project").json()
         assert body["project_path"] is None and body["project_id"] is None

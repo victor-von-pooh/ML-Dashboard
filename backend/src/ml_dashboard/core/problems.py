@@ -184,6 +184,40 @@ def recorded_projects(root: Path, registered: set[str]) -> RecordedProjects:
     return result
 
 
+def unrecorded_reason(path: Path) -> str:
+    """
+    プロジェクトの記録を読めなかった問題の設定の理由を決める関数
+
+    Parameters
+    ----------
+    path: Path
+        problem.yaml
+
+    Returns
+    ----------
+    reason: str
+        読めない (壊れた, 問題の設定でない) か, 記録が無いかの理由
+    """
+    # 読めないものと記録の無いものとで, 次の一手が違うため分ける
+    try:
+        problem = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, yaml.YAMLError) as error:
+        reason = f"{path} を読めません: {error}"
+        return reason
+    version = problem.get("format_version") if isinstance(
+        problem, dict
+    ) else None
+    if not isinstance(version, int) or isinstance(version, bool):
+        reason = f"{path} は問題の設定の形ではありません"
+        return reason
+    reason = (
+        "プロジェクトの記録がありません. ML-Pathfinder で学習の"
+        "プロジェクトを書き出してください"
+    )
+
+    return reason
+
+
 def problem_project(
     root: Path, problem_id: str, registered: dict[str, str]
 ) -> Optional[ProblemProject]:
@@ -222,10 +256,7 @@ def problem_project(
     # 記録の無いもの, 読めないもの, 新しい版は理由だけを返す
     record, skipped = read_record(path)
     if record is None:
-        reason = skipped or (
-            "プロジェクトの記録がありません. ML-Pathfinder で学習の"
-            "プロジェクトを書き出してください"
-        )
+        reason = skipped or unrecorded_reason(path)
         result = ProblemProject(
             id=problem_id, problem=problem_id, problem_path=str(path),
             reason=reason

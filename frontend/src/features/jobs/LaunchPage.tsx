@@ -238,6 +238,9 @@ function LaunchForm({
     if (edited && !window.confirm('書き換えた内容を捨てて, 別の config に切り替えますか?')) return
     setChosenPath(path)
     setDraft(null)
+    // 捨てた書き換えは, 新しい config を読む間に外されても下書きに残さない
+    discardDraft()
+    setRestored(null)
     validate.reset()
   }
 
@@ -260,6 +263,8 @@ function LaunchForm({
     if (switching) {
       setChosenPath(matched)
       setDraft(null)
+      discardDraft()
+      setRestored(null)
     }
   }
 
@@ -360,12 +365,9 @@ function LaunchForm({
       {activeBatch && <ActiveBatchNotice id={activeBatchId} batch={activeBatch} />}
 
       {restored && (
-        <div
-          role="status"
-          className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3 text-sm"
-        >
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3 text-sm">
           <Info className="size-4 shrink-0 text-accent" aria-hidden />
-          <span className="min-w-0 flex-1">
+          <span role="status" className="min-w-0 flex-1">
             保存していない書き換えを下書きから戻しました (
             <span className="tabular">{new Date(restored.time).toLocaleString()}</span>)
           </span>

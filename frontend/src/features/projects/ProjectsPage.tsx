@@ -115,10 +115,15 @@ export function ProjectsPage() {
   // 殻で選んだ問題の設定 (記録したプロジェクトを開けるなら, 一覧をそれに絞る)
   const { project: problemId } = useStage()
   const problem = useProblemProject(problemId)
-  // 絞りを外した問題の設定 (殻が選び直したら, また絞る)
-  const [allFor, setAllFor] = useState<string | null>(null)
+  // 絞りを外したか (殻が選び直したら, また絞る)
+  const [showAll, setShowAll] = useState(false)
+  const [seenProblem, setSeenProblem] = useState(problemId)
+  if (seenProblem !== problemId) {
+    setSeenProblem(problemId)
+    setShowAll(false)
+  }
   const narrowable = problemId !== null && Boolean(problem.data?.project_path)
-  const narrowed = narrowable && allFor !== problemId
+  const narrowed = narrowable && !showAll
   const shown = narrowed
     ? projects.data?.filter((item) => item.id === problem.data?.project_id)
     : projects.data
@@ -138,7 +143,7 @@ export function ProjectsPage() {
         <SelectedProblem
           problemId={problemId}
           narrowed={narrowable ? narrowed : null}
-          onNarrow={(narrow) => setAllFor(narrow ? null : problemId)}
+          onNarrow={(narrow) => setShowAll(!narrow)}
         />
       )}
       {projects.isPending && <Spinner />}
