@@ -16,6 +16,7 @@ from typing import Any, Optional
 import yaml
 
 from ml_dashboard.core.models import (
+    ProblemProject,
     ProblemTraining,
     ProblemTrainings,
     RecordedProject,
@@ -178,6 +179,120 @@ def recorded_projects(root: Path, registered: set[str]) -> RecordedProjects:
             projects.append(project)
     result = RecordedProjects(
         root=str(root), projects=projects, skipped=skipped, error=error
+    )
+
+    return result
+
+
+def unrecorded_problem(path: Path) -> tuple[str, str]:
+    """
+    プロジェクトの記録を読めなかった問題の設定の名前と理由を決める関数
+
+    Parameters
+    ----------
+    path: Path
+        problem.yaml
+
+    Returns
+    ----------
+    name: str
+        問題の設定の名前 (読めないか書いていなければディレクトリの名前)
+    reason: str
+        読めない (壊れた, 問題の設定でない) か, 記録が無いかの理由
+    """
+    # 読めないものと記録の無いものとで, 次の一手が違うため分ける
+    name = path.parent.name
+    try:
+        problem = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, yaml.YAMLError) as error:
+        reason = f"{path} を読めません: {error}"
+        return name, reason
+    if not isinstance(problem, dict):
+        reason = f"{path} は問題の設定の形ではありません"
+        return name, reason
+    title = problem.get("name")
+    if isinstance(title, str) and title:
+        name = title
+    version = problem.get("format_version")
+    if not isinstance(version, int) or isinstance(version, bool):
+        reason = f"{path} は問題の設定の形ではありません"
+        return name, reason
+    reason = (
+        "プロジェクトの記録がありません. ML-Pathfinder で学習の"
+        "プロジェクトを書き出してください"
+    )
+
+    return name, reason
+
+
+def problem_project(
+    root: Path, problem_id: str, registered: dict[str, str]
+) -> Optional[ProblemProject]:
+    """
+    識別子の問題の設定 1 件を読み, 記録した学習のプロジェクトと対応させる
+    関数
+
+    Parameters
+    ----------
+    root: Path
+        ML-Pathfinder の置き場の problems
+    problem_id: str
+        問題の設定の識別子 (problems の直下のディレクトリの名前)
+    registered: dict[str, str]
+        登録したプロジェクトのディレクトリから登録の ID への対応
+
+    Returns
+    ----------
+    result: Optional[ProblemProject]
+        問題の設定と記録したプロジェクトの対応, 開けない理由 (置き場に
+        無い識別子は None)
+    """
+    # 直下のディレクトリの名前 1 つだけ (置き場の外を読まないため)
+    result = None
+    if problem_id in ("", ".", "..") or any(
+        mark in problem_id for mark in ("/", "\\", "\0")
+    ):
+        return result
+    # 置き場の外を指すリンクも読まない (一覧と違い, 外から識別子を受け取るため)
+    folder = root / problem_id
+    path = folder / PROBLEM_FILE
+    try:
+        inside = folder.resolve().parent == root.resolve()
+        if not inside or not path.is_file():
+            return result
+    except (OSError, RuntimeError):
+        return result
+
+    # 記録の無いもの, 読めないもの, 新しい版は理由だけを返す
+    record, skipped = read_record(path)
+    if record is None:
+        name, reason = unrecorded_problem(path)
+        result = ProblemProject(
+            id=problem_id, problem=name, problem_path=str(path),
+            reason=skipped or reason
+        )
+        return result
+
+    # 記録の場所が今あり, ML-Found のプロジェクトのときだけ開ける
+    name = record["name"]
+    try:
+        place = Path(record["project_path"]).resolve()
+        usable = place.is_dir() and is_project_dir(place)
+    except (OSError, RuntimeError):
+        place, usable = Path(record["project_path"]), False
+    if not usable:
+        result = ProblemProject(
+            id=problem_id, problem=name, problem_path=str(path),
+            reason=(
+                f"記録したプロジェクト {place} が無いか, ML-Found の"
+                "プロジェクト (configs/default/train.yaml を持つもの) では"
+                "ありません"
+            )
+        )
+        return result
+    result = ProblemProject(
+        id=problem_id, problem=name, problem_path=str(path),
+        project_path=str(place), project_id=registered.get(str(place))
     )
 
     return result

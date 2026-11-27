@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { api, type BatchInfo, type EstimateRequest, type JobInfo, type RunNote } from './client'
+import { useApi, type BatchInfo, type EstimateRequest, type JobInfo, type RunNote } from './client'
 
 export const keys = {
   projects: ['projects'] as const,
   recorded: ['problems', 'projects'] as const,
   problemTrainings: ['problems', 'training'] as const,
+  problemProjects: ['problems', 'problem'] as const,
+  problemProject: (problemId: string) => ['problems', 'problem', problemId] as const,
   project: (id: string) => ['projects', id] as const,
   runs: (projectId: string) => ['projects', projectId, 'runs'] as const,
   run: (projectId: string, runId: string) => ['projects', projectId, 'run', runId] as const,
@@ -38,14 +40,17 @@ export const keys = {
 const LIVE_INTERVAL = 1500
 
 export function useProjects() {
+  const api = useApi()
   return useQuery({ queryKey: keys.projects, queryFn: api.listProjects })
 }
 
 export function useProject(id: string) {
+  const api = useApi()
   return useQuery({ queryKey: keys.project(id), queryFn: () => api.getProject(id) })
 }
 
 export function useRuns(projectId: string) {
+  const api = useApi()
   return useQuery({
     queryKey: keys.runs(projectId),
     queryFn: () => api.listRuns(projectId),
@@ -56,6 +61,7 @@ export function useRuns(projectId: string) {
 }
 
 export function useRun(projectId: string, runId: string) {
+  const api = useApi()
   return useQuery({
     queryKey: keys.run(projectId, runId),
     queryFn: () => api.getRun(projectId, runId),
@@ -64,6 +70,7 @@ export function useRun(projectId: string, runId: string) {
 }
 
 export function useHistory(projectId: string, runId: string, live = false) {
+  const api = useApi()
   return useQuery({
     queryKey: keys.history(projectId, runId),
     queryFn: () => api.getHistory(projectId, runId),
@@ -73,6 +80,7 @@ export function useHistory(projectId: string, runId: string, live = false) {
 
 /** 実験の任意のファイル (task.yaml, evaluations/, samples/). 学習中は見本が増えるので読み直す */
 export function useResults(projectId: string, runId: string, live = false) {
+  const api = useApi()
   return useQuery({
     queryKey: keys.results(projectId, runId),
     queryFn: () => api.getResults(projectId, runId),
@@ -82,6 +90,7 @@ export function useResults(projectId: string, runId: string, live = false) {
 
 /** 記録した軌跡からの方策の見積もり. 要求を決めた (見積もるを押した) ときだけ取得する */
 export function usePolicyEstimate(projectId: string, runId: string, body: EstimateRequest | null) {
+  const api = useApi()
   return useQuery({
     queryKey: keys.estimate(projectId, runId, body),
     queryFn: () => api.getPolicyEstimate(projectId, runId, body!),
@@ -91,6 +100,7 @@ export function usePolicyEstimate(projectId: string, runId: string, body: Estima
 
 /** 複数の実験の指標の推移をまとめて取得する. live に含む (学習中の) 実験は一定の間隔で読み直す */
 export function useHistories(projectId: string, runIds: string[], live: Set<string> = new Set()) {
+  const api = useApi()
   return useQueries({
     queries: runIds.map((runId) => ({
       queryKey: keys.history(projectId, runId),
@@ -102,6 +112,7 @@ export function useHistories(projectId: string, runIds: string[], live: Set<stri
 
 /** 複数の実験の詳細をまとめて取得する. 学習中の実験は画像の一覧なども一定の間隔で読み直す */
 export function useRunDetails(projectId: string, runIds: string[]) {
+  const api = useApi()
   return useQueries({
     queries: runIds.map((runId) => ({
       queryKey: keys.run(projectId, runId),
@@ -113,6 +124,7 @@ export function useRunDetails(projectId: string, runIds: string[]) {
 }
 
 export function useLog(projectId: string, runId: string, enabled: boolean) {
+  const api = useApi()
   return useQuery({
     queryKey: keys.log(projectId, runId),
     queryFn: () => api.getLog(projectId, runId),
@@ -121,36 +133,66 @@ export function useLog(projectId: string, runId: string, enabled: boolean) {
 }
 
 export function useAddProject() {
+  const api = useApi()
   const client = useQueryClient()
   return useMutation({
     mutationFn: api.addProject,
-    onSuccess: () => client.invalidateQueries({ queryKey: keys.projects }),
+    onSuccess: () =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: keys.projects }),
+        // 殻で選んだ問題の設定の対応 (登録の ID) も変わる
+        client.invalidateQueries({ queryKey: keys.problemProjects }),
+      ]),
   })
 }
 
 export function useRemoveProject() {
+  const api = useApi()
   const client = useQueryClient()
   return useMutation({
     mutationFn: api.removeProject,
-    onSuccess: () => client.invalidateQueries({ queryKey: keys.projects }),
+    onSuccess: () =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: keys.projects }),
+        // 殻で選んだ問題の設定の対応 (登録の ID) も変わる
+        client.invalidateQueries({ queryKey: keys.problemProjects }),
+      ]),
   })
 }
 
 export function useMoveProject() {
+  const api = useApi()
   const client = useQueryClient()
   return useMutation({
     mutationFn: ({ id, path }: { id: string; path: string }) => api.moveProject(id, path),
-    onSuccess: () => client.invalidateQueries({ queryKey: keys.projects }),
+    onSuccess: () =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: keys.projects }),
+        // 殻で選んだ問題の設定の対応 (登録の ID) も変わる
+        client.invalidateQueries({ queryKey: keys.problemProjects }),
+      ]),
   })
 }
 
 /** ML-Pathfinder で書き出した, 登録していないプロジェクト (開いている間だけ読む) */
 export function useRecordedProjects(enabled: boolean) {
+  const api = useApi()
   return useQuery({ queryKey: keys.recorded, queryFn: api.recordedProjects, enabled })
+}
+
+/** 殻で選んだ問題の設定と, 記録したプロジェクトとの対応 (選んでいなければ読まない) */
+export function useProblemProject(problemId: string | null) {
+  const api = useApi()
+  return useQuery({
+    queryKey: keys.problemProject(problemId ?? ''),
+    queryFn: () => api.problemProject(problemId ?? ''),
+    enabled: problemId !== null,
+  })
 }
 
 /** 問題の設定ごとの学習で監視する指標と向き (ML-Quest が無い場合は読み直さない) */
 export function useProblemTrainings(enabled: boolean) {
+  const api = useApi()
   return useQuery({
     queryKey: keys.problemTrainings,
     queryFn: api.problemTrainings,
@@ -160,10 +202,12 @@ export function useProblemTrainings(enabled: boolean) {
 }
 
 export function useScanProjects() {
+  const api = useApi()
   return useMutation({ mutationFn: api.scanProjects })
 }
 
 export function useConfig(projectId: string, path: string | null) {
+  const api = useApi()
   return useQuery({
     queryKey: keys.config(projectId, path ?? ''),
     queryFn: () => api.getConfig(projectId, path ?? ''),
@@ -174,6 +218,7 @@ export function useConfig(projectId: string, path: string | null) {
 
 /** 実験と同じ設定でもう一度起動するための設定. runId が null の間は読まない */
 export function useRelaunch(projectId: string, runId: string | null) {
+  const api = useApi()
   return useQuery({
     queryKey: keys.relaunch(projectId, runId ?? ''),
     queryFn: () => api.getRelaunch(projectId, runId ?? ''),
@@ -186,6 +231,7 @@ export function useRelaunch(projectId: string, runId: string | null) {
 }
 
 export function useValidateConfig(projectId: string) {
+  const api = useApi()
   return useMutation({
     mutationFn: ({
       text,
@@ -200,6 +246,7 @@ export function useValidateConfig(projectId: string) {
 }
 
 export function useCreateJob(projectId: string) {
+  const api = useApi()
   const client = useQueryClient()
   return useMutation({
     mutationFn: (body: Parameters<typeof api.createJob>[1]) => api.createJob(projectId, body),
@@ -208,6 +255,7 @@ export function useCreateJob(projectId: string) {
 }
 
 export function useRerunJob() {
+  const api = useApi()
   const client = useQueryClient()
   return useMutation({
     mutationFn: api.rerunJob,
@@ -216,6 +264,7 @@ export function useRerunJob() {
 }
 
 export function useJobs() {
+  const api = useApi()
   const client = useQueryClient()
   return useQuery({
     queryKey: keys.jobs,
@@ -261,6 +310,7 @@ function useRefreshOnJobChange(jobs: JobInfo[] | undefined) {
 }
 
 export function useJob(jobId: string) {
+  const api = useApi()
   return useQuery({
     queryKey: keys.job(jobId),
     queryFn: () => api.getJob(jobId),
@@ -269,6 +319,7 @@ export function useJob(jobId: string) {
 }
 
 export function useJobOutput(jobId: string, live: boolean) {
+  const api = useApi()
   return useQuery({
     queryKey: keys.jobOutput(jobId),
     queryFn: () => api.getJobOutput(jobId),
@@ -277,6 +328,7 @@ export function useJobOutput(jobId: string, live: boolean) {
 }
 
 export function useStopJob() {
+  const api = useApi()
   const client = useQueryClient()
   return useMutation({
     mutationFn: ({ jobId, force, now = false }: { jobId: string; force: boolean; now?: boolean }) =>
@@ -293,15 +345,18 @@ export function useStopJob() {
 }
 
 export function useRunParams(projectId: string) {
+  const api = useApi()
   return useQuery({ queryKey: keys.params(projectId), queryFn: () => api.listParams(projectId) })
 }
 
 export function useNotes(projectId: string) {
+  const api = useApi()
   return useQuery({ queryKey: keys.notes(projectId), queryFn: () => api.listNotes(projectId) })
 }
 
 /** 実験のメモを保存する. 一覧の表示はすぐに変え, 失敗したら元に戻す */
 export function useSaveNote(projectId: string) {
+  const api = useApi()
   const client = useQueryClient()
   const key = keys.notes(projectId)
   return useMutation({
@@ -333,6 +388,7 @@ export function useSaveNote(projectId: string) {
 
 /** プロジェクトの Python で確かめた追加の依存 (バックエンドも少しの間覚えておく) */
 export function useRequirements(projectId: string) {
+  const api = useApi()
   return useQuery({
     queryKey: keys.requirements(projectId),
     queryFn: () => api.getRequirements(projectId),
@@ -343,6 +399,7 @@ export function useRequirements(projectId: string) {
 
 /** 覚えた結果を使わずに確かめ直し, 結果を一覧と起動の画面の両方に反映する */
 export function useRecheckRequirements(projectId: string) {
+  const api = useApi()
   const client = useQueryClient()
   return useMutation({
     mutationFn: () => api.getRequirements(projectId, true),
@@ -364,6 +421,7 @@ export function useRequiresStatus(
   defaultConfig: string | undefined,
   enabled: boolean,
 ) {
+  const api = useApi()
   const [settled, setSettled] = useState(text)
   useEffect(() => {
     const timer = window.setTimeout(() => setSettled(text), 400)
@@ -396,6 +454,7 @@ function sameRequiresTarget(previous: readonly unknown[], next: readonly unknown
 
 /** 学習の準備. 環境のジョブが動いている間は読み直し続ける */
 export function useReadiness(projectId: string) {
+  const api = useApi()
   return useQuery({
     queryKey: keys.readiness(projectId),
     queryFn: () => api.getReadiness(projectId),
@@ -406,6 +465,7 @@ export function useReadiness(projectId: string) {
 
 /** 環境のジョブ. 動いている間は出力を読み直し, 終わったら準備と Python を読み直す */
 export function useEnvironmentJob(projectId: string) {
+  const api = useApi()
   const client = useQueryClient()
   const query = useQuery({
     queryKey: keys.environment(projectId),
@@ -430,6 +490,7 @@ export function useEnvironmentJob(projectId: string) {
 
 /** 確かめたコマンドで環境のジョブを始める */
 export function useStartEnvironmentJob(projectId: string) {
+  const api = useApi()
   const client = useQueryClient()
   return useMutation({
     mutationFn: (commands: string[][]) => api.startEnvironmentJob(projectId, commands),
@@ -439,6 +500,7 @@ export function useStartEnvironmentJob(projectId: string) {
 
 /** 覚えた結果を使わずに学習の準備を確かめ直す */
 export function useRecheckReadiness(projectId: string) {
+  const api = useApi()
   const client = useQueryClient()
   return useMutation({
     mutationFn: () => api.getReadiness(projectId, true),
@@ -448,6 +510,7 @@ export function useRecheckReadiness(projectId: string) {
 
 /** プロジェクトの models/ のモデルの定義の候補 */
 export function useModelSpecs(projectId: string, script: string, defaultConfig?: string) {
+  const api = useApi()
   return useQuery({
     queryKey: keys.modelSpecs(projectId, script, defaultConfig ?? ''),
     queryFn: () => api.getModelSpecs(projectId, script, defaultConfig),
@@ -457,6 +520,7 @@ export function useModelSpecs(projectId: string, script: string, defaultConfig?:
 
 /** 候補のまとまりの一覧. 進めている途中のまとまりがある間は一定の間隔で読み直す */
 export function useBatches() {
+  const api = useApi()
   const client = useQueryClient()
   return useQuery({
     queryKey: keys.batches,
@@ -479,6 +543,7 @@ export function useBatches() {
 }
 
 export function useCreateBatch(projectId: string) {
+  const api = useApi()
   const client = useQueryClient()
   return useMutation({
     mutationFn: (body: Parameters<typeof api.createBatch>[1]) => api.createBatch(projectId, body),
@@ -490,6 +555,7 @@ export function useCreateBatch(projectId: string) {
 }
 
 export function useStopBatch() {
+  const api = useApi()
   const client = useQueryClient()
   return useMutation({
     mutationFn: ({ batchId, force }: { batchId: string; force: boolean }) =>
@@ -502,6 +568,7 @@ export function useStopBatch() {
 }
 
 export function useDeleteBatch() {
+  const api = useApi()
   const client = useQueryClient()
   return useMutation({
     mutationFn: (batchId: string) => api.deleteBatch(batchId),

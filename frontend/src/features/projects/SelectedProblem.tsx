@@ -1,0 +1,115 @@
+import { ClipboardList, FlaskConical, ListFilter, Play, Plus, TriangleAlert } from 'lucide-react'
+import { Link, useNavigate } from 'react-router'
+
+import { ApiError } from '../../api/client'
+import { useAddProject, useProblemProject } from '../../api/hooks'
+import { Button, Card, ErrorBox, Spinner } from '../../components/ui'
+
+// リンクをボタンと同じ見た目にする
+const linkClass =
+  'inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-sm font-medium hover:bg-surface-2'
+
+/**
+ * 殻で選んだ問題の設定の欄. 記録したプロジェクトを登録していれば開く先を, していなければ
+ * 登録して開くボタンを, 開けなければ理由を出す. 一覧の絞りを切り替えるボタンも置く
+ */
+export function SelectedProblem({
+  problemId,
+  narrowed,
+  onNarrow,
+}: {
+  /** 殻で選んだ問題の設定の識別子 */
+  problemId: string
+  /** 一覧を記録したプロジェクトに絞っているか (絞れない問題の設定では null) */
+  narrowed: boolean | null
+  /** 絞りを切り替える */
+  onNarrow: (narrow: boolean) => void
+}) {
+  const problem = useProblemProject(problemId)
+  const add = useAddProject()
+  const navigate = useNavigate()
+  const data = problem.data
+  // 置き場に無い識別子 (殻の選びが古いなど) は, 誤りの箱でなく文で出す
+  const missing = problem.error instanceof ApiError && problem.error.status === 404
+
+  const register = (path: string) =>
+    add.mutate({ path }, { onSuccess: (created) => navigate(`/projects/${created.id}`) })
+
+  return (
+    <Card
+      className="mb-6"
+      title={
+        <span className="flex items-center gap-2">
+          <ClipboardList className="size-4 text-accent" aria-hidden />
+          選んだ問題の設定
+        </span>
+      }
+      actions={
+        narrowed !== null && (
+          <Button variant="secondary" icon={ListFilter} onClick={() => onNarrow(!narrowed)}>
+            {narrowed ? '全てのプロジェクトを出す' : 'このプロジェクトだけを出す'}
+          </Button>
+        )
+      }
+    >
+      <div className="space-y-3 text-sm">
+        {problem.isPending && <Spinner />}
+        {missing && (
+          <p className="flex items-start gap-1.5 text-warning-text">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+            <span>
+              問題の設定 <span className="font-mono">{problemId}</span> が置き場にありません
+            </span>
+          </p>
+        )}
+        {problem.error && !missing && <ErrorBox error={problem.error} />}
+        {data && (
+          <>
+            <div>
+              <div className="font-medium">{data.problem}</div>
+              <div className="font-mono text-xs text-ink-3">{data.id}</div>
+              {data.project_path && (
+                <div className="mt-1 text-xs text-ink-2">
+                  記録したプロジェクト:{' '}
+                  <span className="font-mono break-all">{data.project_path}</span>
+                </div>
+              )}
+            </div>
+            {data.reason && (
+              <p className="flex items-start gap-1.5 text-warning-text">
+                <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+                <span className="break-all">{data.reason}</span>
+              </p>
+            )}
+            {data.project_id && (
+              <div className="flex flex-wrap gap-2">
+                <Link to={`/projects/${data.project_id}`} className={linkClass}>
+                  <FlaskConical className="size-4" aria-hidden />
+                  実験の一覧を開く
+                </Link>
+                <Link to={`/projects/${data.project_id}/launch`} className={linkClass}>
+                  <Play className="size-4" aria-hidden />
+                  学習を起動
+                </Link>
+              </div>
+            )}
+            {data.project_path && !data.project_id && (
+              <div className="space-y-2">
+                <p className="text-ink-2">このプロジェクトはまだ登録していません.</p>
+                <Button
+                  variant="primary"
+                  icon={Plus}
+                  onClick={() => register(data.project_path ?? '')}
+                  disabled={add.isPending}
+                >
+                  登録して開く
+                </Button>
+              </div>
+            )}
+            {add.error && <ErrorBox error={add.error} />}
+          </>
+        )}
+      </div>
+    </Card>
+  )
+}

@@ -2,7 +2,7 @@ import clsx from 'clsx'
 import { Ban, Download, ExternalLink, Search, X } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 
-import { runFileUrl, type LogEntry, type ModelParam, type RunDetail } from '../../api/client'
+import { useApi, type LogEntry, type ModelParam, type RunDetail } from '../../api/client'
 import { Button, Card } from '../../components/ui'
 import { formatBytes, formatLogTime, formatValue } from '../../lib/format'
 import { flattenConfig } from '../../lib/metrics'
@@ -299,6 +299,7 @@ export function ModelTab({ run }: { run: RunDetail }) {
 }
 
 export function EnvTab({ run, projectId }: { run: RunDetail; projectId: string }) {
+  const { runFileUrl } = useApi()
   const [query, setQuery] = useState('')
   const packages = Object.entries(run.packages).filter(([name]) =>
     name.toLowerCase().includes(query.toLowerCase()),
@@ -444,6 +445,7 @@ export function LogTab({ entries }: { entries: LogEntry[] }) {
 const IMAGE_PAGE = 48
 
 export function FilesTab({ run, projectId }: { run: RunDetail; projectId: string }) {
+  const { runFileUrl } = useApi()
   const images = run.files.filter((file) => file.kind === 'image')
   // 画像が多い実験 (エポックごとの生成画像など) は, 少しずつ並べる
   const [shown, setShown] = useState(IMAGE_PAGE)

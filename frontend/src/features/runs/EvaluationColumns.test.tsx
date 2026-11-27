@@ -22,13 +22,14 @@ const diff: EvaluationValue = {
 
 describe('GuardBadge', () => {
   it('押すと落ちた指標の説明を開き, もう一度押すか Esc か外を押すと閉じる', () => {
+    // Esc は根の部品の範囲 (data-stage-root) の中で押したものだけを扱う
     render(
-      <>
+      <div data-stage-root>
         <GuardBadge
           guard={{ state: 'dropped', dropped: ['by_class: acc (差 -0.1)'], unknown: [] }}
         />
         <p>外</p>
-      </>,
+      </div>,
     )
     const badge = screen.getByRole('button', { name: '守る指標: 落ちた' })
     // 開くまでは説明を出さず, title も付けない (読み上げを二重にしない)

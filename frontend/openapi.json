@@ -127,6 +127,49 @@
         }
       }
     },
+    "/api/problems/{problem_id}/project": {
+      "get": {
+        "summary": "Read Problem Project",
+        "description": "識別子の問題の設定と, 記録した学習のプロジェクトとの対応を返す関数\n\nParameters\n----------\nrequest: Request\n    リクエスト\nproblem_id: str\n    問題の設定の識別子 (置き場の problems の直下のディレクトリの名前)\n\nReturns\n----------\nresult: ProblemProject\n    問題の設定の名前と場所, 記録したプロジェクトの場所と登録の ID,\n    開けない理由\n\nRaises\n----------\nHTTPException\n    置き場に無い識別子は 404",
+        "operationId": "read_problem_project",
+        "parameters": [
+          {
+            "name": "problem_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Problem Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemProject"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "プロジェクトか実験が見つからない"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/problems/training": {
       "get": {
         "summary": "List Problem Trainings",
@@ -3841,6 +3884,62 @@
           "type"
         ],
         "title": "PolicySpace"
+      },
+      "ProblemProject": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "problem": {
+            "type": "string",
+            "title": "Problem"
+          },
+          "problem_path": {
+            "type": "string",
+            "title": "Problem Path"
+          },
+          "project_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Path"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "problem",
+          "problem_path"
+        ],
+        "title": "ProblemProject"
       },
       "ProblemTraining": {
         "properties": {

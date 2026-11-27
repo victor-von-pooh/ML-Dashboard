@@ -114,6 +114,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/problems/{problem_id}/project": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Problem Project
+         * @description 識別子の問題の設定と, 記録した学習のプロジェクトとの対応を返す関数
+         *
+         *     Parameters
+         *     ----------
+         *     request: Request
+         *         リクエスト
+         *     problem_id: str
+         *         問題の設定の識別子 (置き場の problems の直下のディレクトリの名前)
+         *
+         *     Returns
+         *     ----------
+         *     result: ProblemProject
+         *         問題の設定の名前と場所, 記録したプロジェクトの場所と登録の ID,
+         *         開けない理由
+         *
+         *     Raises
+         *     ----------
+         *     HTTPException
+         *         置き場に無い識別子は 404
+         */
+        get: operations["read_problem_project"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/problems/training": {
         parameters: {
             query?: never;
@@ -1827,6 +1865,21 @@ export interface components {
             /** High */
             high?: (number | null)[] | null;
         };
+        /** ProblemProject */
+        ProblemProject: {
+            /** Id */
+            id: string;
+            /** Problem */
+            problem: string;
+            /** Problem Path */
+            problem_path: string;
+            /** Project Path */
+            project_path?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Reason */
+            reason?: string | null;
+        };
         /** ProblemTraining */
         ProblemTraining: {
             /** Problem */
@@ -2789,6 +2842,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RecordedProjects"];
+                };
+            };
+        };
+    };
+    read_problem_project: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                problem_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemProject"];
+                };
+            };
+            /** @description プロジェクトか実験が見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
