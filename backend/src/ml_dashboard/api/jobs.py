@@ -1,4 +1,4 @@
-import sys
+import copy
 import tempfile
 from dataclasses import asdict
 from pathlib import Path
@@ -37,6 +37,10 @@ from ml_dashboard.core.model_spec import (
     set_model_spec,
 )
 from ml_dashboard.core.models import Progress, RunSource, RunSummary
+from ml_dashboard.core.project_modules import (
+    is_project_module,
+    project_modules,
+)
 from ml_dashboard.core.projects import (
     Project,
     ProjectError,
@@ -699,6 +703,199 @@ def rebuild_error(error: Exception, message: str) -> Exception:
     return rebuilt
 
 
+def with_project_classes(
+    cfg: DictConfig, project_dir: Path, package: str
+) -> DictConfig:
+    """
+    プロジェクトのモジュールの自作のクラスの名前に, 確かめごとの頭の名前を
+    付けた config を作る関数
+
+    Parameters
+    ----------
+    cfg: DictConfig
+        学習に使う config
+    project_dir: Path
+        プロジェクトのディレクトリ
+    package: str
+        確かめごとの頭の名前
+
+    Returns
+    ----------
+    renamed: DictConfig
+        名前を付け替えた config の写し, 付け替えが無ければ元の config
+    """
+    renamed = copy.deepcopy(cfg)
+    changed = False
+    for node in class_name_nodes(renamed):
+        # 値の参照が解決できないものなどは, 後の確認の誤りに任せて対象外
+        try:
+            name = node.get("name")
+        except Exception:
+            continue
+        if not isinstance(name, str) or "." not in name:
+            continue
+        if is_project_module(project_dir, name.partition(".")[0]):
+            node.name = f"{package}.{name}"
+            changed = True
+    if not changed:
+        return cfg
+
+    return renamed
+
+
+def class_name_nodes(cfg: DictConfig) -> list[DictConfig]:
+    """
+    config の中の, Optimizer と Scheduler のクラスの名前を持つ項目を集める
+    関数
+
+    Parameters
+    ----------
+    cfg: DictConfig
+        学習に使う config
+
+    Returns
+    ----------
+    nodes: list[DictConfig]
+        optimizer, scheduler, optimizers.<名前>, optimizers.<名前>.scheduler
+        のうち辞書のもの
+    """
+    # 値の参照が解決できない項目は, 後の確認の誤りに任せて対象外
+    try:
+        found = [cfg.get("optimizer"), cfg.get("scheduler")]
+        optimizers = cfg.get("optimizers")
+        if isinstance(optimizers, DictConfig):
+            for entry in optimizers.values():
+                if isinstance(entry, DictConfig):
+                    found += [entry, entry.get("scheduler")]
+    except Exception:
+        return []
+    nodes = [node for node in found if isinstance(node, DictConfig)]
+
+    return nodes
+
+
+def without_package(text: str, package: str) -> str:
+    """
+    文から確かめごとの頭の名前を除く関数
+
+    Parameters
+    ----------
+    text: str
+        誤り, 注意, お知らせの文
+    package: str
+        確かめごとの頭の名前
+
+    Returns
+    ----------
+    stripped: str
+        頭の名前を除いた文 (書いた名前のまま)
+    """
+    stripped = text.replace(f"{package}.", "")
+
+    return stripped
+
+
+def check_loaded(
+    cfg: DictConfig, project_dir: Path
+) -> tuple[list[str], list[str], Optional[str]]:
+    """
+    読み込んだ config で, 学習を始める前の確認をする関数
+
+    Parameters
+    ----------
+    cfg: DictConfig
+        学習に使う config (自作のクラスの名前は頭の名前を付けたもの)
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    warnings: list[str]
+        注意
+    notes: list[str]
+        お知らせ
+    value_error: Optional[str]
+        引数の値の誤り, 無ければ None
+    """
+    import torch
+    from ml_found.experiment import (
+        check_experiment_name,
+        check_init_weights,
+        check_precision,
+        check_resume_path,
+        check_trainer_config,
+    )
+    from ml_found.training import (
+        check_optim_config,
+        missing_data_size_params,
+        try_build_optim,
+    )
+    from ml_found.utils import get_device
+
+    # start_experiment が出力先を作る前に行う確認と同じものを実行
+    check_experiment_name(cfg.experiment.name)
+    check_optim_config(cfg)
+    # 引数の値の誤り (範囲の外など) は, 残りの確認を済ませてから返却
+    value_error = None
+    try:
+        warnings = check_param_names(cfg)
+    except ValueError as error:
+        if "引数の値に誤りがあります" not in str(error):
+            raise
+        warnings, value_error = [], str(error)
+    check_trainer_config(cfg)
+    check_resume_path(cfg, project_dir)
+    check_init_weights(cfg, project_dir)
+
+    # デバイスは start_experiment と同じく必ず確認
+    # bf16 をデバイスで使えるかは, サーバーが GPU の文脈を持ち続けない
+    # ように cpu の場合だけ確認 (cuda と mps は学習のプロセスで確認).
+    # フォームで fp32 に戻せるように値の誤り
+    try:
+        device = get_device(cfg.experiment.device)
+    except ValueError as error:
+        if value_error is None:
+            value_error = f"experiment.device の誤り: {error}"
+    else:
+        try:
+            if device.type == "cpu":
+                check_precision(cfg, device)
+        except ValueError as error:
+            if value_error is None:
+                value_error = str(error)
+
+    # 範囲を持たない引数の誤りも, 仮のパラメータで作ってみて確認
+    # ダッシュボードのサーバーが GPU のメモリを持ち続けないように cpu で
+    # 作成. 必須の引数が足りない場合 (スクリプトが補う) と, 値の誤りが
+    # 既にある場合は作れないので対象外
+    if not warnings and value_error is None:
+        try:
+            try_build_optim(cfg, torch.device("cpu"))
+        except ValueError as error:
+            value_error = str(error)
+
+    # データの量で決まる Scheduler の引数は, 学習を始めるときに
+    # ML-Found が補うのでお知らせし, エポック数の食い違いを確認
+    # (名前付きの Optimizer は名前ごとに確かめ, 名前を付けて表示)
+    notes = []
+    for prefix, view in optim_views(cfg):
+        notes += [
+            f"{prefix}{note}" for note in describe_filled(
+                view, missing_data_size_params(view.scheduler)
+            )
+        ]
+        mismatch, note = check_one_cycle_epochs(view)
+        if mismatch is not None and value_error is None:
+            value_error = f"{prefix}{mismatch}"
+        if note is not None:
+            warnings.append(f"{prefix}{note}")
+
+    # データなどのパスの書き誤りは, 起動を止めずに注意
+    warnings += find_missing_paths(cfg, project_dir)
+
+    return warnings, notes, value_error
+
+
 def run_checks(
     project: Project, path: Path, default_path: Path,
     refresh_requires: bool = False
@@ -729,90 +926,28 @@ def run_checks(
     # ダッシュボードの submodule の ML-Found で確かめるので, プロジェクトの
     # ML-Found の版が違う場合は, 学習を始めてからのエラーの可能性あり
     import_ml_found()
-    import torch
     from ml_found.config import load_config
-    from ml_found.experiment import (
-        check_experiment_name,
-        check_init_weights,
-        check_precision,
-        check_resume_path,
-        check_trainer_config,
-    )
-    from ml_found.training import (
-        check_optim_config,
-        missing_data_size_params,
-        try_build_optim,
-    )
-    from ml_found.utils import get_device
 
-    # start_experiment が出力先を作る前に行う確認と同じものを実行
-    # 自作の Optimizer (custom_optim.Lion など) を読めるように,
-    # 学習のスクリプトと同じくプロジェクトのディレクトリから読み込む
+    # 自作の Optimizer (custom_optim.Lion など) は, 学習と同じくプロジェクトの
+    # モジュールを先に探し, 確かめごとの頭の名前の下で読み込み
+    # (ダッシュボードのプロセスの sys.path と sys.modules は不変)
     project_dir = Path(project.path)
-    sys.path.insert(0, str(project_dir))
-    try:
-        cfg, diff = load_config(str(default_path), str(path))
-        check_experiment_name(cfg.experiment.name)
-        check_optim_config(cfg)
-        # 引数の値の誤り (範囲の外など) は, 残りの確認を済ませてから返却
-        value_error = None
+    with project_modules(project_dir) as package:
         try:
-            warnings = check_param_names(cfg)
-        except ValueError as error:
-            if "引数の値に誤りがあります" not in str(error):
+            cfg, diff = load_config(str(default_path), str(path))
+            warnings, notes, value_error = check_loaded(
+                with_project_classes(cfg, project_dir, package), project_dir
+            )
+        except Exception as error:
+            # 文に出る頭の名前を除き, 書いた名前で表示
+            message = without_package(str(error), package)
+            if message == str(error):
                 raise
-            warnings, value_error = [], str(error)
-        check_trainer_config(cfg)
-        check_resume_path(cfg, project_dir)
-        check_init_weights(cfg, project_dir)
-
-        # デバイスは start_experiment と同じく必ず確認
-        # bf16 をデバイスで使えるかは, サーバーが GPU の文脈を持ち続けない
-        # ように cpu の場合だけ確認 (cuda と mps は学習のプロセスで確認).
-        # フォームで fp32 に戻せるように値の誤り
-        try:
-            device = get_device(cfg.experiment.device)
-        except ValueError as error:
-            if value_error is None:
-                value_error = f"experiment.device の誤り: {error}"
-        else:
-            try:
-                if device.type == "cpu":
-                    check_precision(cfg, device)
-            except ValueError as error:
-                if value_error is None:
-                    value_error = str(error)
-
-        # 範囲を持たない引数の誤りも, 仮のパラメータで作ってみて確認
-        # ダッシュボードのサーバーが GPU のメモリを持ち続けないように cpu で
-        # 作成. 必須の引数が足りない場合 (スクリプトが補う) と, 値の誤りが
-        # 既にある場合は作れないので対象外
-        if not warnings and value_error is None:
-            try:
-                try_build_optim(cfg, torch.device("cpu"))
-            except ValueError as error:
-                value_error = str(error)
-
-        # データの量で決まる Scheduler の引数は, 学習を始めるときに
-        # ML-Found が補うのでお知らせし, エポック数の食い違いを確認
-        # (名前付きの Optimizer は名前ごとに確かめ, 名前を付けて表示)
-        notes = []
-        for prefix, view in optim_views(cfg):
-            notes += [
-                f"{prefix}{note}" for note in describe_filled(
-                    view, missing_data_size_params(view.scheduler)
-                )
-            ]
-            mismatch, note = check_one_cycle_epochs(view)
-            if mismatch is not None and value_error is None:
-                value_error = f"{prefix}{mismatch}"
-            if note is not None:
-                warnings.append(f"{prefix}{note}")
-
-        # データなどのパスの書き誤りは, 起動を止めずに注意
-        warnings += find_missing_paths(cfg, project_dir)
-    finally:
-        sys.path.remove(str(project_dir))
+            raise rebuild_error(error, message) from error.__cause__
+    warnings = [without_package(text, package) for text in warnings]
+    notes = [without_package(text, package) for text in notes]
+    if value_error is not None:
+        value_error = without_package(value_error, package)
 
     # config の requires に書いた機能をプロジェクトの Python で確かめ,
     # 足りなければ次の一手を添えた誤り (起動では覚えた結果を使わない確かめ)

@@ -1,6 +1,8 @@
 import hashlib
 import json
 import os
+import shutil
+import sys
 import time
 from pathlib import Path
 from typing import Optional
@@ -419,6 +421,121 @@ def test_validate_custom_optimizer(
         json={"text": "optimizer:\n  name: my_optim_for_test.Mine\n"}
     ).json()
     assert result["ok"] is True, result["error"]
+
+
+# 同じ名前のモジュールを持つプロジェクトの自作の Optimizer (lr の下限は
+# 同じ名前の別のモジュールから読み込み)
+SAME_OPTIM = '''\
+from torch import optim
+
+from same_helper import LR_FLOOR
+
+
+class Mine(optim.SGD):
+    def __init__(self, params, lr=0.1):
+        if lr < LR_FLOOR:
+            raise ValueError(f"lr は {LR_FLOOR} 以上にしてください")
+        super(Mine, self).__init__(params, lr=lr)
+'''
+
+
+def write_same_modules(project: Path, floor: float) -> None:
+    """
+    同じ名前の自作の Optimizer のモジュールをプロジェクトに書く関数
+
+    Parameters
+    ----------
+    project: Path
+        プロジェクトのディレクトリ
+    floor: float
+        Optimizer が受け付ける lr の下限
+
+    Returns
+    ----------
+    None
+    """
+    (project / "same_optim.py").write_text(SAME_OPTIM)
+    (project / "same_helper.py").write_text(f"LR_FLOOR = {floor}\n")
+
+
+def test_validate_same_module_names(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    同じ名前のモジュールを持つ 2 つのプロジェクトを順に確かめると, それぞれの
+    モジュールを読むことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    other_dir = project_dir.parent / "other_task"
+    shutil.copytree(project_dir, other_dir)
+    write_same_modules(project_dir, 0.5)
+    write_same_modules(other_dir, 0.0)
+    strict_id = register(client, project_dir)
+    loose_id = register(client, other_dir)
+    text = "optimizer:\n  name: same_optim.Mine\n  params:\n    lr: 0.2\n"
+
+    # 下限の違いで, どちらのプロジェクトのモジュールを読んだかを判定
+    # (順を入れ替えても前に読んだものを使わないことも確認)
+    for project_id, ok in [
+        (strict_id, False), (loose_id, True), (strict_id, False)
+    ]:
+        result = client.post(
+            f"/api/projects/{project_id}/validate", json={"text": text}
+        ).json()
+        assert result["ok"] is ok, result
+        if not ok:
+            assert "lr は 0.5 以上" in result["error"]
+
+    # 見つからないクラスの誤りは, 書いた名前のまま表示
+    missing = client.post(
+        f"/api/projects/{loose_id}/validate",
+        json={"text": "optimizer:\n  name: same_optim.Missing\n"}
+    ).json()
+    assert missing["ok"] is False
+    assert "same_optim.Missing が見つかりません" in missing["error"]
+    assert "_ml_dashboard_project_" not in missing["error"]
+
+
+def test_validate_keeps_import_state(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    確かめの後に sys.path と sys.modules が元のままであることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    write_same_modules(project_dir, 0.0)
+    project_id = register(client, project_dir)
+    url = f"/api/projects/{project_id}/validate"
+    text = "optimizer:\n  name: same_optim.Mine\n  params:\n    lr: 0.2\n"
+
+    # 初めの確かめで ML-Found と PyTorch を読んでから, 前後を比較
+    assert client.post(url, json={"text": text}).json()["ok"] is True
+    path, modules = list(sys.path), set(sys.modules)
+    assert client.post(url, json={"text": text}).json()["ok"] is True
+    assert sys.path == path
+    assert set(sys.modules) == modules
+    assert "same_optim" not in sys.modules
+    assert "same_helper" not in sys.modules
 
 
 def test_default_config_per_script(
