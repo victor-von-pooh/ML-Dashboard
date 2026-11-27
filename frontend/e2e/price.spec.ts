@@ -102,9 +102,7 @@ test('一覧と比較で, テスト用の売れた数の誤差と見込みの利
   }
   await page.getByRole('button', { name: /^比較/ }).click()
   await expect(page.getByRole('heading', { name: '実験の比較' })).toBeVisible()
-  const evaluations = page.locator('section', {
-    has: page.getByRole('heading', { name: /^テスト用の評価/ }),
-  })
+  const evaluations = page.getByRole('region', { name: /^テスト用の評価/ })
   const ratio = evaluations.getByRole('columnheader', { name: /見込みの利益の比/ })
   await expect(ratio).toBeVisible()
   await expect(ratio).toContainText('(大きいほど良い)')

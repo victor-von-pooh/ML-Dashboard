@@ -131,9 +131,7 @@ try {
   await page.getByText(/^落ちた: /).waitFor()
   // 学習の準備のカード (作業用のディレクトリの環境の注意) と, その下の間より下だけを写す
   const main = await page.getByRole('main').boundingBox()
-  const readiness = await page
-    .locator('section', { has: page.getByRole('heading', { name: '学習の準備' }) })
-    .boundingBox()
+  const readiness = await page.getByRole('region', { name: '学習の準備' }).boundingBox()
   if (!main) throw new Error('一覧の画面が見つかりません')
   const top = readiness ? readiness.y + readiness.height + 12 : main.y
   await page.screenshot({
@@ -173,7 +171,7 @@ try {
   await page
     .getByLabel('experiment の config')
     .selectOption('configs/experiment/examples/quick.yaml')
-  const editor = page.getByLabel('config の中身')
+  const editor = page.getByRole('textbox', { name: 'config の中身' })
   await editor.fill(
     'trainer:\n  epochs: 3\nscheduler:\n  name: CosineAnnealingLR\n  interval: step\n' +
       '  params:\n    T_max: auto\n  warmup_ratio: 0.1\n',

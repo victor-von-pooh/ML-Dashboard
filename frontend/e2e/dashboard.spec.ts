@@ -80,7 +80,7 @@ test('プロジェクトから実験の一覧と詳細を開く', async ({ page 
     .or(page.getByPlaceholder(/絞り込/))
     .first()
     .fill('')
-  await expect(page.getByText('完了', { exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('img', { name: '状態: 完了' }).first()).toBeVisible()
 
   // 実験の詳細では学習曲線と, エポックごとの決定境界の画像を見られる
   await page
@@ -96,9 +96,7 @@ test('プロジェクトから実験の一覧と詳細を開く', async ({ page 
 
 test('学習の準備のカードで, 環境を作る前に動かすコマンドを確かめる', async ({ page }) => {
   await page.goto(`/projects/${projectId}`)
-  const card = page.locator('section', {
-    has: page.getByRole('heading', { name: '学習の準備' }),
-  })
+  const card = page.getByRole('region', { name: '学習の準備' })
   // デモは .venv を持たないので, 作るボタンが出る (入れるのはネットワークを使うので確かめだけ)
   const items = page.getByRole('list', { name: '学習の準備の項目' })
   await expect(items.getByText('プロジェクトの .venv がまだありません')).toBeVisible()
@@ -151,8 +149,8 @@ test('2 つの実験を比べ, config の違いと同じエポックの画像を
   await expect(page.getByRole('heading', { name: '実験の比較' })).toBeVisible()
   await expect(page.getByText('optimizer.name')).toBeVisible()
   // テスト用の評価の値と守る指標の印も並ぶ
-  const evaluations = page.locator('section', {
-    has: page.getByRole('heading', { name: 'テスト用の評価 (群分けは全ての行で数えた値)' }),
+  const evaluations = page.getByRole('region', {
+    name: 'テスト用の評価 (群分けは全ての行で数えた値)',
   })
   await expect(evaluations.getByRole('row').filter({ hasText: '落ちた' })).toHaveCount(2)
   // 評価の列の並べ替えは URL に残り, 読み直しても同じ
@@ -181,7 +179,7 @@ test('実験の詳細から, 同じ設定を入れた学習の起動の画面を
   await expect(page.getByLabel('experiment の config')).toHaveValue(
     'configs/experiment/examples/quick_sgd.yaml',
   )
-  await expect(page.getByLabel('config の中身')).toHaveValue(/name: SGD/)
+  await expect(page.getByRole('textbox', { name: 'config の中身' })).toHaveValue(/name: SGD/)
 
   // 起動の前の確認は, 実験が元にした default で行う
   await page.getByRole('button', { name: 'ML-Found で config を確かめる' }).click()
@@ -198,7 +196,7 @@ test('フォームで config を変え, 学習を起動して完了まで見届�
     .selectOption('configs/experiment/examples/quick.yaml')
 
   // フォームで Optimizer を変えると YAML の欄に書き込まれる
-  const editor = page.getByLabel('config の中身')
+  const editor = page.getByRole('textbox', { name: 'config の中身' })
   await expect(editor).toHaveValue(/epochs: 3/)
   await page.getByRole('combobox', { name: 'Optimizer' }).selectOption('SGD')
   await expect(editor).toHaveValue(/name: SGD/)
@@ -223,7 +221,10 @@ test('フォームで config を変え, 学習を起動して完了まで見届�
   await expect(page.getByText(/読み込めました/)).toBeVisible()
   await page.getByRole('button', { name: '学習を開始' }).click()
   await expect(page).toHaveURL(/\/jobs\//)
-  await expect(page.getByText('完了', { exact: true }).first()).toBeVisible({ timeout: 45_000 })
+  // 殻の通しの確かめと同じく, ジョブの状態の印を役割と名前で待つ
+  await expect(page.getByRole('main').getByRole('img', { name: '状態: 完了' })).toBeVisible({
+    timeout: 45_000,
+  })
   // 終わったジョブには進んだエポックと, 同じ設定でもう一度起動するボタン
   await expect(page.getByText(/3 \/ 3 エポック/).first()).toBeVisible()
   await expect(page.getByRole('button', { name: '同じ設定でもう一度' })).toBeVisible()
@@ -249,7 +250,7 @@ test('混合精度と勾配の蓄積をフォームで変えて起動する', as
   await page
     .getByLabel('experiment の config')
     .selectOption('configs/experiment/examples/quick.yaml')
-  const editor = page.getByLabel('config の中身')
+  const editor = page.getByRole('textbox', { name: 'config の中身' })
   await expect(editor).toHaveValue(/epochs: 3/)
 
   // 既定は fp32 で毎バッチ更新. 説明に mps でメモリを減らす方を添える
@@ -280,7 +281,10 @@ test('混合精度と勾配の蓄積をフォームで変えて起動する', as
   await expect(page.getByText(/読み込めました/)).toBeVisible()
   await page.getByRole('button', { name: '学習を開始' }).click()
   await expect(page).toHaveURL(/\/jobs\//)
-  await expect(page.getByText('完了', { exact: true }).first()).toBeVisible({ timeout: 45_000 })
+  // 殻の通しの確かめと同じく, ジョブの状態の印を役割と名前で待つ
+  await expect(page.getByRole('main').getByRole('img', { name: '状態: 完了' })).toBeVisible({
+    timeout: 45_000,
+  })
 
   // 起動した学習の config に 2 つの項目が入る
   const runs = (await (await request.get(`/api/projects/${projectId}/runs`)).json()) as {
@@ -302,7 +306,7 @@ test('検証の間隔をフォームで変え, 検証したエポックだけを
   await page
     .getByLabel('experiment の config')
     .selectOption('configs/experiment/examples/quick.yaml')
-  const editor = page.getByLabel('config の中身')
+  const editor = page.getByRole('textbox', { name: 'config の中身' })
   await expect(editor).toHaveValue(/epochs: 3/)
 
   // 5 エポックで間隔 2 (エポック 2, 4, 5 を検証). 説明も欄に付く
@@ -337,7 +341,10 @@ test('検証の間隔をフォームで変え, 検証したエポックだけを
   await expect(page.getByText(/読み込めました/)).toBeVisible()
   await page.getByRole('button', { name: '学習を開始' }).click()
   await expect(page).toHaveURL(/\/jobs\//)
-  await expect(page.getByText('完了', { exact: true }).first()).toBeVisible({ timeout: 45_000 })
+  // 殻の通しの確かめと同じく, ジョブの状態の印を役割と名前で待つ
+  await expect(page.getByRole('main').getByRole('img', { name: '状態: 完了' })).toBeVisible({
+    timeout: 45_000,
+  })
   await expect(page.getByText(/5 \/ 5 エポック/).first()).toBeVisible()
 
   // 検証の値は検証したエポックだけにあり, ベストもその中から選ばれる

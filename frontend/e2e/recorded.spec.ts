@@ -54,7 +54,7 @@ test('記録した問題の設定の監視する指標と向きが, 学習の起
   await expect(monitor).toHaveAccessibleDescription(
     /問題の設定「e2e の売上」で選んだ指標から決めた, 監視する指標と向きです/,
   )
-  const editor = page.getByLabel('config の中身')
+  const editor = page.getByRole('textbox', { name: 'config の中身' })
   await expect(editor).toHaveValue(/monitor: valid\/mae/)
 
   // 変えると, 問題の設定の値から変えたことが出る

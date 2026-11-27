@@ -92,9 +92,7 @@ test('自己符号化器と距離に基づく度合いを, 一覧と比較で上
   }
   await page.getByRole('button', { name: /^比較/ }).click()
   await expect(page.getByRole('heading', { name: '実験の比較' })).toBeVisible()
-  const evaluations = page.locator('section', {
-    has: page.getByRole('heading', { name: /^テスト用の評価/ }),
-  })
+  const evaluations = page.getByRole('region', { name: /^テスト用の評価/ })
   await expect(evaluations.getByRole('columnheader', { name: /上位 K 件の適合率/ })).toBeVisible()
   await expect(evaluations.locator('[title*="異常の割合が小さいと低く出る"]')).toBeVisible()
   await expect(evaluations.getByRole('columnheader', { name: /上位の件数 K/ })).toBeVisible()
@@ -127,7 +125,7 @@ test('ML-Found の fit で残したパラメータの無いモデルの実験を
 
   // 詳細: 学習曲線は検証の指標だけで, 学習の記録が無い旨は出さない
   await page.goto(`/projects/${projectId}/runs/${FITTED}`)
-  await expect(page.getByText('完了', { exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('img', { name: '状態: 完了' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'precision_at_k' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'average_precision' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'lr' })).toHaveCount(0)

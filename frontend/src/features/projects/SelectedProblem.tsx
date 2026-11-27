@@ -1,4 +1,5 @@
 import { ClipboardList, FlaskConical, ListFilter, Play, Plus, TriangleAlert } from 'lucide-react'
+import { useId } from 'react'
 import { Link, useNavigate } from 'react-router'
 
 import { ApiError } from '../../api/client'
@@ -28,6 +29,7 @@ export function SelectedProblem({
   const problem = useProblemProject(problemId)
   const add = useAddProject()
   const navigate = useNavigate()
+  const pathLabelId = useId()
   const data = problem.data
   // 置き場に無い識別子 (殻の選びが古いなど) は, 誤りの箱でなく文で出す
   const missing = problem.error instanceof ApiError && problem.error.status === 404
@@ -68,11 +70,16 @@ export function SelectedProblem({
             <div>
               <div className="font-medium">{data.problem}</div>
               <div className="font-mono text-xs text-ink-3">{data.id}</div>
+              {/* 場所は「記録したプロジェクト」を名前にした値 (definition) で読み上げる */}
               {data.project_path && (
-                <div className="mt-1 text-xs text-ink-2">
-                  記録したプロジェクト:{' '}
-                  <span className="font-mono break-all">{data.project_path}</span>
-                </div>
+                <dl className="mt-1 text-xs text-ink-2">
+                  <dt id={pathLabelId} className="inline">
+                    記録したプロジェクト<span aria-hidden>:</span>{' '}
+                  </dt>
+                  <dd aria-labelledby={pathLabelId} className="inline font-mono break-all">
+                    {data.project_path}
+                  </dd>
+                </dl>
               )}
             </div>
             {data.reason && (

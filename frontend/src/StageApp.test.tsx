@@ -296,8 +296,15 @@ describe('殻で選んだ問題の設定', () => {
   it('登録していなければ「登録して開く」で登録して実験の一覧に移る (殻には知らせない)', async () => {
     const fetchMock = stubApi()
     const { onProjectChange } = renderStage('/train', { project: 'fresh' })
-    expect(await screen.findByText('このプロジェクトはまだ登録していません.')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '登録して開く' }))
+    // 殻の通しの確かめと同じく, 欄を区域の名前で, 場所を「記録したプロジェクト」の名前で選ぶ
+    const card = await screen.findByRole('region', { name: '選んだ問題の設定' })
+    expect(
+      await within(card).findByText('このプロジェクトはまだ登録していません.'),
+    ).toBeInTheDocument()
+    expect(
+      within(card).getByRole('definition', { name: '記録したプロジェクト' }),
+    ).toHaveTextContent(/^\/work\/fresh$/)
+    fireEvent.click(within(card).getByRole('button', { name: '登録して開く' }))
     await waitFor(() => expect(window.location.pathname).toBe('/train/projects/p3'))
     const posted = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')
     expect(String(posted?.[0])).toBe('/api/train/projects')
@@ -396,7 +403,7 @@ describe('外したときの下書き', () => {
   async function editLaunch(props: Partial<StageAppProps> = {}, jobs?: () => Promise<Response>) {
     const fetchMock = stubApi('/api/train', jobs)
     const view = renderStage('/train/projects/p1/launch', props)
-    const editor = await screen.findByLabelText('config の中身')
+    const editor = await screen.findByRole('textbox', { name: 'config の中身' })
     await waitFor(() => expect(editor).toHaveValue(CONFIG_TEXT))
     fireEvent.change(editor, { target: { value: 'trainer:\n  epochs: 9\n' } })
     // 起動の画面のフォーム (登録簿, config の解決) も apiBase の下に呼ぶ
@@ -423,7 +430,7 @@ describe('外したときの下書き', () => {
 
     renderStage('/train/projects/p1/launch')
     expect(await screen.findByText(/下書きから戻しました/)).toBeInTheDocument()
-    const editor = screen.getByLabelText('config の中身')
+    const editor = screen.getByRole('textbox', { name: 'config の中身' })
     expect(editor).toHaveValue('trainer:\n  epochs: 9\n')
     fireEvent.click(screen.getByRole('button', { name: '下書きを捨てる' }))
     await waitFor(() => expect(editor).toHaveValue(CONFIG_TEXT))
@@ -439,7 +446,7 @@ describe('外したときの下書き', () => {
 
   it('書き換えを元に戻すと下書きを消す', async () => {
     await editLaunch()
-    const editor = screen.getByLabelText('config の中身')
+    const editor = screen.getByRole('textbox', { name: 'config の中身' })
     await waitFor(() => expect(launchDraft()).toBeDefined(), { timeout: 3000 })
     fireEvent.change(editor, { target: { value: CONFIG_TEXT } })
     await waitFor(() => expect(launchDraft()).toBeUndefined())
