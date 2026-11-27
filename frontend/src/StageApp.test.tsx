@@ -437,6 +437,102 @@ describe('外したときの下書き', () => {
     expect(launchDraft()).toBeUndefined()
   })
 
+  it('消えた config を指す下書きは戻さず, 理由と捨てるボタンを出して捨てると消す', async () => {
+    stubApi()
+    const gone = { script: 'train.py', configPath: 'configs/experiment/gone.yaml', text: 'x: 1\n' }
+    window.localStorage.setItem(
+      'ml-dashboard:drafts',
+      JSON.stringify({ 'launch:p1:': { value: gone, time: new Date().toISOString() } }),
+    )
+    renderStage('/train/projects/p1/launch')
+    // 理由は場所と時刻を別の要素に分けて出すので, 知らせの全体の文字で探す
+    const notice = await screen.findByText(
+      (_, element) =>
+        element?.getAttribute('role') === 'status' &&
+        /下書きの config \(configs\/experiment\/gone\.yaml\) がありません/.test(
+          element.textContent ?? '',
+        ),
+    )
+    expect(notice).toBeInTheDocument()
+    expect(screen.queryByText(/下書きから戻しました/)).not.toBeInTheDocument()
+    // 画面はいつもの選び方で開き, 下書きの中身は戻さない
+    const editor = screen.getByRole('textbox', { name: 'config の中身' })
+    await waitFor(() => expect(editor).toHaveValue(CONFIG_TEXT))
+    // 書き換えていないものとして黙って消さない
+    await new Promise((resolve) => setTimeout(resolve, 1200))
+    expect(launchDraft()?.value.text).toBe('x: 1\n')
+    // 戻さない中身も読むだけの欄で見られる
+    const kept = screen.getByRole('textbox', { name: '下書きの中身' })
+    expect(kept).toHaveValue('x: 1\n')
+    expect(kept).toHaveAttribute('readonly')
+    fireEvent.click(screen.getByRole('button', { name: '下書きを捨てる' }))
+    expect(launchDraft()).toBeUndefined()
+    expect(notice).not.toBeInTheDocument()
+  })
+
+  it('消えた config を指す下書きは, 書き換えると新しい下書きに置き換わる', async () => {
+    stubApi()
+    const gone = { script: 'train.py', configPath: 'configs/experiment/gone.yaml', text: 'x: 1\n' }
+    window.localStorage.setItem(
+      'ml-dashboard:drafts',
+      JSON.stringify({ 'launch:p1:': { value: gone, time: new Date().toISOString() } }),
+    )
+    renderStage('/train/projects/p1/launch')
+    const editor = await screen.findByRole('textbox', { name: 'config の中身' })
+    await waitFor(() => expect(editor).toHaveValue(CONFIG_TEXT))
+    expect(screen.getByRole('button', { name: '下書きを捨てる' })).toBeInTheDocument()
+    fireEvent.change(editor, { target: { value: 'trainer:\n  epochs: 9\n' } })
+    expect(screen.queryByRole('button', { name: '下書きを捨てる' })).not.toBeInTheDocument()
+    await waitFor(() => expect(launchDraft()?.value.text).toBe('trainer:\n  epochs: 9\n'), {
+      timeout: 3000,
+    })
+    // 元に戻すと, 戻さなかった下書きを書いた時刻のまま書き戻し, 知らせも出し直す
+    fireEvent.change(editor, { target: { value: CONFIG_TEXT } })
+    expect(await screen.findByRole('button', { name: '下書きを捨てる' })).toBeInTheDocument()
+    await waitFor(() => expect(launchDraft()?.value.text).toBe('x: 1\n'))
+  })
+
+  it('1 文字書き換えてすぐ戻しても, 戻さなかった下書きを消さない', async () => {
+    stubApi()
+    const gone = { script: 'train.py', configPath: 'configs/experiment/gone.yaml', text: 'x: 1\n' }
+    window.localStorage.setItem(
+      'ml-dashboard:drafts',
+      JSON.stringify({ 'launch:p1:': { value: gone, time: '2026-01-02T03:04:05.000Z' } }),
+    )
+    const view = renderStage('/train/projects/p1/launch')
+    const editor = await screen.findByRole('textbox', { name: 'config の中身' })
+    await waitFor(() => expect(editor).toHaveValue(CONFIG_TEXT))
+    fireEvent.change(editor, { target: { value: `${CONFIG_TEXT}#` } })
+    fireEvent.change(editor, { target: { value: CONFIG_TEXT } })
+    view.unmount()
+    const drafts = JSON.parse(window.localStorage.getItem('ml-dashboard:drafts') ?? '{}') as Record<
+      string,
+      { value: { text: string }; time: string }
+    >
+    expect(drafts['launch:p1:']).toEqual({ value: gone, time: '2026-01-02T03:04:05.000Z' })
+  })
+
+  it('実験の設定を読めないときは, 実験の中身を選んだ下書きを戻さず理由を出して残す', async () => {
+    stubApi()
+    const fromRun = { script: 'train.py', configPath: 'run:', text: 'y: 2\n' }
+    window.localStorage.setItem(
+      'ml-dashboard:drafts',
+      JSON.stringify({ 'launch:p1:r1': { value: fromRun, time: new Date().toISOString() } }),
+    )
+    renderStage('/train/projects/p1/launch?run=r1')
+    expect(await screen.findByText(/実験 r1 の設定を読めません\. 書き換えたか/)).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: '下書きの中身' })).toHaveValue('y: 2\n')
+    const drafts = () =>
+      JSON.parse(window.localStorage.getItem('ml-dashboard:drafts') ?? '{}') as Record<
+        string,
+        unknown
+      >
+    await new Promise((resolve) => setTimeout(resolve, 1200))
+    expect(drafts()['launch:p1:r1']).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: '下書きを捨てる' }))
+    expect(drafts()['launch:p1:r1']).toBeUndefined()
+  })
+
   it('殻が問題の設定を替えたときも待たずに書く', async () => {
     const view = await editLaunch({ project: 'sales' })
     expect(launchDraft()).toBeUndefined()
