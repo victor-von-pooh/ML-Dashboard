@@ -14,6 +14,8 @@ from ml_dashboard.core.environment import EnvironmentJobs
 from ml_dashboard.core.jobs import JobManager
 from ml_dashboard.core.requirements import REPORT_CACHE, REPORT_MARK
 
+from conftest import api_app
+
 # ML-Found と段階のライブラリの pip の指定
 FOUND = "ml-found @ git+https://github.com/victor-von-pooh/ML-Found.git"
 EDA = "ml-eda[parquet] @ git+https://github.com/victor-von-pooh/ML-EDA.git"
@@ -483,7 +485,7 @@ def test_interrupted_job(client: TestClient, project_dir: Path) -> None:
     None
     """
     project_id = register(client, project_dir)
-    jobs = client.app.state.environments  # type: ignore[attr-defined]
+    jobs = api_app(client).state.environments
     directory = jobs.job_dir(project_id)
     directory.mkdir(parents=True)
     (directory / "job.json").write_text(json.dumps({
@@ -834,7 +836,7 @@ def test_launch_lock_shared(
     readiness = client.get(f"/api/projects/{project_id}/readiness").json()
 
     # 学習の一覧を読む間, 共有のロックを持っていること
-    environments = client.app.state.environments  # type: ignore[attr-defined]
+    environments = api_app(client).state.environments
     held: list[bool] = []
     stub = LockProbe(environments.launch_lock, project_id, held)
     monkeypatch.setattr(JobManager, "list_jobs", stub.list_jobs)

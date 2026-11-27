@@ -8,7 +8,7 @@ from ml_dashboard.api.routes import (
 )
 from ml_dashboard.core.notes import NoteStore, RunNote
 
-router = APIRouter(prefix="/api")
+router = APIRouter()
 
 
 def get_notes(request: Request) -> NoteStore:

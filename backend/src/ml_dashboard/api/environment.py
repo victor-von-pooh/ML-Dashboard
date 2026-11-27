@@ -9,7 +9,7 @@ from ml_dashboard.api.routes import NOT_FOUND, get_project
 from ml_dashboard.core.environment import EnvironmentJobs, check_readiness
 from ml_dashboard.core.models import EnvironmentJob, ProjectReadiness
 
-router = APIRouter(prefix="/api")
+router = APIRouter()
 
 # 環境のジョブを始められない場合の応答
 CONFLICT: dict[int | str, dict[str, str]] = {

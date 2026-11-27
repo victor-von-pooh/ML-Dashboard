@@ -41,8 +41,7 @@ def write_problem(
 
 
 def test_recorded_projects(
-    client: TestClient, project_dir: Path, tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch
+    client: TestClient, project_dir: Path, tmp_path: Path
 ) -> None:
     """
     問題の設定に記録された, 今あり登録していないプロジェクトだけを, 新しい
@@ -55,9 +54,8 @@ def test_recorded_projects(
     project_dir: Path
         プロジェクトのディレクトリ
     tmp_path: Path
-        pytest が用意する一時ディレクトリ
-    monkeypatch: pytest.MonkeyPatch
-        環境変数の差し替え
+        pytest が用意する一時ディレクトリ (ML-Pathfinder の置き場は
+        conftest の pathfinder_home で, この下の pathfinder)
 
     Returns
     ----------
@@ -65,7 +63,6 @@ def test_recorded_projects(
     """
     # 置き場が無ければ空
     home = tmp_path / "pathfinder"
-    monkeypatch.setenv("ML_PATHFINDER_HOME", str(home))
     url = "/api/problems/projects"
     response = client.get(url)
     assert response.status_code == 200, response.text
@@ -117,9 +114,7 @@ def test_recorded_projects(
     assert client.get(url).json()["projects"] == []
 
 
-def test_problem_trainings(
-    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_problem_trainings(client: TestClient, tmp_path: Path) -> None:
     """
     問題の設定ごとの学習で監視する指標と向きを ML-Quest の受け渡しから
     受け取り, 渡せないものは理由と一緒に新しい順に並べることを確かめる
@@ -130,9 +125,8 @@ def test_problem_trainings(
     client: TestClient
         API を呼ぶクライアント
     tmp_path: Path
-        pytest が用意する一時ディレクトリ
-    monkeypatch: pytest.MonkeyPatch
-        環境変数の差し替え
+        pytest が用意する一時ディレクトリ (ML-Pathfinder の置き場は
+        conftest の pathfinder_home で, この下の pathfinder)
 
     Returns
     ----------
@@ -141,7 +135,6 @@ def test_problem_trainings(
     # 置き場が無ければ空
     quest = pytest.importorskip("ml_quest")
     home = tmp_path / "pathfinder"
-    monkeypatch.setenv("ML_PATHFINDER_HOME", str(home))
     url = "/api/problems/training"
     response = client.get(url)
     assert response.status_code == 200, response.text
@@ -198,7 +191,7 @@ def test_problem_trainings(
 
 
 def test_problem_trainings_without_quest(
-    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """
     ML-Quest が無いか古い場合は 501 で入れ方を案内し, 書き出した
@@ -208,17 +201,14 @@ def test_problem_trainings_without_quest(
     ----------
     client: TestClient
         API を呼ぶクライアント
-    tmp_path: Path
-        pytest が用意する一時ディレクトリ
     monkeypatch: pytest.MonkeyPatch
-        モジュールと環境変数の差し替え
+        モジュールの差し替え
 
     Returns
     ----------
     None
     """
     # 入っていない (読み込みが ImportError になる)
-    monkeypatch.setenv("ML_PATHFINDER_HOME", str(tmp_path / "pathfinder"))
     monkeypatch.setitem(sys.modules, "ml_quest", None)
     response = client.get("/api/problems/training")
     assert response.status_code == 501

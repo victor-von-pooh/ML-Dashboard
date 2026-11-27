@@ -409,7 +409,9 @@ def test_token_required(tmp_path: Path) -> None:
     ----------
     None
     """
-    app = create_app(tmp_path / "home", token="secret")
+    app = create_app(
+        tmp_path / "home", token="secret", allowed_hosts=["testserver"]
+    )
     client = TestClient(app)
 
     # トークンが無いか違う場合は 401

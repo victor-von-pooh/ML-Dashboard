@@ -48,7 +48,7 @@ from ml_dashboard.core.projects import (
 )
 from ml_dashboard.core.runs import read_source
 
-router = APIRouter(prefix="/api")
+router = APIRouter()
 
 # まとめて起動する候補の数 (1 つだけなら普通の起動)
 MIN_CANDIDATES = 2
