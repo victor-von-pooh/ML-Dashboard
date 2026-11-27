@@ -173,6 +173,7 @@ export function NotePanel({ projectId, runId }: { projectId: string; runId: stri
 
   return (
     <Card
+      name="メモ"
       title={
         <span className="flex items-center gap-2">
           <StarButton

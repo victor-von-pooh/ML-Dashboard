@@ -101,9 +101,7 @@ test('一覧と比較で, テスト用の Qini の係数で実験を並べる', 
   }
   await page.getByRole('button', { name: /^比較/ }).click()
   await expect(page.getByRole('heading', { name: '実験の比較' })).toBeVisible()
-  const evaluations = page.locator('section', {
-    has: page.getByRole('heading', { name: /^テスト用の評価/ }),
-  })
+  const evaluations = page.getByRole('region', { name: /^テスト用の評価/ })
   const qini = evaluations.getByRole('columnheader', { name: /Qini の係数/ })
   await expect(qini).toBeVisible()
   await expect(evaluations.locator('[title*="1 は理想の並び"]').first()).toBeVisible()

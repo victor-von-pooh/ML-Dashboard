@@ -87,6 +87,8 @@ describe('JobCard', () => {
     )
     expect(screen.getByText('完了')).toBeInTheDocument()
     expect(screen.queryByText('後の処理中')).not.toBeInTheDocument()
+    // 殻の通しの確かめと同じく, 状態の印を役割と名前で選べる
+    expect(screen.getByRole('img', { name: '状態: 完了' })).toBeInTheDocument()
   })
 
   it('同じプロセスと確かめられない場合は, 後の処理中のプロセスに割り込まず理由を出す', () => {

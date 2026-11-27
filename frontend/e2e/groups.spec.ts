@@ -87,8 +87,8 @@ test('群の数を変えた実験を一覧と比較で並べ, 群の安定性の
   await page.getByRole('button', { name: /^比較/ }).click()
   await expect(page.getByRole('heading', { name: '実験の比較' })).toBeVisible()
   await expect(page.getByText('group.k').first()).toBeVisible()
-  const evaluations = page.locator('section', {
-    has: page.getByRole('heading', { name: 'テスト用の評価 (群分けは全ての行で数えた値)' }),
+  const evaluations = page.getByRole('region', {
+    name: 'テスト用の評価 (群分けは全ての行で数えた値)',
   })
   await expect(
     evaluations.getByRole('columnheader', { name: /調整ランド指数の平均 \(比べる相手との差\)/ }),
@@ -121,15 +121,11 @@ test('群の数を変えた実験の分析で, 群の安定性の評価の値を
   // 評価の向き (大きいほど良い) を推測し, 群の数ごとの値を良い順に並べる
   await expect(page.getByLabel('良い向き')).toHaveValue('max')
   await expect(page.getByRole('img', { name: /group\.k と .* の散布図/ })).toBeVisible()
-  const table = page
-    .locator('section', { has: page.getByRole('heading', { name: '値ごとの結果' }) })
-    .getByRole('table')
+  const table = page.getByRole('region', { name: '値ごとの結果' }).getByRole('table')
   await expect(table.getByRole('row')).toHaveCount(3)
   await expect(table.getByRole('row').nth(1)).toContainText('3')
   await expect(table.getByRole('row').nth(1)).toContainText('1')
-  await expect(
-    page.locator('section', {
-      has: page.getByRole('heading', { name: '結果への影響が大きい項目' }),
-    }),
-  ).toContainText('group.k')
+  await expect(page.getByRole('region', { name: '結果への影響が大きい項目' })).toContainText(
+    'group.k',
+  )
 })

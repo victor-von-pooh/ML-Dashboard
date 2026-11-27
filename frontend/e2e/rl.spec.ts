@@ -170,12 +170,12 @@ test('足りない追加の依存のカードを見て, 学習の開始が止ま
   await expect(page.getByRole('button', { name: '学習を開始' })).toBeDisabled()
 
   // experiment の config で requires を空にすれば開始できる
-  await page.getByLabel('config の中身').fill('requires: []\n')
+  await page.getByRole('textbox', { name: 'config の中身' }).fill('requires: []\n')
   await expect(page.getByRole('button', { name: '学習を開始' })).toBeEnabled()
   await expect(rl).toHaveCount(0)
 
   // 戻すと再び止まり, 確かめのボタンも次の一手を誤りとして出す
-  await page.getByLabel('config の中身').fill('requires: [rl]\n')
+  await page.getByRole('textbox', { name: 'config の中身' }).fill('requires: [rl]\n')
   await expect(page.getByRole('button', { name: '学習を開始' })).toBeDisabled()
   await page.getByRole('button', { name: 'ML-Found で config を確かめる' }).click()
   await expect(page.getByRole('alert').filter({ hasText: 'pip install' })).toBeVisible()

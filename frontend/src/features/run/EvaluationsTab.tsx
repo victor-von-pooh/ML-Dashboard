@@ -641,6 +641,7 @@ export function EvaluationsTab({
       {evaluations.map((evaluation) => (
         <Card
           key={evaluation.name}
+          landmark={false}
           className={clsx(evaluation.guard && 'border-2 border-accent!')}
           title={
             <span className="flex items-center gap-2">

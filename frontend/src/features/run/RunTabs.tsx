@@ -311,7 +311,7 @@ export function EnvTab({ run, projectId }: { run: RunDetail; projectId: string }
           <p className="text-sm text-ink-3">ログに環境の情報がありません.</p>
         )}
         {run.env.map((section) => (
-          <Card key={section.title} title={section.title} padded={false}>
+          <Card key={section.title} title={section.title} padded={false} landmark={false}>
             <KeyValueTable rows={Object.entries(section.items)} />
           </Card>
         ))}

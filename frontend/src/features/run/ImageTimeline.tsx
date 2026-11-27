@@ -63,6 +63,7 @@ function SeriesViewer({
 
   return (
     <Card
+      landmark={false}
       title={<span className="font-mono">{title}</span>}
       actions={
         <span className="tabular text-sm font-semibold text-ink">{stepLabel(frame.step)}</span>

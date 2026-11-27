@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import {
   useEffect,
+  useId,
   useRef,
   type ButtonHTMLAttributes,
   type KeyboardEvent,
@@ -22,21 +23,37 @@ import {
 import { directionLabel, metricNote, type ColumnDirection } from '../lib/metrics'
 import type { JobStatus } from '../lib/progress'
 
+/**
+ * 枠で囲んだ欄. 見出し (title) を持つときは, 見出しを名前にした区域 (region) として
+ * 読み上げる (欄を見出しの名前で探せるように). 見出しの無い欄は名前を持たない.
+ * 見出しにボタンなどを含むときは name で区域の名前を渡す. 指標, 評価, 見本, 画像ごとの
+ * ように数の決まらない欄は landmark={false} で区域にしない (区域が並び過ぎないように)
+ */
 export function Card({
   title,
   actions,
   children,
   className,
   padded = true,
+  name,
+  landmark = true,
 }: {
   title?: ReactNode
   actions?: ReactNode
   children: ReactNode
   className?: string
   padded?: boolean
+  /** 区域の名前 (省くと見出しを名前にする) */
+  name?: string
+  /** 区域 (region) にするか. false なら見出しは h2 のままで名前を持たない */
+  landmark?: boolean
 }) {
+  const titleId = useId()
+  const region = landmark && Boolean(name || title)
   return (
     <section
+      aria-label={region && name ? name : undefined}
+      aria-labelledby={region && !name ? titleId : undefined}
       className={clsx(
         'rounded-xl border border-line bg-surface shadow-sm shadow-black/[0.03]',
         className,
@@ -44,7 +61,9 @@ export function Card({
     >
       {(title || actions) && (
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-2.5">
-          <h2 className="text-sm font-semibold text-ink">{title}</h2>
+          <h2 id={titleId} className="text-sm font-semibold text-ink">
+            {title}
+          </h2>
           {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
         </header>
       )}
@@ -106,11 +125,17 @@ const STATUS_HINT: Record<JobStatus, string> = {
   unknown: '途中で止まったか, 結果が残っていません',
 }
 
-/** 実験とジョブの状態. 色だけに頼らずアイコンと文字も付ける */
+/**
+ * 実験とジョブの状態. 色だけに頼らずアイコンと文字も付ける. 「状態: 完了」を名前にした
+ * 印 (img) とし, 名前を 1 度だけ読み上げる. 変わっても知らせない (live にしない. 一覧の
+ * 行ごとに出すので, 知らせると重なるため)
+ */
 export function StatusBadge({ status }: { status: JobStatus }) {
   const { label, icon: Icon, className } = STATUS[status]
   return (
     <span
+      role="img"
+      aria-label={`状態: ${label}`}
       title={STATUS_HINT[status]}
       className={clsx(
         'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap',
