@@ -283,6 +283,18 @@ def test_problem_project(
         body = client.get(f"/api/problems/{key}/project").json()
         assert body["project_path"] is None and body["project_id"] is None
         assert word in body["reason"], body
+    # 記録が無くても名前は problem.yaml の name
+    draft = client.get("/api/problems/draft/project").json()
+    assert draft["problem"] == "下書き"
+
+    # 置き場の外を指すリンクは読まない
+    outside = tmp_path / "outside"
+    write_problem(outside, "linked", {
+        "format_version": 2, "name": "外",
+        "project": {"path": str(project_dir)}
+    }, 0)
+    (home / "problems" / "linked").symlink_to(outside / "problems" / "linked")
+    assert client.get("/api/problems/linked/project").status_code == 404
 
     # 無い識別子と置き場の外を指す識別子は 404
     (home / "outside.yaml").write_text("format_version: 2\n")

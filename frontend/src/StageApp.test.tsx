@@ -50,6 +50,14 @@ const PROBLEMS: Record<string, ProblemProject> = {
     project_id: null,
     reason: null,
   },
+  older: {
+    id: 'older',
+    problem: '同じプロジェクトの古い課題',
+    problem_path: '/home/user/.ml-pathfinder/problems/older/problem.yaml',
+    project_path: '/work/fresh',
+    project_id: null,
+    reason: null,
+  },
   draft: {
     id: 'draft',
     problem: '書きかけの課題',
@@ -77,7 +85,7 @@ const RECORDED: RecordedProjects = {
 }
 
 /** API の頭 `/api/train` の下だけに答える fetch (他の場所を呼べば 404) */
-function stubApi(base = '/api/train') {
+function stubApi(base = '/api/train', jobs?: () => Promise<Response>) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
     const method = init?.method ?? 'GET'
@@ -96,6 +104,7 @@ function stubApi(base = '/api/train') {
     if (path === '/projects/p1/validate')
       return Response.json({ ok: true, error: null, diff: {}, monitor_in_default: true })
     if (path === '/projects/p1/model-specs') return Response.json({ specs: [] })
+    if (path === '/projects/p1/jobs' && method === 'POST' && jobs) return jobs()
     if (path === '/projects/p1/runs' || path === '/jobs' || path === '/batches')
       return Response.json([])
     if (path === '/registry') return Response.json({ optimizers: [], schedulers: [] })
@@ -327,6 +336,18 @@ describe('殻で選んだ問題の設定', () => {
     expect(onProjectChange).not.toHaveBeenCalled()
   })
 
+  it('殻で選んだ問題の設定も同じプロジェクトを記録していれば, 殻の選びを移さない', async () => {
+    stubApi()
+    const { onProjectChange } = renderStage('/train', { project: 'older' })
+    await screen.findByText('同じプロジェクトの古い課題')
+    fireEvent.click((await screen.findAllByRole('button', { name: 'プロジェクトを追加' }))[0]!)
+    fireEvent.click(await screen.findByRole('button', { name: 'fresh を登録', hidden: true }))
+    await waitFor(() =>
+      expect(screen.getByText(/を登録しました/, { selector: 'p' })).toBeInTheDocument(),
+    )
+    expect(onProjectChange).not.toHaveBeenCalled()
+  })
+
   it('殻が選び直したらプロジェクトの画面に移し, 知らせた値が返ってきたときは移さない', async () => {
     stubApi()
     const view = renderStage('/train/jobs', { project: 'sales' })
@@ -372,8 +393,8 @@ describe('部品の範囲の外のキー', () => {
 
 describe('外したときの下書き', () => {
   /** 学習の起動の画面を開き, config の中身を書き換える */
-  async function editLaunch(props: Partial<StageAppProps> = {}) {
-    const fetchMock = stubApi()
+  async function editLaunch(props: Partial<StageAppProps> = {}, jobs?: () => Promise<Response>) {
+    const fetchMock = stubApi('/api/train', jobs)
     const view = renderStage('/train/projects/p1/launch', props)
     const editor = await screen.findByLabelText('config の中身')
     await waitFor(() => expect(editor).toHaveValue(CONFIG_TEXT))
@@ -422,5 +443,25 @@ describe('外したときの下書き', () => {
     await waitFor(() => expect(launchDraft()).toBeDefined(), { timeout: 3000 })
     fireEvent.change(editor, { target: { value: CONFIG_TEXT } })
     await waitFor(() => expect(launchDraft()).toBeUndefined())
+  })
+
+  it('起動を押した時点で下書きを除け, 応答の前に外されても書かない', async () => {
+    const view = await editLaunch({}, () => new Promise<Response>(() => {}))
+    await waitFor(() => expect(launchDraft()).toBeDefined(), { timeout: 3000 })
+    const start = screen.getByRole('button', { name: '学習を開始' })
+    await waitFor(() => expect(start).toBeEnabled())
+    fireEvent.click(start)
+    expect(launchDraft()).toBeUndefined()
+    view.unmount()
+    expect(launchDraft()).toBeUndefined()
+  })
+
+  it('起動できなかったら下書きを書き戻す', async () => {
+    await editLaunch({}, async () => Response.json({ detail: '起動しません' }, { status: 400 }))
+    const start = screen.getByRole('button', { name: '学習を開始' })
+    await waitFor(() => expect(start).toBeEnabled())
+    fireEvent.click(start)
+    expect(await screen.findByText('起動しません')).toBeInTheDocument()
+    expect(launchDraft()?.value.text).toBe('trainer:\n  epochs: 9\n')
   })
 })

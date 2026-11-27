@@ -3,7 +3,7 @@ import { ClipboardList, FolderSearch, Plus, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 
 import { useApi, type ProjectCandidate, type RecordedProject } from '../../api/client'
-import { keys, useRecordedProjects, useScanProjects } from '../../api/hooks'
+import { keys, useProblemProject, useRecordedProjects, useScanProjects } from '../../api/hooks'
 import { Button, ErrorBox, Spinner } from '../../components/ui'
 import { problemIdOf, useStage } from '../../lib/stage'
 
@@ -26,6 +26,8 @@ function RecordedProjects({
   const client = useQueryClient()
   const api = useApi()
   const stage = useStage()
+  // 殻で選んだ問題の設定が記録したプロジェクト (同じプロジェクトなら選びを移さないため)
+  const chosen = useProblemProject(stage.project)
   const recorded = useRecordedProjects(open)
   const titleId = useId()
   const [added, setAdded] = useState<string | null>(null)
@@ -37,9 +39,13 @@ function RecordedProjects({
     },
     onSuccess: (project, item) => {
       setAdded(project.name)
-      // 置き場の問題の設定から登録したので, 殻の選びをその問題の設定にする (同じなら知らせない)
+      // 置き場の問題の設定から登録したので, 殻の選びをその問題の設定にする. 同じ識別子と,
+      // 殻で選んだ問題の設定も同じプロジェクトを記録している場合は知らせない (一覧は同じ
+      // プロジェクトを記録した問題の設定のうち新しい 1 件だけを出すので, 殻の選びを優先する)
       const problem = problemIdOf(item.problem_path)
-      if (problem !== null && problem !== stage.project) stage.onProjectChange(problem)
+      if (problem === null || problem === stage.project) return
+      if (stage.project !== null && chosen.data?.project_path === item.path) return
+      stage.onProjectChange(problem)
     },
     onSettled: async () => {
       await Promise.all([

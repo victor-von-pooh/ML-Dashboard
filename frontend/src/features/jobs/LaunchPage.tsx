@@ -33,7 +33,7 @@ import { describeMissing } from '../../lib/requirements'
 import { deleteYamlValue, getYamlValue, setYamlValue } from '../../lib/yamlEdit'
 import { chosenCandidates } from '../../lib/batches'
 import { configForScript } from '../../lib/scripts'
-import { readDraft, useDraftWriter } from '../../lib/draft'
+import { readDraft, useDraftWriter, writeDraft } from '../../lib/draft'
 import { useStage } from '../../lib/stage'
 import { FirstUseNotice, RequirementCard } from '../requirements/RequirementCard'
 import { ActiveBatchNotice, CandidatePicker, MIN_CANDIDATES } from './CandidatePicker'
@@ -304,30 +304,43 @@ function LaunchForm({
     return false
   }
 
-  const launch = () => {
+  // 外されたか (外された後の応答で, 殻の経路を動かさないため)
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+  // 起動を押した時点で下書きを除け (応答の前に外されても, 起動した中身を書きかけとして
+  // 戻さないため), 起動できなかったら書き戻す. 外された後の応答でも書き戻せるように,
+  // 呼び出しごとの callback でなく promise で待つ
+  const startWith = <T,>(run: () => Promise<T>, done: (result: T) => void) => {
     if (formInvalid()) return
-    create.mutate(launchBody, {
-      onSuccess: (job) => {
-        // 起動した書き換えは下書きに残さない
-        discardDraft()
-        void navigate(`/jobs/${job.id}`)
+    const kept = edited && !untouched && configPath !== null ? { script, configPath, text } : null
+    discardDraft()
+    run().then(
+      (result) => {
+        if (mounted.current) done(result)
       },
-    })
-  }
-
-  // 選んだ候補を, 同じスクリプトと config で順に学習する
-  const launchCandidates = () => {
-    if (formInvalid()) return
-    createBatch.mutate(
-      { ...launchBody, specs: chosenSpecs },
-      {
-        onSuccess: () => {
-          discardDraft()
-          void navigate('/jobs')
-        },
+      () => {
+        if (kept !== null) writeDraft(draftPlace, kept)
       },
     )
   }
+
+  const launch = () =>
+    startWith(
+      () => create.mutateAsync(launchBody),
+      (job) => void navigate(`/jobs/${job.id}`),
+    )
+
+  // 選んだ候補を, 同じスクリプトと config で順に学習する
+  const launchCandidates = () =>
+    startWith(
+      () => createBatch.mutateAsync({ ...launchBody, specs: chosenSpecs }),
+      () => void navigate('/jobs'),
+    )
   const activeBatch = batches.data?.find(
     (batch) => batch.project_id === projectId && !batch.finished,
   )
