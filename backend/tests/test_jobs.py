@@ -524,6 +524,15 @@ def test_stalled_run_with_reused_pid(
         now = [1000.0]
         manager.clock = lambda: now[0]
         stall = core_jobs.JOB_STALL_SEC
+        gap = core_jobs.JOB_STALL_GAP_SEC
+
+        def keep_reading(job: core_jobs.Job, seconds: float) -> list[bool]:
+            # 画面が読み直し続ける間 (1 分ごと) の, 終わったと読んだか
+            results = []
+            for _ in range(int(seconds // 60)):
+                now[0] += 60
+                results.append(manager.poll(job, run_dir)[0])
+            return results
 
         # pid のプロセスはジョブの開始の 1 時間後に始まったと読む
         monkeypatch.setattr(
@@ -534,34 +543,49 @@ def test_stalled_run_with_reused_pid(
         # 記録を書き続ける本物は, 何時間たっても動いたまま
         real = job_of("0123456789ab")
         assert core_jobs.same_process(real) is False
+        assert manager.poll(real, run_dir) == (False, None)
         for step in range(1, 5):
-            assert manager.poll(real, run_dir) == (False, None)
-            now[0] += stall - 1
+            assert not any(keep_reading(real, stall - 60))
             write_live(1, step + 1)
             assert manager.poll(real, run_dir) == (False, None)
-            now[0] += stall - 1
         # 書き直した後は, そこから数え直す
-        assert manager.poll(real, run_dir) == (False, None)
-        now[0] += stall
-        assert manager.poll(real, run_dir) == (True, None)
+        assert not any(keep_reading(real, stall - 60))
+        assert keep_reading(real, 60) == [True]
 
         # train.log に書き足しただけ (i-node が同じ) でも数え直す
-        assert manager.poll(real, run_dir) == (True, None)
         with open(run_dir / "train.log", "a") as log:
             log.write("epoch 2\n")
         assert manager.poll(real, run_dir) == (False, None)
-        now[0] += stall - 1
-        assert manager.poll(real, run_dir) == (False, None)
+        assert not any(keep_reading(real, stall - 60))
 
-        # 死んだ学習 (記録が変わらない) は, 幅の手前までは動いたまま
+        # 死んだ学習 (記録が変わらない) は, 読み直し続けて 1 時間で終わる
         dead = job_of("123456789abc")
         assert manager.poll(dead, run_dir) == (False, None)
-        now[0] += stall - 1
-        assert manager.poll(dead, run_dir) == (False, None)
-        now[0] += 1
-        assert manager.poll(dead, run_dir) == (True, None)
+        assert not any(keep_reading(dead, stall - 60))
+        assert keep_reading(dead, 60) == [True]
         # 終わったものにしても割り込まない
         assert not manager.owns(dead, run_dir)
+
+        # 読み直しの間が空いた場合は, 再開して最初に読んだ 1 回で決めず
+        # 数え直す (一時停止から再開した本物が記録を書く間を残すため)
+        paused = job_of("456789abcdef")
+        assert manager.poll(paused, run_dir) == (False, None)
+        now[0] += stall * 3
+        assert manager.poll(paused, run_dir) == (False, None)
+        assert not any(keep_reading(paused, gap))
+        assert not any(keep_reading(paused, stall / 2))
+        now[0] += gap
+        assert manager.poll(paused, run_dir) == (False, None)
+        assert not any(keep_reading(paused, stall - 60))
+        assert keep_reading(paused, 60) == [True]
+        # 幅のちょうど手前の間なら数え続ける
+        edge = job_of("56789abcdef0")
+        assert manager.poll(edge, run_dir) == (False, None)
+        results = []
+        while now[0] < 1e9 and not any(results):
+            now[0] += gap - 1
+            results.append(manager.poll(edge, run_dir)[0])
+        assert len(results) == -(-stall // (gap - 1))
 
         # 使い回しと読めない (同じプロセスと読む, 起動の時刻を読めない)
         # ジョブは, 記録が止まっても終わったものにしない
@@ -572,9 +596,8 @@ def test_stalled_run_with_reused_pid(
                     lambda pid, started=started: started
                 )
                 job = job_of("23456789abcd")
-                for _ in range(3):
-                    assert manager.poll(job, run_dir) == (False, None)
-                    now[0] += stall * 2
+                assert manager.poll(job, run_dir) == (False, None)
+                assert not any(keep_reading(job, stall * 2))
 
         # 一覧の読み直しでも終わったものにし, 終了コードは分からないまま
         # (プロセスにはシグナルを送らない)
@@ -598,8 +621,12 @@ def test_stalled_run_with_reused_pid(
             assert stopping.status == "running"
             assert stopping.force_count == 0
         assert process.poll() is None
-        now[0] += stall
-        refreshed = manager.get(stored.id, {"p": project})
+        for _ in range(int(stall // 60)):
+            now[0] += 60
+            refreshed = manager.get(stored.id, {"p": project})
+            assert refreshed is not None
+            if refreshed.status == "finished":
+                break
         assert refreshed is not None
         assert refreshed.status == "finished"
         assert refreshed.return_code is None

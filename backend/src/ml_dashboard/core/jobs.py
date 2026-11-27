@@ -57,6 +57,10 @@ JOB_START_SLACK_SEC = 60.0
 # ので, 本物は 1 バッチなどの 1 つの処理がこれを超えない限り書く)
 JOB_STALL_SEC = 3600.0
 
+# 学習の記録が止まったかを数える間に, 読み直しの間が空いたら数え直す秒数
+# (プロセスや VM の一時停止の後, 再開して最初に読んだ 1 回で決めないため)
+JOB_STALL_GAP_SEC = 300.0
+
 # 学習中に ML-Found が書き直す実験の記録 (どれかが変われば学習は生きている)
 LIVE_FILES = ("progress.json", "run.json", "train.log")
 
@@ -236,9 +240,9 @@ class JobManager:
         self.lock = threading.RLock()
 
         # pid を使い回したと読んだ学習中のジョブごとの, 最後に変わったと
-        # 見た実験の記録と, そのときの単調な時計 (休止と時計の合わせ直しで
-        # 進まない. 起動し直すと比べられないのでメモリだけに保持)
-        self.stalls: dict[str, tuple[RunStamp, float]] = {}
+        # 見た実験の記録, そのときと前に読んだときの単調な時計 (休止と時計の
+        # 合わせ直しで進まない. 起動し直すと比べられないのでメモリだけに保持)
+        self.stalls: dict[str, tuple[RunStamp, float, float]] = {}
         self.clock = time.monotonic
 
     def job_dir(self, job_id: str) -> Path:
@@ -527,7 +531,9 @@ class JobManager:
         確かめる関数
 
         記録の時刻の値は時計に頼るので比べず, ダッシュボードの単調な時計で
-        記録が変わらない間の長さを測る
+        記録が変わらない間の長さを測る. 読み直しの間が JOB_STALL_GAP_SEC
+        以上空いた場合は, 一時停止から再開した直後の 1 回で決めないように
+        数え直す
 
         Parameters
         ----------
@@ -540,15 +546,20 @@ class JobManager:
         ----------
         stalled: bool
             学習中に ML-Found が書き直す記録が, どれも変わらないまま
-            JOB_STALL_SEC 以上たったかどうか. 初めて見た場合と, 前に見た
-            ときから変わった場合は, そこから数え直して False
+            JOB_STALL_SEC 以上たったかどうか. 初めて見た場合, 前に見た
+            ときから変わった場合, 前に読んでから JOB_STALL_GAP_SEC 以上
+            空いた場合は, そこから数え直して False
         """
         stamp = run_stamp(run_dir)
         now = self.clock()
         seen = self.stalls.get(job.id)
-        if seen is None or seen[0] != stamp:
-            self.stalls[job.id] = (stamp, now)
+        if (
+            seen is None or seen[0] != stamp
+            or now - seen[2] >= JOB_STALL_GAP_SEC
+        ):
+            self.stalls[job.id] = (stamp, now, now)
             return False
+        self.stalls[job.id] = (stamp, seen[1], now)
         stalled = now - seen[1] >= JOB_STALL_SEC
 
         return stalled
