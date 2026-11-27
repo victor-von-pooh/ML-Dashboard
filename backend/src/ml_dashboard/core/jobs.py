@@ -113,6 +113,10 @@ class Job:
     # 起動の前の確認に使った default の config (プロジェクトからの相対パス).
     # None はスクリプトから選んだもの
     default_config: Optional[str] = None
+    # 起動の時刻から pid の使い回しと一度でも読んだか (読んだ後は, 起動の
+    # 時刻を読めないときにシグナルを送らない. 起動し直しても残すので記録に
+    # 置き, 消さない)
+    pid_reused: bool = False
 
 
 def now_iso() -> str:
@@ -514,7 +518,7 @@ class JobManager:
         # が実行中なら, 学習の記録が止まったと分かるまで実行中のまま (時計の
         # 合わせ直しで ps の時刻がずれた本物を終わったものにすると戻せない
         # ため). 確かめられない場合も実行中のまま
-        if same_process(job) is not False:
+        if self.check_process(job) is not False:
             self.stalls.pop(job.id, None)
             return False, None
         status = read_json(run_dir / "run.json") if run_dir else {}
@@ -524,6 +528,35 @@ class JobManager:
             return True, None
 
         return False, None
+
+    def check_process(self, job: Job) -> Optional[bool]:
+        """
+        ジョブの pid のプロセスが, ジョブが起動したプロセスかを確かめ,
+        使い回しと読んだらジョブに印を付ける関数
+
+        印は消さない. pid は本物が終わった後にしか使い回されないので,
+        使い回しと読んだ後に本物へ戻ることは無いため (同じプロセスと読めた
+        ときは印に関わらず送れるので, 消さなくても本物を止められる)
+
+        印を書き換えるのはロックの中の読み直し (poll. refresh が保存し,
+        中断も中で読み直す) だけ. owns は印を書き換えず判定だけをする
+
+        Parameters
+        ----------
+        job: Job
+            ジョブ (使い回しと読んだら pid_reused を True にする. 保存は
+            呼ぶ側が行う)
+
+        Returns
+        ----------
+        same: Optional[bool]
+            same_process の結果
+        """
+        same = same_process(job)
+        if same is False:
+            job.pid_reused = True
+
+        return same
 
     def stalled(self, job: Job, run_dir: Path) -> bool:
         """
@@ -736,9 +769,8 @@ class JobManager:
         owned: bool
             このサーバーが起動したプロセスか, 起動し直した後でも実験の
             run.json の pid とホスト名がジョブと同じで, プロセスが動いていて,
-            次のどちらかかどうか. run.json が実行中で, 別のプロセスと
-            分からない (確かめられない場合も含む). run.json が完了 (後の
-            処理中) で, 同じプロセスと確かめられた
+            次のどちらかかどうか. 同じプロセスと確かめられた. run.json が
+            実行中で, 確かめられず, 前に使い回しと読んでいない
         """
         if job.id in self.processes:
             return True
@@ -757,9 +789,14 @@ class JobManager:
 
         # 別のプロセスと分かれば送らない. 確かめられない場合は, 実行中は
         # 学習のプロセスが居る見込みが高いので送り, 後の処理中は run.json
-        # だけでは使い回しと見分けられないので送らない決まり
+        # だけでは使い回しと見分けられないので送らない決まり. ただし前に
+        # 使い回しと読んだジョブは, 一度の読み損ないで送らないため送らない.
+        # 印は書き換えない (ロックの外の画面の情報からも呼ぶため. 印を付ける
+        # のはロックの中の poll)
         same = same_process(job)
-        owned = same is True or (state == "running" and same is None)
+        owned = same is True or (
+            state == "running" and same is None and not job.pid_reused
+        )
 
         return owned
 

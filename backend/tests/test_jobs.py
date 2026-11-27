@@ -433,15 +433,21 @@ def test_reused_pid_after_restart(
 
         # 確かめられない場合 (起動の時刻を読めない, 時刻の無い記録) は今の
         # 振る舞い. 実行中の run.json なら割り込み, 後の処理中なら割り込まない
+        # (一度も使い回しと読んでいないジョブ)
         monkeypatch.setattr(core_jobs, "process_started", lambda pid: None)
-        assert core_jobs.same_process(reused) is None
-        assert manager.poll(reused) == (False, None)
-        assert not manager.owns(reused, run_dir)
+        unknown = job_at(earlier.isoformat(timespec="seconds"))
+        assert core_jobs.same_process(unknown) is None
+        assert manager.poll(unknown) == (False, None)
+        assert not manager.owns(unknown, run_dir)
         (run_dir / "run.json").write_text(json.dumps({
             "status": "running", "pid": process.pid,
             "hostname": socket.gethostname()
         }))
-        assert manager.owns(reused, run_dir)
+        assert manager.owns(unknown, run_dir)
+        assert not unknown.pid_reused
+        # 前に使い回しと読んだジョブは, 確かめられなくても割り込まない
+        assert reused.pid_reused
+        assert not manager.owns(reused, run_dir)
         monkeypatch.undo()
         assert core_jobs.same_process(job_at("2026-11-01T00:00:00")) is None
         assert core_jobs.same_process(job_at("壊れた時刻")) is None
@@ -699,6 +705,153 @@ def test_force_stop_reused_pid(
         (project_dir / "GO").touch()
         process.wait(timeout=30)
     assert process.returncode == 0
+
+
+def test_force_stop_once_reused_pid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    起動し直した後, 前に pid の使い回しと読んだ学習中のジョブは, 次に
+    起動の時刻を読めなかったときに強制の中断を押してもシグナルを送らず,
+    一度も使い回しと読んでいないジョブには今と同じく送ることを確かめる関数
+
+    使い回しと読んだ印はジョブの記録に残るので, もう一度起動し直した後
+    (新しい JobManager) でも送らない
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        pytest の差し替え
+
+    Returns
+    ----------
+    None
+    """
+    run_dir = tmp_path / "outputs" / "demo" / "2026-11-01" / "00-00-00"
+    run_dir.mkdir(parents=True)
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    created_at = core_jobs.now_iso()
+    start = datetime.fromisoformat(created_at)
+    project = core_jobs.Project(
+        id="p", name="p", path=str(project_dir),
+        python=sys.executable, created_at=created_at
+    )
+
+    # 送ったシグナルを記録 (実際には送らない)
+    sent: list[tuple[int, int]] = []
+    monkeypatch.setattr(
+        core_jobs.os, "killpg",
+        lambda pid, number: sent.append((pid, number))
+    )
+
+    # 学習中の run.json と同じ pid のプロセス
+    process = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(60)"],
+        start_new_session=True
+    )
+    try:
+        (run_dir / "run.json").write_text(json.dumps({
+            "status": "running", "pid": process.pid,
+            "hostname": socket.gethostname()
+        }))
+
+        def stored(job_id: str) -> None:
+            # 起動し直した後の記録 (このアプリが起動したプロセスを持たない)
+            job = core_jobs.Job(
+                id=job_id, project_id="p", script="train.py",
+                config="c.yaml", created_at=created_at, pid=process.pid,
+                status="running", return_code=None,
+                run_id="demo/2026-11-01/00-00-00",
+                finished_at=None, stop_requested=False
+            )
+            manager.job_dir(job_id).mkdir(parents=True)
+            manager.save(job)
+
+        def restart() -> core_jobs.JobManager:
+            # 同じ置き場の新しい JobManager (メモリに覚えたものは無い)
+            fresh = core_jobs.JobManager(tmp_path)
+            monkeypatch.setattr(
+                fresh, "find_run", lambda job, project: run_dir
+            )
+            return fresh
+
+        manager = restart()
+        reused_id, real_id = "0123456789ab", "123456789abc"
+        stored(reused_id)
+        stored(real_id)
+
+        # pid のプロセスがジョブの開始の 1 時間後に始まったと一度読む
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                core_jobs, "process_started",
+                lambda pid: start + timedelta(hours=1)
+            )
+            job = manager.get(reused_id, {"p": project})
+            assert job is not None and job.status == "running"
+            assert job.pid_reused
+        loaded = manager.load(reused_id)
+        assert loaded is not None and loaded.pid_reused
+
+        # 画面の割り込めるか (attached) は, ロックの外で印を書き換えず,
+        # 保存した印と今の起動の時刻の読みから owns と同じ結論を出す
+        for name, value in (
+            ("resolve_run_dir", lambda dirs, run_id: run_dir),
+            ("summarize_run", lambda root, path: None),
+            ("read_progress", lambda path: None)
+        ):
+            monkeypatch.setattr(jobs, name, value)
+        monkeypatch.setattr(
+            core_jobs.JobManager, "output_dirs",
+            lambda self, job, project: [run_dir.parents[2]]
+        )
+        readings: tuple[tuple[Optional[datetime], bool, bool], ...] = (
+            (start, True, True),
+            (start + timedelta(hours=1), False, False),
+            (None, False, True)
+        )
+        for started, reused_owned, real_owned in readings:
+            with monkeypatch.context() as patch:
+                patch.setattr(
+                    core_jobs, "process_started",
+                    lambda pid, started=started: started
+                )
+                for current in (manager, restart()):
+                    for job_id, owned in (
+                        (reused_id, reused_owned), (real_id, real_owned)
+                    ):
+                        job = current.load(job_id)
+                        assert job is not None
+                        before = job.pid_reused
+                        info = jobs.to_job_info(current, job, project)
+                        assert info.attached is owned
+                        assert current.owns(job, run_dir) is owned
+                        assert job.pid_reused is before
+            real = manager.load(real_id)
+            assert real is not None and not real.pid_reused
+
+        # 次は起動の時刻を読めない. 使い回しと読んだジョブには送らず,
+        # 一度も使い回しと読んでいないジョブには今と同じく送る
+        monkeypatch.setattr(core_jobs, "process_started", lambda pid: None)
+        for current in (manager, restart()):
+            for _ in range(3):
+                stopping = current.stop(reused_id, {"p": project}, force=True)
+                assert stopping is not None
+                assert stopping.status == "running"
+                assert stopping.force_count == 0
+                assert stopping.pid_reused
+        assert sent == []
+        stopping = restart().stop(real_id, {"p": project}, force=True)
+        assert stopping is not None
+        assert stopping.force_count == 1
+        assert not stopping.pid_reused
+        assert sent == [(process.pid, core_jobs.FORCE_SIGNALS[0])]
+        assert process.poll() is None
+    finally:
+        process.kill()
+        process.wait()
 
 
 def test_permission_denied_force_stop(
