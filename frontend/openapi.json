@@ -2979,6 +2979,10 @@
             "type": "boolean",
             "title": "Stop Requested"
           },
+          "attached": {
+            "type": "boolean",
+            "title": "Attached"
+          },
           "run_id": {
             "anyOf": [
               {
@@ -3047,6 +3051,7 @@
           "hostname",
           "return_code",
           "stop_requested",
+          "attached",
           "run_id",
           "run",
           "progress",

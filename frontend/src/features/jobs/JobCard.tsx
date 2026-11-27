@@ -87,6 +87,13 @@ export function JobCard({
 }) {
   const stop = useStopJob()
   const running = job.status === 'running'
+  const status = jobStatus(job)
+  // 学習を終え, スクリプトが評価や推論の一式を書き出している間
+  const finishing = status === 'finishing'
+  // 起動し直した後の後の処理中のプロセスには割り込まない. run.json が完了の後は,
+  // 同じ pid を使い回した別のプロセスと見分けられないため
+  const detached = finishing && !job.attached
+  const forceNoteId = useId()
   const run = job.run
   const rerun = useRerunJob()
   const navigate = useNavigate()
@@ -99,7 +106,7 @@ export function JobCard({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge status={jobStatus(job)} />
+            <StatusBadge status={status} />
             {/* 詳細の画面では見出しと重ならないように名前を出さない */}
             {!detail && (
               <h3 className="truncate font-semibold">
@@ -160,7 +167,8 @@ export function JobCard({
               同じ設定でもう一度
             </Button>
           )}
-          {running && (
+          {/* 学習を終えた後の処理の間は, エポックで止める要求を読む学習が無い */}
+          {running && !finishing && (
             <>
               <Button
                 icon={Square}
@@ -186,24 +194,28 @@ export function JobCard({
               >
                 エポックの途中で止める
               </Button>
-              <Button
-                variant="danger"
-                icon={OctagonX}
-                disabled={stop.isPending}
-                aria-describedby={describedBy}
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      'プロセスに割り込んで学習を止めますか? (Ctrl-C と同じ)\n今のエポックの結果は記録されません.',
-                    )
-                  ) {
-                    stop.mutate({ jobId: job.id, force: true })
-                  }
-                }}
-              >
-                すぐに止める
-              </Button>
             </>
+          )}
+          {running && (
+            <Button
+              variant="danger"
+              icon={OctagonX}
+              disabled={stop.isPending || detached}
+              aria-describedby={detached ? forceNoteId : describedBy}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    finishing
+                      ? 'プロセスに割り込んで学習の後の処理を止めますか? (Ctrl-C と同じ)\n推論の一式は残りません.'
+                      : 'プロセスに割り込んで学習を止めますか? (Ctrl-C と同じ)\n今のエポックの結果は記録されません.',
+                  )
+                ) {
+                  stop.mutate({ jobId: job.id, force: true })
+                }
+              }}
+            >
+              すぐに止める
+            </Button>
           )}
         </div>
       </div>
@@ -225,7 +237,7 @@ export function JobCard({
           <ErrorBox error={stop.error} />
         </div>
       )}
-      {running && (
+      {running && !finishing && (
         <p className="mt-2 text-xs text-ink-3">
           「エポックの区切りで止める」は今のエポックを終えて結果を保存してから止めます.
           「エポックの途中で止める」は次のバッチを終えたところで (多くは数秒以内に) 止め,
@@ -234,12 +246,27 @@ export function JobCard({
           今のエポックの結果を残しません.
         </p>
       )}
-      {running && job.progress && (
+      {finishing && (
+        <p className="mt-3 text-xs text-ink-2">
+          学習を終えました. スクリプトが学習の後の処理 (評価や推論の一式の書き出しなど)
+          をしています. プロセスが終わると「完了」になります.
+          {detached ? (
+            <span id={forceNoteId}>
+              {' '}
+              ダッシュボードを起動し直したので, 後の処理中のプロセスには割り込めません.
+              終わるのを待つか, 端末で止めてください.
+            </span>
+          ) : (
+            ' 止める場合は「すぐに止める」で, 推論の一式は残りません.'
+          )}
+        </p>
+      )}
+      {running && !finishing && job.progress && (
         <div className="mt-4">
           <ProgressBars progress={job.progress} />
         </div>
       )}
-      {running && !job.progress && (
+      {running && !finishing && !job.progress && (
         <p className="mt-3 text-xs text-ink-3">
           学習の準備中です (データの読み込みなど). 進み具合は ML-Found が progress.json
           を書き始めると表示されます.

@@ -60,4 +60,36 @@ describe('progress', () => {
     // run.json を書く前に止まった実験 (状態が分からない) は, 終了コードで判断
     expect(jobStatus({ ...job, run: { status: 'unknown' } } as unknown as JobInfo)).toBe('failed')
   })
+
+  it('学習の後の処理が終わるまで完了にしない', () => {
+    const completed = { status: 'completed' }
+    const job = {
+      status: 'running',
+      return_code: null,
+      force_count: 0,
+      run: completed,
+    } as unknown as JobInfo
+    // 実験は完了でも, プロセスが評価と推論の一式を書き出している間
+    expect(jobStatus(job)).toBe('finishing')
+    expect(jobStatus({ ...job, status: 'finished', return_code: 0 })).toBe('completed')
+    // 後の処理で止まったプロセスは, 失敗か中断
+    expect(jobStatus({ ...job, status: 'finished', return_code: 1 })).toBe('failed')
+    expect(jobStatus({ ...job, status: 'finished', return_code: -2, stop_requested: true })).toBe(
+      'stopped',
+    )
+    // 終了コードの分からない (ダッシュボードが起動していない) プロセスは実験の状態
+    expect(jobStatus({ ...job, status: 'finished' })).toBe('completed')
+    // 割り込みを送って止めたプロセスは, 終了コードが分からなくても中断
+    expect(jobStatus({ ...job, status: 'finished', stop_requested: true, force_count: 1 })).toBe(
+      'stopped',
+    )
+    // 実験が失敗か中断なら, 終了コードによらず実験の状態
+    const finished = { ...job, status: 'finished', return_code: 1 } as const
+    expect(jobStatus({ ...finished, run: { status: 'failed' } } as unknown as JobInfo)).toBe(
+      'failed',
+    )
+    expect(jobStatus({ ...finished, run: { status: 'stopped' } } as unknown as JobInfo)).toBe(
+      'stopped',
+    )
+  })
 })

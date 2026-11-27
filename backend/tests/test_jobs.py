@@ -23,6 +23,7 @@ from ml_dashboard.api.jobs import (
     describe_missing_path,
     uses_custom_classes,
 )
+from ml_dashboard.app import cookie_name, create_app
 from ml_dashboard.core.model_spec import find_model_spec_copy, run_of_copy
 from ml_dashboard.core.models import RunModelSpec
 
@@ -62,6 +63,33 @@ else:
 stop = run / "STOP"
 kind = stop.read_text().strip() if stop.exists() else ""
 print("done", status["status"], kind or "epoch", flush=True)
+'''
+
+
+# fit の終わりに完了を書き, その後に評価と推論の一式を書き出すスクリプト.
+# 一式の書き出しは, テストが置く GO を待ってから (最大 60 秒)
+BUNDLE_TRAIN = '''\
+import json, os, socket, time
+from datetime import datetime
+from pathlib import Path
+
+now = datetime.now()
+day, clock = now.strftime("%Y-%m-%d"), now.strftime("%H-%M-%S")
+run = Path("outputs/demo") / day / clock
+run.mkdir(parents=True)
+(run / "config.yaml").write_text("experiment:\\n  name: demo\\n")
+status = {
+    "status": "completed", "pid": os.getpid(),
+    "hostname": socket.gethostname(), "planned_epochs": 1
+}
+(run / "run.json").write_text(json.dumps(status))
+for _ in range(1200):
+    if Path("GO").exists():
+        break
+    time.sleep(0.05)
+(run / "evaluations").mkdir()
+(run / "inference").mkdir()
+(run / "inference" / "inference.yaml").write_text("model: {}\\n")
 '''
 
 
@@ -191,6 +219,115 @@ def test_job_lifecycle(client: TestClient, project_dir: Path) -> None:
     jobs = client.get("/api/jobs").json()
     assert [item["id"] for item in jobs] == [job_id]
 
+
+def test_job_running_after_fit(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    fit の後の推論の一式の書き出しの間, ジョブが動いたままであることを
+    確かめる関数
+
+    画面はジョブの status と実験の状態を合わせて, この間を「後の処理中」
+    とし, プロセスが終わるまで「完了」を出さない
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    (project_dir / "train.py").write_text(BUNDLE_TRAIN)
+    project_id = register(client, project_dir)
+    created = client.post(
+        f"/api/projects/{project_id}/jobs", json={"script": "train.py"}
+    )
+    assert created.status_code == 201
+    job_id = created.json()["id"]
+
+    # 実験は完了でも, 一式を書き出すまでプロセスは動いたまま
+    job = wait_for(client, job_id, "run_id", ...)
+    for _ in range(10):
+        job = client.get(f"/api/jobs/{job_id}").json()
+        assert job["run"]["status"] == "completed"
+        assert job["status"] == "running"
+        time.sleep(0.02)
+    run_dir = project_dir / "outputs" / job["run_id"]
+    assert not (run_dir / "inference" / "inference.yaml").exists()
+
+    # 一式の書き出しとプロセスの終わり
+    (project_dir / "GO").touch()
+    job = wait_for(client, job_id, "status", "finished")
+    assert job["return_code"] == 0
+    assert job["run"]["status"] == "completed"
+    assert (run_dir / "inference" / "inference.yaml").is_file()
+
+
+def test_force_stop_after_fit_restarted(
+    client: TestClient, project_dir: Path, tmp_path: Path
+) -> None:
+    """
+    起動し直した後は, 後の処理の途中のジョブに割り込まないことを確かめる
+    関数
+
+    run.json が完了の後は pid の使い回しと見分けられないので, シグナルを
+    送らず, 画面がすぐに止めるを止める値 (attached が偽) を返す
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ (client のデータの置き場の親)
+
+    Returns
+    ----------
+    None
+    """
+    (project_dir / "train.py").write_text(BUNDLE_TRAIN)
+    project_id = register(client, project_dir)
+    created = client.post(
+        f"/api/projects/{project_id}/jobs", json={"script": "train.py"}
+    )
+    job_id = created.json()["id"]
+    job = wait_for(client, job_id, "run_id", ...)
+    assert job["run"]["status"] == "completed"
+    # 起動したアプリからは割り込める
+    assert job["attached"] is True
+
+    # 同じ置き場の新しいアプリ (起動したプロセスを持たない)
+    restarted = TestClient(
+        create_app(
+            tmp_path / "home", token="test-token",
+            allowed_hosts=["testserver"]
+        ),
+        cookies={cookie_name("test-token"): "test-token"}
+    )
+    job = restarted.get(f"/api/jobs/{job_id}").json()
+    assert job["status"] == "running"
+    assert job["attached"] is False
+
+    # 強制の中断でもシグナルを送らず (送った場合だけ数える回数が 0),
+    # プロセスは動いたまま
+    stopped = restarted.post(
+        f"/api/jobs/{job_id}/stop", json={"force": True}
+    ).json()
+    assert stopped["force_count"] == 0
+    time.sleep(0.2)
+    assert restarted.get(f"/api/jobs/{job_id}").json()["status"] == "running"
+
+    # 一式を書き終えて終わる (終わりは起動した側のアプリで回収)
+    (project_dir / "GO").touch()
+    job = wait_for(client, job_id, "status", "finished")
+    assert job["return_code"] == 0
+    run_dir = project_dir / "outputs" / job["run_id"]
+    assert (run_dir / "inference" / "inference.yaml").is_file()
 
 def test_stop_within_epoch(client: TestClient, project_dir: Path) -> None:
     """

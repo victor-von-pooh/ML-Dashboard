@@ -27,12 +27,30 @@ export function estimateRemaining(progress: Progress, startEpoch = 1): number | 
   return Math.max(0, remaining)
 }
 
-/** ジョブの状態を, 実験の状態に合わせて表す */
-export function jobStatus(job: JobInfo): RunStatus {
+/**
+ * ジョブの状態の印. 実験の状態に, 学習を終えてスクリプトが後の処理
+ * (評価や推論の一式の書き出しなど) をしている間の「後の処理中」を足したもの
+ */
+export type JobStatus = RunStatus | 'finishing'
+
+/** ジョブの状態を, プロセスの生死と実験の状態を合わせて表す */
+export function jobStatus(job: JobInfo): JobStatus {
+  const runStatus = job.run?.status
+  // 実験は完了でもプロセスが動いている間は, 学習の後の処理の途中
+  // (ML-Found は fit の終わりに完了を書き, 推論の一式はその後に書き出す)
+  if (job.status === 'running' && runStatus === 'completed') return 'finishing'
+  if (job.status === 'finished' && runStatus === 'completed') {
+    // 実験は完了でも終了コードが 0 でなければ, 学習の後の処理で止まった
+    if (job.return_code != null && job.return_code !== 0) {
+      return job.stop_requested ? 'stopped' : 'failed'
+    }
+    // 終了コードの分からない (ダッシュボードが起動していない) プロセスは,
+    // 割り込みを送っていれば中断, それ以外は実験の状態に従う
+    if (job.return_code == null && job.force_count > 0) return 'stopped'
+  }
   // 終わったジョブの実験の状態が分からない (run.json を書く前に止まった)
   // 場合は, 終了コードで判断する
-  const settled =
-    job.status === 'finished' && (job.run?.status === 'unknown' || job.run?.status === 'running')
+  const settled = job.status === 'finished' && (runStatus === 'unknown' || runStatus === 'running')
   if (job.run && !settled) return job.run.status
   if (job.status === 'running') return 'running'
   if (job.stop_requested) return 'stopped'
