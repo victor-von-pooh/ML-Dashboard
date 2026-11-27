@@ -13,6 +13,7 @@ from ml_dashboard.core.models import (
     History,
     LogEntry,
     PolicyEstimate,
+    ProblemProject,
     ProblemTrainings,
     ProjectCandidate,
     ProjectDetail,
@@ -29,7 +30,11 @@ from ml_dashboard.core.policy_estimate import (
     PolicyEstimateError,
     estimate_trajectory,
 )
-from ml_dashboard.core.problems import problem_trainings, recorded_projects
+from ml_dashboard.core.problems import (
+    problem_project,
+    problem_trainings,
+    recorded_projects,
+)
 from ml_dashboard.core.projects import (
     Project,
     ProjectError,
@@ -320,6 +325,43 @@ def list_recorded_projects(request: Request) -> RecordedProjects:
     registered = {project.path for project in get_store(request).load()}
     problems_dir: Path = request.app.state.problems_dir
     result = recorded_projects(problems_dir, registered)
+
+    return result
+
+
+@router.get("/problems/{problem_id}/project", responses=NOT_FOUND)
+def read_problem_project(request: Request, problem_id: str) -> ProblemProject:
+    """
+    識別子の問題の設定と, 記録した学習のプロジェクトとの対応を返す関数
+
+    Parameters
+    ----------
+    request: Request
+        リクエスト
+    problem_id: str
+        問題の設定の識別子 (置き場の problems の直下のディレクトリの名前)
+
+    Returns
+    ----------
+    result: ProblemProject
+        問題の設定の名前と場所, 記録したプロジェクトの場所と登録の ID,
+        開けない理由
+
+    Raises
+    ----------
+    HTTPException
+        置き場に無い識別子は 404
+    """
+    # 殻で選んだ問題の設定を, 登録したプロジェクトと対応させる
+    registered = {
+        project.path: project.id for project in get_store(request).load()
+    }
+    problems_dir: Path = request.app.state.problems_dir
+    result = problem_project(problems_dir, problem_id, registered)
+    if result is None:
+        raise HTTPException(
+            404, f"問題の設定が置き場にありません: {problem_id}"
+        )
 
     return result
 

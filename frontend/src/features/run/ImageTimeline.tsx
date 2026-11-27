@@ -2,7 +2,7 @@ import clsx from 'clsx'
 import { ChevronLeft, ChevronRight, Pause, Play } from 'lucide-react'
 import { useEffect, useId, useState } from 'react'
 
-import { runFileUrl } from '../../api/client'
+import { useApi } from '../../api/client'
 import { Card } from '../../components/ui'
 import type { ImageSeries } from '../../lib/images'
 
@@ -26,6 +26,7 @@ function SeriesViewer({
   projectId: string
   runId: string
 }) {
+  const { runFileUrl } = useApi()
   const sliderId = useId()
   const last = series.frames.length - 1
   // null は最新の画像を表示 (学習中に画像が増えたら最新に追従)

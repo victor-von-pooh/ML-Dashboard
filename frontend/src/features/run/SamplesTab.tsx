@@ -3,7 +3,7 @@ import clsx from 'clsx'
 import { Info } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 
-import { api, runFileUrl, type History, type Sample, type SampleClass } from '../../api/client'
+import { useApi, type History, type Sample, type SampleClass } from '../../api/client'
 import { Card, ErrorBox, Spinner } from '../../components/ui'
 import { cssVar } from '../../lib/colors'
 import { isCsvSample } from '../../lib/csv'
@@ -121,6 +121,7 @@ function PointCloudSample({
   projectId: string
   runId: string
 }) {
+  const api = useApi()
   const drawable = sample.path.toLowerCase().endsWith('.ply') && sample.size <= MAX_CLOUD_BYTES
   // 点の読み込みと元の座標への戻しはバックエンド (ML-Found の original_coordinates)
   const cloud = useQuery({
@@ -233,6 +234,7 @@ function SampleContent({
   projectId: string
   runId: string
 }) {
+  const { runFileUrl } = useApi()
   const url = runFileUrl(projectId, runId, sample.path)
   const label = `${sample.name} の${sampleEpochLabel(sample.epoch)}`
   // CSV のファイル (表を作る課題の作った表と本物の表など) は表で見る

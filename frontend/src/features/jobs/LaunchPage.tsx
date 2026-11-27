@@ -33,6 +33,8 @@ import { describeMissing } from '../../lib/requirements'
 import { deleteYamlValue, getYamlValue, setYamlValue } from '../../lib/yamlEdit'
 import { chosenCandidates } from '../../lib/batches'
 import { configForScript } from '../../lib/scripts'
+import { readDraft, useDraftWriter } from '../../lib/draft'
+import { useStage } from '../../lib/stage'
 import { FirstUseNotice, RequirementCard } from '../requirements/RequirementCard'
 import { ActiveBatchNotice, CandidatePicker, MIN_CANDIDATES } from './CandidatePicker'
 import { ConfigForm } from './ConfigForm'
@@ -40,6 +42,24 @@ import { ConfigForm } from './ConfigForm'
 // 実験の config の中身 (プロジェクトの experiment の config の一覧に無いもの) を
 // 選んでいることを表す, config の選択の値
 const RUN_CONFIG = 'run:'
+
+/** 学習の起動の画面の下書き (保存していない書き換え) */
+interface LaunchDraft {
+  script: string | null
+  configPath: string
+  text: string
+}
+
+/** 下書きの中身の形を確かめる */
+function isLaunchDraft(value: unknown): value is LaunchDraft {
+  if (!value || typeof value !== 'object') return false
+  const item = value as Partial<LaunchDraft>
+  return (
+    (item.script === null || typeof item.script === 'string') &&
+    typeof item.configPath === 'string' &&
+    typeof item.text === 'string'
+  )
+}
 
 /**
  * 学習を起動する画面. URL に ?run=<実験の ID> があれば, その実験の起動のしかた
@@ -90,14 +110,28 @@ function LaunchForm({
   // 実験から開いた場合は, その実験のスクリプトと config を最初に選択
   const fromRun = plan !== null && plan.reason == null ? plan : null
   const runText = fromRun?.config_text ?? ''
-  const [script, setScript] = useState<string | null>(fromRun?.script ?? null)
+  // 前に開いたときの保存していない書き換え (あれば戻す. 実験の中身を選んだ下書きは, 実験の
+  // 設定を読めたときだけ)
+  const { project: chosenProblem } = useStage()
+  const draftPlace = `launch:${projectId}:${runId ?? ''}`
+  const [restored, setRestored] = useState(() => {
+    const saved = readDraft(draftPlace, isLaunchDraft)
+    return saved && (saved.value.configPath !== RUN_CONFIG || fromRun !== null) ? saved : null
+  })
+  const [script, setScript] = useState<string | null>(
+    restored ? restored.value.script : (fromRun?.script ?? null),
+  )
   const [chosenPath, setChosenPath] = useState<string | null>(
-    fromRun ? (fromRun.config_path ?? RUN_CONFIG) : null,
+    restored ? restored.value.configPath : fromRun ? (fromRun.config_path ?? RUN_CONFIG) : null,
   )
   // 書き換えた中身は, どの config を書き換えたかと組で保存
   // 実験の上書き (overrides) を重ねた中身は, 選んだ config を書き換えたものとして扱う
   const [draft, setDraft] = useState<{ path: string | null; text: string } | null>(
-    fromRun?.config_path ? { path: fromRun.config_path, text: runText } : null,
+    restored
+      ? { path: restored.value.configPath, text: restored.value.text }
+      : fromRun?.config_path
+        ? { path: fromRun.config_path, text: runText }
+        : null,
   )
   const validate = useValidateConfig(projectId)
   const create = useCreateJob(projectId)
@@ -162,6 +196,25 @@ function LaunchForm({
   const blockedByRequires = missingRequirements.length > 0 || requiresError !== null
   // 書き換えた中身の requires をまだ確かめていない間も開始しない
   const requiresPending = requires.pending
+
+  // 書き換えた中身を下書きに残す (殻の中で段階を移るなど, 確かめなしに外されても戻せるように).
+  // 元の中身を読む間と読めない間は, 書き換えたかが分からないので触らない
+  const knownEdited = usingRunConfig || config.data !== undefined
+  // 実験から開いたときに重ねた上書きのままなら, 利用者の書きかけではないので残さない
+  const untouched =
+    fromRun?.config_path != null &&
+    draft !== null &&
+    draft.path === fromRun.config_path &&
+    draft.text === runText
+  const discardDraft = useDraftWriter(
+    draftPlace,
+    edited && !untouched && configPath !== null
+      ? { script, configPath, text }
+      : knownEdited || configPath === null
+        ? null
+        : undefined,
+    chosenProblem,
+  )
 
   // 書き換えたまま再読み込みやタブを閉じる場合はブラウザで確認
   useEffect(() => {
@@ -248,7 +301,13 @@ function LaunchForm({
 
   const launch = () => {
     if (formInvalid()) return
-    create.mutate(launchBody, { onSuccess: (job) => navigate(`/jobs/${job.id}`) })
+    create.mutate(launchBody, {
+      onSuccess: (job) => {
+        // 起動した書き換えは下書きに残さない
+        discardDraft()
+        void navigate(`/jobs/${job.id}`)
+      },
+    })
   }
 
   // 選んだ候補を, 同じスクリプトと config で順に学習する
@@ -256,7 +315,12 @@ function LaunchForm({
     if (formInvalid()) return
     createBatch.mutate(
       { ...launchBody, specs: chosenSpecs },
-      { onSuccess: () => navigate('/jobs') },
+      {
+        onSuccess: () => {
+          discardDraft()
+          void navigate('/jobs')
+        },
+      },
     )
   }
   const activeBatch = batches.data?.find(
@@ -294,6 +358,36 @@ function LaunchForm({
       />
 
       {activeBatch && <ActiveBatchNotice id={activeBatchId} batch={activeBatch} />}
+
+      {restored && (
+        <div
+          role="status"
+          className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3 text-sm"
+        >
+          <Info className="size-4 shrink-0 text-accent" aria-hidden />
+          <span className="min-w-0 flex-1">
+            保存していない書き換えを下書きから戻しました (
+            <span className="tabular">{new Date(restored.time).toLocaleString()}</span>)
+          </span>
+          <Button
+            variant="secondary"
+            icon={RotateCcw}
+            onClick={() => {
+              // 選んだ config の元の中身 (実験から開いた場合は実験の設定) に戻す
+              discardDraft()
+              setDraft(
+                fromRun?.config_path && configPath === fromRun.config_path
+                  ? { path: fromRun.config_path, text: runText }
+                  : null,
+              )
+              setRestored(null)
+              validate.reset()
+            }}
+          >
+            下書きを捨てる
+          </Button>
+        </div>
+      )}
 
       {runId !== null && (
         <RunSourceNotice

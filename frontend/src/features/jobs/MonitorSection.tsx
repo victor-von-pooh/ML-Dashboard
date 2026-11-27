@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 
 import type { ProblemTraining } from '../../api/client'
 import { useProblemTrainings, useRuns } from '../../api/hooks'
+import { problemIdOf, useStage } from '../../lib/stage'
 import { deleteYamlValue, setYamlValue } from '../../lib/yamlEdit'
 
 type Config = Record<string, unknown>
@@ -43,7 +44,7 @@ function writeMonitor(text: string, monitor: string | null, mode: Mode | null): 
  * 学習で監視する指標 (trainer.monitor) と向き (trainer.mode) の欄. default の config
  * が監視する指標を書いていない (骨組みの外の) プロジェクトでは, ML-Pathfinder の問題の
  * 設定の値 (ML-Quest の受け渡しの training) を選んで入れられる. このプロジェクトを記録した
- * 問題の設定があり, まだ指標を書いていなければ, その値を初めに入れる
+ * 問題の設定があり, まだ指標を書いていなければ, その値 (殻で選んだものを先に) を初めに入れる
  */
 export function MonitorSection({
   projectId,
@@ -98,9 +99,15 @@ export function MonitorSection({
   // このプロジェクトを記録した問題の設定の値を, 開いたときに 1 回だけ入れる
   // (利用者が元に戻した後や書き換えた後には入れ直さない)
   const filled = useRef(false)
-  const recorded = problems.find(
+  // 同じプロジェクトを記録した問題の設定が複数あれば, 殻で選んだものを先にする
+  const { project: chosenProblem } = useStage()
+  const recordedBy = problems.filter(
     (item) => item.monitor && item.mode && samePath(item.project_path, projectPath),
   )
+  const recorded =
+    recordedBy.find(
+      (item) => chosenProblem !== null && problemIdOf(item.problem_path) === chosenProblem,
+    ) ?? recordedBy[0]
   useEffect(() => {
     if (filled.current || !autoFill || !offer || !recorded || monitor !== null) return
     filled.current = true

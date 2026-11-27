@@ -3,9 +3,11 @@ import { useState } from 'react'
 import { Link } from 'react-router'
 
 import type { ProjectInfo } from '../../api/client'
-import { useMoveProject, useProjects, useRemoveProject } from '../../api/hooks'
+import { useMoveProject, useProblemProject, useProjects, useRemoveProject } from '../../api/hooks'
 import { Button, EmptyState, ErrorBox, PageHeader, Spinner } from '../../components/ui'
+import { useStage } from '../../lib/stage'
 import { AddProjectDialog } from './AddProjectDialog'
+import { SelectedProblem } from './SelectedProblem'
 
 function ProjectCard({ project }: { project: ProjectInfo }) {
   const remove = useRemoveProject()
@@ -110,6 +112,16 @@ function ProjectCard({ project }: { project: ProjectInfo }) {
 export function ProjectsPage() {
   const projects = useProjects()
   const [open, setOpen] = useState(false)
+  // 殻で選んだ問題の設定 (記録したプロジェクトを開けるなら, 一覧をそれに絞る)
+  const { project: problemId } = useStage()
+  const problem = useProblemProject(problemId)
+  // 絞りを外した問題の設定 (殻が選び直したら, また絞る)
+  const [allFor, setAllFor] = useState<string | null>(null)
+  const narrowable = problemId !== null && Boolean(problem.data?.project_path)
+  const narrowed = narrowable && allFor !== problemId
+  const shown = narrowed
+    ? projects.data?.filter((item) => item.id === problem.data?.project_id)
+    : projects.data
 
   return (
     <>
@@ -122,6 +134,13 @@ export function ProjectsPage() {
           </Button>
         }
       />
+      {problemId !== null && (
+        <SelectedProblem
+          problemId={problemId}
+          narrowed={narrowable ? narrowed : null}
+          onNarrow={(narrow) => setAllFor(narrow ? null : problemId)}
+        />
+      )}
       {projects.isPending && <Spinner />}
       {projects.error && <ErrorBox error={projects.error} />}
       {projects.data?.length === 0 && (
@@ -135,9 +154,15 @@ export function ProjectsPage() {
           </Button>
         </EmptyState>
       )}
-      {projects.data && projects.data.length > 0 && (
+      {narrowed && projects.data && projects.data.length > 0 && shown?.length === 0 && (
+        <p className="text-sm text-ink-3">
+          選んだ問題の設定のプロジェクトは登録していません. 上の「登録して開く」で登録するか,
+          「全てのプロジェクトを出す」で登録したプロジェクトを見られます.
+        </p>
+      )}
+      {shown && shown.length > 0 && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {projects.data.map((project) => (
+          {shown.map((project) => (
             <ProjectCard key={project.id} project={project} />
           ))}
         </div>

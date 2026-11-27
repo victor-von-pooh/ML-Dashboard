@@ -16,6 +16,7 @@ from typing import Any, Optional
 import yaml
 
 from ml_dashboard.core.models import (
+    ProblemProject,
     ProblemTraining,
     ProblemTrainings,
     RecordedProject,
@@ -178,6 +179,79 @@ def recorded_projects(root: Path, registered: set[str]) -> RecordedProjects:
             projects.append(project)
     result = RecordedProjects(
         root=str(root), projects=projects, skipped=skipped, error=error
+    )
+
+    return result
+
+
+def problem_project(
+    root: Path, problem_id: str, registered: dict[str, str]
+) -> Optional[ProblemProject]:
+    """
+    識別子の問題の設定 1 件を読み, 記録した学習のプロジェクトと対応させる
+    関数
+
+    Parameters
+    ----------
+    root: Path
+        ML-Pathfinder の置き場の problems
+    problem_id: str
+        問題の設定の識別子 (problems の直下のディレクトリの名前)
+    registered: dict[str, str]
+        登録したプロジェクトのディレクトリから登録の ID への対応
+
+    Returns
+    ----------
+    result: Optional[ProblemProject]
+        問題の設定と記録したプロジェクトの対応, 開けない理由 (置き場に
+        無い識別子は None)
+    """
+    # 直下のディレクトリの名前 1 つだけ (置き場の外を読まないため)
+    result = None
+    if problem_id in ("", ".", "..") or any(
+        mark in problem_id for mark in ("/", "\\", "\0")
+    ):
+        return result
+    path = root / problem_id / PROBLEM_FILE
+    try:
+        if not path.is_file():
+            return result
+    except OSError:
+        return result
+
+    # 記録の無いもの, 読めないもの, 新しい版は理由だけを返す
+    record, skipped = read_record(path)
+    if record is None:
+        reason = skipped or (
+            "プロジェクトの記録がありません. ML-Pathfinder で学習の"
+            "プロジェクトを書き出してください"
+        )
+        result = ProblemProject(
+            id=problem_id, problem=problem_id, problem_path=str(path),
+            reason=reason
+        )
+        return result
+
+    # 記録の場所が今あり, ML-Found のプロジェクトのときだけ開ける
+    name = record["name"]
+    try:
+        place = Path(record["project_path"]).resolve()
+        usable = place.is_dir() and is_project_dir(place)
+    except (OSError, RuntimeError):
+        place, usable = Path(record["project_path"]), False
+    if not usable:
+        result = ProblemProject(
+            id=problem_id, problem=name, problem_path=str(path),
+            reason=(
+                f"記録したプロジェクト {place} が無いか, ML-Found の"
+                "プロジェクト (configs/default/train.yaml を持つもの) では"
+                "ありません"
+            )
+        )
+        return result
+    result = ProblemProject(
+        id=problem_id, problem=name, problem_path=str(path),
+        project_path=str(place), project_id=registered.get(str(place))
     )
 
     return result

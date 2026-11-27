@@ -2,9 +2,10 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ClipboardList, FolderSearch, Plus, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 
-import { api, type ProjectCandidate } from '../../api/client'
+import { useApi, type ProjectCandidate, type RecordedProject } from '../../api/client'
 import { keys, useRecordedProjects, useScanProjects } from '../../api/hooks'
 import { Button, ErrorBox, Spinner } from '../../components/ui'
+import { problemIdOf, useStage } from '../../lib/stage'
 
 /**
  * ML-Pathfinder の問題の設定に記録された, 登録していないプロジェクトの一覧.
@@ -23,20 +24,28 @@ function RecordedProjects({
   onBusy: (busy: boolean) => void
 }) {
   const client = useQueryClient()
+  const api = useApi()
+  const stage = useStage()
   const recorded = useRecordedProjects(open)
   const titleId = useId()
   const [added, setAdded] = useState<string | null>(null)
   const register = useMutation({
-    mutationFn: (path: string) => api.addProject({ path }),
+    mutationFn: (item: RecordedProject) => api.addProject({ path: item.path }),
     onMutate: () => {
       setAdded(null)
       onBusy(true)
     },
-    onSuccess: (project) => setAdded(project.name),
+    onSuccess: (project, item) => {
+      setAdded(project.name)
+      // 置き場の問題の設定から登録したので, 殻の選びをその問題の設定にする (同じなら知らせない)
+      const problem = problemIdOf(item.problem_path)
+      if (problem !== null && problem !== stage.project) stage.onProjectChange(problem)
+    },
     onSettled: async () => {
       await Promise.all([
         client.invalidateQueries({ queryKey: keys.projects, exact: true }),
         client.invalidateQueries({ queryKey: keys.recorded }),
+        client.invalidateQueries({ queryKey: keys.problemProjects }),
       ])
       onBusy(false)
     },
@@ -90,7 +99,7 @@ function RecordedProjects({
               </div>
               <Button
                 icon={Plus}
-                onClick={() => register.mutate(item.path)}
+                onClick={() => register.mutate(item)}
                 disabled={busy || register.isPending}
                 aria-label={`${item.name} を登録`}
               >
@@ -117,6 +126,7 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose: ()
   const inputRef = useRef<HTMLInputElement>(null)
   const titleId = useId()
   const client = useQueryClient()
+  const api = useApi()
   const scan = useScanProjects()
   const [path, setPath] = useState('')
   const [candidates, setCandidates] = useState<ProjectCandidate[]>([])
@@ -182,7 +192,10 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose: ()
         break
       }
     }
-    await client.invalidateQueries({ queryKey: keys.projects, exact: true })
+    await Promise.all([
+      client.invalidateQueries({ queryKey: keys.projects, exact: true }),
+      client.invalidateQueries({ queryKey: keys.problemProjects }),
+    ])
     setAdding(false)
     if (!failed) dialogRef.current?.close()
   }

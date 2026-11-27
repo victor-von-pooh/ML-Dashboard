@@ -2,7 +2,7 @@ import clsx from 'clsx'
 import { ChevronLeft, ChevronRight, ImageOff } from 'lucide-react'
 import { useId, useState } from 'react'
 
-import { runFileUrl } from '../../api/client'
+import { useApi } from '../../api/client'
 import { Card } from '../../components/ui'
 import { frameAtOrBefore, type SharedImageSeries } from '../../lib/images'
 
@@ -29,6 +29,7 @@ function SharedSeriesViewer({
   runs: RunColumn[]
   projectId: string
 }) {
+  const { runFileUrl } = useApi()
   const sliderId = useId()
   const last = series.steps.length - 1
   // 選んだ番号そのものを持つ (実験を外して番号の並びが変わっても, 同じエポックを表示)

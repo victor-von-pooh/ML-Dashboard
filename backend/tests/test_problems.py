@@ -221,3 +221,67 @@ def test_problem_trainings_without_quest(
     response = client.get("/api/problems/training")
     assert response.status_code == 501
     assert "handoff がありません" in response.json()["detail"]
+
+
+def test_problem_project(
+    client: TestClient, project_dir: Path, tmp_path: Path
+) -> None:
+    """
+    識別子の問題の設定 1 件を読み, 記録したプロジェクトの場所と登録の ID,
+    開けない理由を返し, 置き場の外と無い識別子を 404 にすることを確かめる
+    関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ (ML-Pathfinder の置き場は
+        conftest の pathfinder_home で, この下の pathfinder)
+
+    Returns
+    ----------
+    None
+    """
+    home = tmp_path / "pathfinder"
+    sales = write_problem(home, "sales", {
+        "format_version": 2, "name": "売上",
+        "project": {"path": str(project_dir)}
+    }, 1_000)
+
+    # 登録していなければ場所だけ, 登録すると登録の ID も返す
+    url = "/api/problems/sales/project"
+    response = client.get(url)
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "id": "sales", "problem": "売上", "problem_path": str(sales),
+        "project_path": str(project_dir.resolve()), "project_id": None,
+        "reason": None
+    }
+    project_id = register(client, project_dir)
+    assert client.get(url).json()["project_id"] == project_id
+
+    # 記録の無いもの, 記録の場所が無いもの, 新しい版は理由を返す
+    write_problem(home, "draft", {"format_version": 2, "name": "下書き"}, 0)
+    write_problem(home, "gone", {
+        "format_version": 2, "name": "消した",
+        "project": {"path": str(tmp_path / "gone")}
+    }, 0)
+    write_problem(home, "future", {
+        "format_version": 3, "project": {"path": str(project_dir)}
+    }, 0)
+    for key, word in (
+        ("draft", "記録がありません"), ("gone", "無いか"),
+        ("future", "新しい版")
+    ):
+        body = client.get(f"/api/problems/{key}/project").json()
+        assert body["project_path"] is None and body["project_id"] is None
+        assert word in body["reason"], body
+
+    # 無い識別子と置き場の外を指す識別子は 404
+    (home / "outside.yaml").write_text("format_version: 2\n")
+    for key in ("missing", "..", "%2E%2E", "sales%2F..", "sales%5C.."):
+        response = client.get(f"/api/problems/{key}/project")
+        assert response.status_code == 404, key

@@ -61,6 +61,20 @@ class RecordedProjects(BaseModel):
     error: Optional[str] = None
 
 
+class ProblemProject(BaseModel):
+    # ML-Pathfinder の問題の設定 1 件 (識別子で選んだもの) と, 記録した
+    # 学習のプロジェクトとの対応
+    id: str
+    problem: str
+    problem_path: str
+    # 記録したプロジェクトの場所 (リンクを辿った場所. 開けなければ None)
+    project_path: Optional[str] = None
+    # そのプロジェクトを登録していれば, 登録の ID
+    project_id: Optional[str] = None
+    # 開けない理由 (記録が無い, 場所が無い, 新しい版など. 開ければ None)
+    reason: Optional[str] = None
+
+
 class ProblemTraining(BaseModel):
     # ML-Pathfinder の問題の設定 1 件の, 学習で監視する指標と向き
     # (ML-Quest の受け渡しの training. ML-Found の trainer.monitor と

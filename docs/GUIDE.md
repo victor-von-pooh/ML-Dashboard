@@ -271,6 +271,9 @@ uv run python ../demo/train.py model.hidden_dim=16
 > **学習のスクリプトと default の config**
 > 学習のスクリプトは, プロジェクトのディレクトリの `train` で始まる Python のファイルで, `--experiment <config のパス>` を受け取るもの (ML-Found の例と同じ形. ML-Found の `load_project_config` を使うと, これと「項目=値」の上書きを受け取れる). 起動の前の確認は, スクリプトの本文に `configs/default/<名前>.yaml` (`.yml` も) が 1 種類だけ書かれていればその config を元にする. 無ければ名前で選び, `train_hf.py` なら `configs/default/hf.yaml`, 次に `train_hf.yaml`, どちらも無ければ `train.yaml` を元にする. 元にした config は確かめた結果に出る. スクリプトを選ぶと, 名前で対応する experiment の config (`train_hf.py` なら `configs/experiment/hf.yaml`) があれば, それに切り替わる. 画面からの起動では `experiment.output_dir` は変えられない.
 
+> **書き換えた中身の下書き**
+> 書き換えたまま別の画面に移るか画面を閉じると, 書き換えた中身はブラウザに下書きとして残る. 次に同じプロジェクト (と同じ実験) の起動の画面を開くと, 「保存していない書き換えを下書きから戻しました」と出て中身が戻る. 要らなければ「下書きを捨てる」を押す. 実験のメモの書きかけも同じく残り, 次にその実験を開くと戻る
+
 > **GPU を使う学習は 1 つずつ**
 > 画面から起動した学習も, config で GPU を選んでいれば, 端末から流す学習と同じく GPU を使う. 重い学習を同時に 2 つ動かすと, どちらも遅くなる. 試すときは, CPU で数秒で終わる `demo` が手軽.
 
