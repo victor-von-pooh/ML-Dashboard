@@ -121,7 +121,7 @@ const STATUS_HINT: Record<JobStatus, string> = {
   running: '学習中です',
   finishing: '学習を終え, 評価や推論の一式の書き出しなどの後の処理をしています',
   stopped: '中断の要求 (STOP, 登録した関数) か Ctrl-C で止めました',
-  failed: 'エラーで止まりました',
+  failed: '正しく終わりませんでした',
   unknown: '途中で止まったか, 結果が残っていません',
 }
 

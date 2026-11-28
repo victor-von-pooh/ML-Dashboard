@@ -156,8 +156,8 @@ export function MonitorSection({
     source === null || monitor === null
       ? null
       : matches
-        ? `問題の設定「${source.problem}」で選んだ指標から決めた, 監視する指標と向きです.`
-        : `問題の設定「${source.problem}」の値 (${source.monitor}, ${source.mode}) から変えています.`
+        ? `問題「${source.problem}」で選んだ指標から決めた, 監視する指標と向きです.`
+        : `問題「${source.problem}」の値 (${source.monitor}, ${source.mode}) から変えています.`
 
   return (
     <fieldset
@@ -234,7 +234,7 @@ export function MonitorSection({
           {trainings.error ? (
             <p className="flex items-start gap-1.5 text-xs text-ink-3">
               <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-              問題の設定の値は使えません: {trainings.error.message}
+              問題の値は使えません: {trainings.error.message}
             </p>
           ) : (
             trainings.data && (
@@ -272,7 +272,7 @@ function ProblemPicker({
   if (problems.length === 0) {
     return (
       <p className="text-xs text-ink-3">
-        default の config は監視する指標を書いていません. ML-Pathfinder の問題の設定があれば,
+        default の config は監視する指標を書いていません. 問題の設定の段階で作った問題があれば,
         その値を選んで入れられます.
       </p>
     )
@@ -280,7 +280,7 @@ function ProblemPicker({
   return (
     <div className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] items-start gap-2">
       <label htmlFor={id} className="pt-1.5 text-sm font-semibold">
-        問題の設定から
+        問題から
       </label>
       <div className="min-w-0 space-y-1">
         <select
@@ -302,7 +302,7 @@ function ProblemPicker({
           ))}
         </select>
         <p id={hintId} className="text-[11px] text-ink-3">
-          default の config は監視する指標を書いていないので, 問題の設定 (ML-Pathfinder)
+          default の config は監視する指標を書いていないので, 問題の設定の段階で作った問題
           の学習で監視する指標と向きを選んで入れられます. 入れた後も上の欄で変えられます.
         </p>
         {unusable.length > 0 && (

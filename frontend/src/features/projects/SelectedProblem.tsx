@@ -11,7 +11,7 @@ const linkClass =
   'inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-sm font-medium hover:bg-surface-2'
 
 /**
- * 殻で選んだ問題の設定の欄. 記録したプロジェクトを登録していれば開く先を, していなければ
+ * 殻で選んだ問題の欄. 記録したプロジェクトを登録していれば開く先を, していなければ
  * 登録して開くボタンを, 開けなければ理由を出す. 一覧の絞りを切り替えるボタンも置く
  */
 export function SelectedProblem({
@@ -19,7 +19,7 @@ export function SelectedProblem({
   narrowed,
   onNarrow,
 }: {
-  /** 殻で選んだ問題の設定の識別子 */
+  /** 殻で選んだ問題の識別子 */
   problemId: string
   /** 一覧を記録したプロジェクトに絞っているか (絞れない問題の設定では null) */
   narrowed: boolean | null
@@ -43,7 +43,7 @@ export function SelectedProblem({
       title={
         <span className="flex items-center gap-2">
           <ClipboardList className="size-4 text-accent" aria-hidden />
-          選んだ問題の設定
+          選んだ問題
         </span>
       }
       actions={
@@ -60,7 +60,7 @@ export function SelectedProblem({
           <p className="flex items-start gap-1.5 text-warning-text">
             <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
             <span>
-              問題の設定 <span className="font-mono">{problemId}</span> が置き場にありません
+              問題 <span className="font-mono">{problemId}</span> が置き場にありません
             </span>
           </p>
         )}

@@ -1240,9 +1240,9 @@ class RunData:
         newer = self.newer_formats()
         if newer:
             notices.append(
-                f"{', '.join(newer)} は, このダッシュボードが知っている版より"
+                f"{', '.join(newer)} は, この段階が知っている版より"
                 "新しい ML-Found の出力です. 一部が正しく表示されない場合が"
-                "あります (ダッシュボードを更新してください)"
+                "あります (学習・評価の段階のアプリを更新してください)"
             )
 
         return notices

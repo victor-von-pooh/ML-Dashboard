@@ -340,7 +340,7 @@ class BatchManager:
                 batch = self.load(listed.id)
                 if batch is None or not self.orphaned(batch):
                     continue
-                if self.cancel_waiting(batch, "ダッシュボードを止めたため"):
+                if self.cancel_waiting(batch, "サーバーを止めたため"):
                     self.save(batch)
 
     def cancel_waiting(self, batch: Batch, reason: str) -> bool:
@@ -401,7 +401,7 @@ class BatchManager:
             changed = False
             if orphaned:
                 changed = self.cancel_waiting(
-                    batch, "ダッシュボードを止めたため"
+                    batch, "サーバーを止めたため"
                 )
             for candidate in batch.candidates:
                 if (

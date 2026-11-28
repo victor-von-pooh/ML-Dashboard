@@ -170,7 +170,7 @@ class JobCreate(BaseModel):
     script: str
     config_path: Optional[str] = None
     config_text: Optional[str] = None
-    # 起動の前の確認に使う default の config (configs/default の中の
+    # 起動の前の確かめに使う default の config (configs/default の中の
     # 相対パス). 指定しない場合はスクリプトから選択
     default_config: Optional[str] = None
 
@@ -222,7 +222,7 @@ class JobInfo(BaseModel):
     run: Optional[RunSummary]
     progress: Optional[Progress]
     config_text: Optional[str]
-    # 起動の前の確認に使った default の config, None はスクリプトから選択
+    # 起動の前の確かめに使った default の config, None はスクリプトから選択
     default_config: Optional[str] = None
 
 
@@ -234,7 +234,7 @@ class RelaunchPlan(BaseModel):
     # 起動できない理由, 起動できる場合は None
     reason: Optional[str] = None
     script: Optional[str] = None
-    # 起動の前の確認に使う default の config (configs/default の中)
+    # 起動の前の確かめに使う default の config (configs/default の中)
     default_config: Optional[str] = None
     # 選ぶプロジェクトの experiment の config, 一覧に無い場合は None
     config_path: Optional[str] = None
@@ -533,7 +533,7 @@ def check_one_cycle_epochs(cfg: Any) -> tuple[Optional[str], Optional[str]]:
     if total < planned:
         error = (
             message + " (学習の途中で総ステップ数を超えるので, "
-            "学習を始める前にエラーになります)"
+            "学習を始める前に失敗します)"
         )
         return error, None
     warning = message + " (学習率は最後まで下がりきりません)"
@@ -1855,7 +1855,7 @@ def plan_relaunch(
             "書き換えられています. 今の中身を使います"
         )
 
-    # 起動の前の確認は, 実験が元にした default を使用 (無ければスクリプトから)
+    # 起動の前の確かめは, 実験が元にした default (無ければスクリプトから)
     default_config = None
     if source.default in list_default_configs(project_dir):
         default_config = source.default
@@ -1867,8 +1867,8 @@ def plan_relaunch(
     else:
         notes.append(
             f"実験が元にした default の config ({source.default}) が "
-            "configs/default に無いので, 起動の前の確認はスクリプトから選んだ "
-            "default で行います"
+            "configs/default に無いので, 起動の前の確かめは"
+            "スクリプトから選んだ default で行います"
         )
     plan = RelaunchPlan(
         script=source.script, default_config=default_config,

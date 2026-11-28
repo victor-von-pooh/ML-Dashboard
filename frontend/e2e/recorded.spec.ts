@@ -7,18 +7,18 @@ const EXPORTED_DIR = path.resolve(import.meta.dirname, '.work', 'exported')
 // 問題の設定に記録の無い, 監視する指標を書かない default の config を持つプロジェクト
 const OWN_DIR = path.resolve(import.meta.dirname, '.work', 'own')
 
-test('ML-Pathfinder で書き出したプロジェクトを, 場所を打たずに一覧から登録する', async ({
+test('問題の設定の段階で書き出したプロジェクトを, 場所を打たずに一覧から登録する', async ({
   page,
 }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: 'プロジェクトを追加' }).first().click()
-  const dialog = page.getByRole('dialog', { name: 'プロジェクトを追加' })
+  await page.getByRole('button', { name: 'プロジェクトを登録' }).first().click()
+  const dialog = page.getByRole('dialog', { name: 'プロジェクトを登録' })
 
   // 記録のあるプロジェクトだけが並ぶ (記録の無い問題の設定は出ない)
   const list = dialog.getByRole('list', { name: '登録していない書き出したプロジェクト' })
   await expect(list.getByRole('listitem')).toHaveCount(1)
   await expect(list).toContainText(EXPORTED_DIR)
-  await expect(list).toContainText('問題の設定: e2e の売上')
+  await expect(list).toContainText('問題: e2e の売上')
   await expect(dialog).not.toContainText('e2e の下書き')
 
   // 場所を打つ欄も残る
@@ -34,7 +34,7 @@ test('ML-Pathfinder で書き出したプロジェクトを, 場所を打たず�
   await expect(page.getByRole('main').getByRole('link', { name: /^exported/ })).toBeVisible()
 })
 
-test('記録した問題の設定の監視する指標と向きが, 学習の起動の欄に初めから入る', async ({
+test('記録した問題の監視する指標と向きが, 学習の起動の欄に初めから入る', async ({
   page,
   request,
 }) => {
@@ -52,7 +52,7 @@ test('記録した問題の設定の監視する指標と向きが, 学習の起
   await expect(monitor).toHaveValue('valid/mae')
   await expect(page.getByLabel('向き', { exact: true })).toHaveValue('min')
   await expect(monitor).toHaveAccessibleDescription(
-    /問題の設定「e2e の売上」で選んだ指標から決めた, 監視する指標と向きです/,
+    /問題「e2e の売上」で選んだ指標から決めた, 監視する指標と向きです/,
   )
   const editor = page.getByRole('textbox', { name: 'config の中身' })
   await expect(editor).toHaveValue(/monitor: valid\/mae/)
@@ -65,7 +65,7 @@ test('記録した問題の設定の監視する指標と向きが, 学習の起
   )
 })
 
-test('骨組みの外のプロジェクトで, 問題の設定を選んで監視する指標と向きを入れる', async ({
+test('骨組みの外のプロジェクトで, 問題を選んで監視する指標と向きを入れる', async ({
   page,
   request,
 }) => {
@@ -76,7 +76,7 @@ test('骨組みの外のプロジェクトで, 問題の設定を選んで監視
 
   // 記録が無いので初めは入れず, 学習しない問題の設定は選べない
   const monitor = page.getByLabel('監視する指標', { exact: true })
-  const picker = page.getByLabel('問題の設定から')
+  const picker = page.getByLabel('問題から')
   await expect(picker).toHaveValue('')
   await expect(monitor).toHaveValue('')
   await expect(picker.getByRole('option', { name: 'e2e の写真 (使えません)' })).toBeDisabled()

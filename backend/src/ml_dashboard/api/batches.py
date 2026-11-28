@@ -669,7 +669,7 @@ def stop_batch(
     ):
         raise HTTPException(
             409,
-            "別のダッシュボードのプロセス (" + found.owner.hostname
+            "別のサーバーのプロセス (" + found.owner.hostname
             + ") が進めているまとまりなので, そのプロセスで取りやめて"
             "ください. 持ち主が応答しない場合は, 確かめてから強制して"
             "取りやめられます"

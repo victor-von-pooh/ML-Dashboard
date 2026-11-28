@@ -524,8 +524,8 @@ function NextStageNote({
       <summary className="cursor-pointer">この実験を推論の段階で使うには</summary>
       <p className="mt-1">
         {hasBundle
-          ? 'この実験は推論の一式 (inference/) を持つので, ML-Provide の「実験の一覧から登録」で登録できます.'
-          : 'ML-Provide の「学習の結果から作る」で, この実験のディレクトリ (重み) と, 写したモデルの定義 (model_spec.yaml) を選びます.'}
+          ? 'この実験は推論の一式 (inference/) を持つので, 推論の段階の「実験の一覧から登録」で登録できます.'
+          : '推論の段階の「学習の結果から作る」で, この実験のディレクトリ (重み) と, 写したモデルの定義 (model_spec.yaml) を選びます.'}
         {hasModel && ' プロジェクトの default の config の model.spec は変わりません.'}
       </p>
       {path && (

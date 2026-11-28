@@ -103,7 +103,7 @@ test('モデルの定義が無く推論の一式を持つ実験に, 実験の一
 }) => {
   await page.goto(`/projects/${projectId}/runs/${DISTANCE}`)
   await page.getByText('この実験を推論の段階で使うには').click()
-  await expect(page.getByText(/ML-Provide の「実験の一覧から登録」で登録できます/)).toBeVisible()
+  await expect(page.getByText(/推論の段階の「実験の一覧から登録」で登録できます/)).toBeVisible()
   await expect(page.getByText(/学習の結果から作る/)).toHaveCount(0)
   await expect(page.getByText(/model\.spec は変わりません/)).toHaveCount(0)
   await expect(page.getByRole('button', { name: /実験のディレクトリの場所/ })).toBeVisible()
@@ -135,7 +135,7 @@ test('ML-Found の fit で残したパラメータの無いモデルの実験を
 
   // 次の段階への案内は「実験の一覧から登録」だけ
   await page.getByText('この実験を推論の段階で使うには').click()
-  await expect(page.getByText(/ML-Provide の「実験の一覧から登録」で登録できます/)).toBeVisible()
+  await expect(page.getByText(/推論の段階の「実験の一覧から登録」で登録できます/)).toBeVisible()
   await expect(page.getByText(/学習の結果から作る/)).toHaveCount(0)
 
   // モデルのタブ: Optimizer と Scheduler は使わない旨

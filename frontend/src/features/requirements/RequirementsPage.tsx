@@ -86,7 +86,7 @@ export function RequirementsPage() {
               </pre>
               <p className="text-xs text-ink-3">
                 学習ごとに変える場合は, default に <code className="font-mono">requires: []</code>{' '}
-                を書き, experiment の config で置き換えます (ML-Found は default に無い項目を
+                を書き, experiment の config の値で替えます (ML-Found は default に無い項目を
                 experiment の config に書けません).
               </p>
             </div>

@@ -352,7 +352,7 @@ def read_problem_project(request: Request, problem_id: str) -> ProblemProject:
     HTTPException
         置き場に無い識別子は 404
     """
-    # 殻で選んだ問題の設定を, 登録したプロジェクトと対応させる
+    # 殻で選んだ問題を, 登録したプロジェクトと対応させる
     registered = {
         project.path: project.id for project in get_store(request).load()
     }
@@ -360,7 +360,7 @@ def read_problem_project(request: Request, problem_id: str) -> ProblemProject:
     result = problem_project(problems_dir, problem_id, registered)
     if result is None:
         raise HTTPException(
-            404, f"問題の設定が置き場にありません: {problem_id}"
+            404, f"問題が置き場にありません: {problem_id}"
         )
 
     return result
@@ -849,7 +849,7 @@ def get_file(
     # 決めるため)
     if is_withheld_weights(run_dir, path):
         raise HTTPException(
-            403, "方策の一式を持つ実験の重みはダッシュボードから配りません"
+            403, "方策の一式を持つ実験の重みはこの段階から配りません"
         )
 
     # 実験のファイルの中のスクリプトが API を呼べないように,

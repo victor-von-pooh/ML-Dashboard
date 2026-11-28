@@ -198,7 +198,7 @@ function LaunchForm({
   const usingRunConfig = fromRun !== null && configPath === RUN_CONFIG
   const filePath = usingRunConfig ? null : configPath
   const config = useConfig(projectId, filePath)
-  // 起動の前の確認は, 実験のスクリプトのままなら実験が元にした default で行う
+  // 起動の前の確かめは, 実験のスクリプトのままなら実験が元にした default で行う
   const defaultConfig =
     fromRun?.default_config && selectedScript === fromRun.script
       ? fromRun.default_config
@@ -593,7 +593,7 @@ function LaunchForm({
               </p>
               {edited && (
                 <p className="text-xs text-ink-3">
-                  書き換えた config はダッシュボードのデータの置き場に保存して渡します.
+                  書き換えた config はこの段階のデータの置き場に保存して渡します.
                   プロジェクトのファイルは変えません.
                 </p>
               )}
@@ -616,7 +616,7 @@ function LaunchForm({
             />
           </div>
 
-          <Card title="起動の前の確認">
+          <Card title="起動の前の確かめ">
             <div className="space-y-3 text-sm">
               <Button
                 icon={ShieldCheck}
@@ -947,7 +947,7 @@ function RunSourceNotice({
           実験 {runLink} のスクリプトと experiment の config を入れました
           {defaultConfig && (
             <>
-              . 起動の前の確認は, 実験が元にした default (
+              . 起動の前の確かめは, 実験が元にした default (
               <span className="font-mono">{defaultConfig}</span>) で行います
             </>
           )}

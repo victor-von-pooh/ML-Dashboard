@@ -150,7 +150,7 @@ export function useAddProject() {
     onSuccess: () =>
       Promise.all([
         client.invalidateQueries({ queryKey: keys.projects }),
-        // 殻で選んだ問題の設定の対応 (登録の ID) も変わる
+        // 殻で選んだ問題の対応 (登録の ID) も変わる
         client.invalidateQueries({ queryKey: keys.problemProjects }),
       ]),
   })
@@ -164,7 +164,7 @@ export function useRemoveProject() {
     onSuccess: () =>
       Promise.all([
         client.invalidateQueries({ queryKey: keys.projects }),
-        // 殻で選んだ問題の設定の対応 (登録の ID) も変わる
+        // 殻で選んだ問題の対応 (登録の ID) も変わる
         client.invalidateQueries({ queryKey: keys.problemProjects }),
       ]),
   })
@@ -178,7 +178,7 @@ export function useMoveProject() {
     onSuccess: () =>
       Promise.all([
         client.invalidateQueries({ queryKey: keys.projects }),
-        // 殻で選んだ問題の設定の対応 (登録の ID) も変わる
+        // 殻で選んだ問題の対応 (登録の ID) も変わる
         client.invalidateQueries({ queryKey: keys.problemProjects }),
       ]),
   })
@@ -190,7 +190,7 @@ export function useRecordedProjects(enabled: boolean) {
   return useQuery({ queryKey: keys.recorded, queryFn: api.recordedProjects, enabled })
 }
 
-/** 殻で選んだ問題の設定と, 記録したプロジェクトとの対応 (選んでいなければ読まない) */
+/** 殻で選んだ問題と, 記録したプロジェクトとの対応 (選んでいなければ読まない) */
 export function useProblemProject(problemId: string | null) {
   const api = useApi()
   return useQuery({

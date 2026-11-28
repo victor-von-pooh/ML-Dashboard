@@ -56,7 +56,7 @@ export function StarButton({
   )
 }
 
-/** 実験のメモ, タグ, 星を書く欄. ダッシュボードのデータの置き場に保存する */
+/** 実験のメモ, タグ, 星を書く欄. この段階のデータの置き場に保存する */
 export function NotePanel({ projectId, runId }: { projectId: string; runId: string }) {
   const notes = useNotes(projectId)
   const save = useSaveNote(projectId)
@@ -164,7 +164,7 @@ export function NotePanel({ projectId, runId }: { projectId: string; runId: stri
           className="inline-flex items-center gap-1.5 text-ink-3 hover:text-ink"
         >
           <Pencil className="size-3.5" aria-hidden />
-          メモやタグを追加
+          メモやタグを足す
         </button>
         {save.error && <span className="text-xs text-critical-text">{save.error.message}</span>}
       </div>
@@ -227,7 +227,7 @@ export function NotePanel({ projectId, runId }: { projectId: string; runId: stri
             </span>
           ))}
           <label htmlFor={tagId} className="sr-only">
-            タグを追加
+            タグを足す
           </label>
           <input
             id={tagId}
@@ -235,7 +235,7 @@ export function NotePanel({ projectId, runId }: { projectId: string; runId: stri
             onChange={(event) => setTagInput(event.target.value)}
             onKeyDown={onTagKey}
             maxLength={40}
-            placeholder="タグを追加 (Enter)"
+            placeholder="タグを足す (Enter)"
             className="h-7 w-40 rounded-md border border-line bg-bg px-2 text-xs outline-none focus:border-accent"
           />
         </div>
@@ -283,7 +283,7 @@ export function NotePanel({ projectId, runId }: { projectId: string; runId: stri
           </div>
         )}
         <p className="text-[11px] text-ink-3">
-          ダッシュボードのデータの置き場に保存します (実験のディレクトリには書き込みません).
+          この段階のデータの置き場に保存します (実験のディレクトリには書き込みません).
           {/* 上限に近づいたら文字数を出す (上限を超える分は入らない) */}
           <span
             id={`${noteId}-count`}

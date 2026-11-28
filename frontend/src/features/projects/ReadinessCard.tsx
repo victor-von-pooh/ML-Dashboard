@@ -208,7 +208,7 @@ function ReadinessBody({
       )}
       {confirming && (
         <section
-          aria-label="入れる内容の確認"
+          aria-label="入れる内容の確かめ"
           className="space-y-2 rounded-lg border border-line bg-surface-2 p-3"
         >
           {readiness.commands.length > 0 ? (

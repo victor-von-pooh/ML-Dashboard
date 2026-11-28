@@ -115,7 +115,7 @@ function stubApi(base = '/api/train', jobs?: () => Promise<Response>) {
       const found = PROBLEMS[decodeURIComponent(problem[1]!)]
       return found
         ? Response.json(found)
-        : Response.json({ detail: '問題の設定が置き場にありません' }, { status: 404 })
+        : Response.json({ detail: '問題が置き場にありません' }, { status: 404 })
     }
     return Response.json({ detail: 'not found' }, { status: 404 })
   })
@@ -227,8 +227,8 @@ describe('StageApp', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'ダークモードにする' })[0]!)
     expect(document.documentElement).toHaveClass('dark')
     expect(window.localStorage.getItem('theme')).toBe('dark')
-    // 殻の選びを持たないので, 選んだ問題の設定の欄も出さない
-    expect(screen.queryByText('選んだ問題の設定')).not.toBeInTheDocument()
+    // 殻の選びを持たないので, 選んだ問題の欄も出さない
+    expect(screen.queryByText('選んだ問題')).not.toBeInTheDocument()
   })
 
   it('読むだけの明暗は, 殻が html のクラスを替えたら読み直す', async () => {
@@ -329,8 +329,8 @@ describe('ルーターの見張り', () => {
   })
 })
 
-describe('殻で選んだ問題の設定', () => {
-  it('登録したプロジェクトを記録した問題の設定なら, 開く先を出して一覧を絞る', async () => {
+describe('殻で選んだ問題', () => {
+  it('登録したプロジェクトを記録した問題なら, 開く先を出して一覧を絞る', async () => {
     stubApi()
     const { onProjectChange } = renderStage('/train', { project: 'sales' })
     expect(await screen.findByText('売上の予測')).toBeInTheDocument()
@@ -370,7 +370,7 @@ describe('殻で選んだ問題の設定', () => {
     const fetchMock = stubApi()
     const { onProjectChange } = renderStage('/train', { project: 'fresh' })
     // 殻の通しの確かめと同じく, 欄を区域の名前で, 場所を「記録したプロジェクト」の名前で選ぶ
-    const card = await screen.findByRole('region', { name: '選んだ問題の設定' })
+    const card = await screen.findByRole('region', { name: '選んだ問題' })
     expect(
       await within(card).findByText('このプロジェクトはまだ登録していません.'),
     ).toBeInTheDocument()
@@ -385,7 +385,7 @@ describe('殻で選んだ問題の設定', () => {
     expect(onProjectChange).not.toHaveBeenCalled()
   })
 
-  it('開けない問題の設定は理由を, 置き場に無い識別子は無いことを出し, 一覧を絞らない', async () => {
+  it('開けない問題は理由を, 置き場に無い識別子は無いことを出し, 一覧を絞らない', async () => {
     stubApi()
     const view = renderStage('/train', { project: 'draft' })
     expect(await screen.findByText('プロジェクトの記録がありません')).toBeInTheDocument()
@@ -399,16 +399,16 @@ describe('殻で選んだ問題の設定', () => {
   it('書き出したプロジェクトを登録すると, その識別子を 1 度だけ殻に知らせる', async () => {
     stubApi()
     const { onProjectChange } = renderStage('/train', { project: 'sales' })
-    fireEvent.click((await screen.findAllByRole('button', { name: 'プロジェクトを追加' }))[0]!)
+    fireEvent.click((await screen.findAllByRole('button', { name: 'プロジェクトを登録' }))[0]!)
     fireEvent.click(await screen.findByRole('button', { name: 'fresh を登録', hidden: true }))
     await waitFor(() => expect(onProjectChange).toHaveBeenCalledWith('fresh'))
     expect(onProjectChange).toHaveBeenCalledTimes(1)
   })
 
-  it('殻と同じ問題の設定のプロジェクトを登録したときは知らせない', async () => {
+  it('殻と同じ問題のプロジェクトを登録したときは知らせない', async () => {
     stubApi()
     const { onProjectChange } = renderStage('/train', { project: 'fresh' })
-    fireEvent.click((await screen.findAllByRole('button', { name: 'プロジェクトを追加' }))[0]!)
+    fireEvent.click((await screen.findAllByRole('button', { name: 'プロジェクトを登録' }))[0]!)
     fireEvent.click(await screen.findByRole('button', { name: 'fresh を登録', hidden: true }))
     await waitFor(() =>
       expect(screen.getByText(/を登録しました/, { selector: 'p' })).toBeInTheDocument(),
@@ -416,11 +416,11 @@ describe('殻で選んだ問題の設定', () => {
     expect(onProjectChange).not.toHaveBeenCalled()
   })
 
-  it('殻で選んだ問題の設定も同じプロジェクトを記録していれば, 殻の選びを移さない', async () => {
+  it('殻で選んだ問題も同じプロジェクトを記録していれば, 殻の選びを移さない', async () => {
     stubApi()
     const { onProjectChange } = renderStage('/train', { project: 'older' })
     await screen.findByText('同じプロジェクトの古い課題')
-    fireEvent.click((await screen.findAllByRole('button', { name: 'プロジェクトを追加' }))[0]!)
+    fireEvent.click((await screen.findAllByRole('button', { name: 'プロジェクトを登録' }))[0]!)
     fireEvent.click(await screen.findByRole('button', { name: 'fresh を登録', hidden: true }))
     await waitFor(() =>
       expect(screen.getByText(/を登録しました/, { selector: 'p' })).toBeInTheDocument(),
@@ -606,7 +606,7 @@ describe('外したときの下書き', () => {
     expect(drafts()['launch:p1:r1']).toBeUndefined()
   })
 
-  it('殻が問題の設定を替えたときも待たずに書く', async () => {
+  it('殻が問題を替えたときも待たずに書く', async () => {
     const view = await editLaunch({ project: 'sales' })
     expect(launchDraft()).toBeUndefined()
     view.rerender({ project: 'fresh' })

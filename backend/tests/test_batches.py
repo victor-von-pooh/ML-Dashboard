@@ -1043,7 +1043,7 @@ def test_stop_foreign_batch(client: TestClient, tmp_path: Path) -> None:
     manager.save(batch)
     response = client.post(f"/api/batches/{batch.id}/stop")
     assert response.status_code == 409
-    assert "別のダッシュボード" in response.json()["detail"]
+    assert "別のサーバー" in response.json()["detail"]
     reloaded = manager.load(batch.id)
     assert reloaded is not None
     assert reloaded.candidates[0].state == "waiting"

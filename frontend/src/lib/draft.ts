@@ -90,7 +90,7 @@ export function clearDraft(place: string): void {
  * @param place - 下書きの場所
  * @param value - 書く中身. null は書きかけが無い (下書きを消す), undefined はまだ分からない
  *   (読み込みの間など. 書かず, 消さない)
- * @param flushKey - 替わったときに待たずに書く値 (殻で選んだ問題の設定)
+ * @param flushKey - 替わったときに待たずに書く値 (殻で選んだ問題)
  * @param delay - 待つ時間 (ミリ秒)
  * @returns 書きかけを捨てて下書きを消す関数 (起動したときなど, 外されても書かないため)
  */

@@ -286,7 +286,7 @@ function AnomalyNote({ config }: { config: Record<string, unknown> | null | unde
           を出します. 一覧と比較の列にはならないので, ここで見ます.
         </li>
         <li>
-          推論の段階では, 度合いの高い順に人が 1 回に確かめる件数の上限まで人の確認に回します.
+          推論の段階では, 度合いの高い順に人が 1 回に確かめる件数の上限まで人の確かめに回します.
         </li>
       </ul>
     </section>

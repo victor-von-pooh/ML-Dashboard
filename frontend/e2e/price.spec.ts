@@ -123,7 +123,7 @@ test('推論の一式を持つ値段を変える判断の実験に, 実験の一
 }) => {
   await page.goto(`/projects/${projectId}/runs/${SLOW}`)
   await page.getByText('この実験を推論の段階で使うには').click()
-  await expect(page.getByText(/ML-Provide の「実験の一覧から登録」で登録できます/)).toBeVisible()
+  await expect(page.getByText(/推論の段階の「実験の一覧から登録」で登録できます/)).toBeVisible()
   await expect(page.getByText(/学習の結果から作る/)).toHaveCount(0)
   await expect(page.getByRole('button', { name: /実験のディレクトリの場所/ })).toBeVisible()
   await expect(page.locator('code').filter({ hasText: new RegExp(`${SLOW}$`) })).toBeVisible()

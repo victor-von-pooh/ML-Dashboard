@@ -16,7 +16,7 @@ function ProjectCard({ project }: { project: ProjectInfo }) {
   const onRemove = () => {
     if (
       window.confirm(
-        `「${project.name}」の登録を外しますか? 実験のファイルは消えませんが, ダッシュボードで付けたメモ, タグ, 星は消えます (ディレクトリを移した場合は「場所を変える」でメモを残せます).`,
+        `「${project.name}」の登録を外しますか? 実験のファイルは消えませんが, この段階で付けたメモ, タグ, 星は消えます (ディレクトリを移した場合は「場所を変える」でメモを残せます).`,
       )
     ) {
       remove.mutate(project.id)
@@ -112,7 +112,7 @@ function ProjectCard({ project }: { project: ProjectInfo }) {
 export function ProjectsPage() {
   const projects = useProjects()
   const [open, setOpen] = useState(false)
-  // 殻で選んだ問題の設定 (記録したプロジェクトを開けるなら, 一覧をそれに絞る)
+  // 殻で選んだ問題 (記録したプロジェクトを開けるなら, 一覧をそれに絞る)
   const { project: problemId } = useStage()
   const problem = useProblemProject(problemId)
   // 絞りを外したか (殻が選び直したら, また絞る)
@@ -135,7 +135,7 @@ export function ProjectsPage() {
         subtitle="ML-Found で学習したプロジェクトの実験を確かめます"
         actions={
           <Button variant="primary" icon={Plus} onClick={() => setOpen(true)}>
-            プロジェクトを追加
+            プロジェクトを登録
           </Button>
         }
       />
@@ -152,16 +152,16 @@ export function ProjectsPage() {
         <EmptyState icon={FolderKanban} title="プロジェクトがありません">
           <p>
             ML-Found を使っているディレクトリ (<code>configs/default/train.yaml</code> を持つもの)
-            を追加すると, その実験の一覧と学習曲線を見られます.
+            を登録すると, その実験の一覧と学習曲線を見られます.
           </p>
           <Button variant="primary" icon={Plus} className="mt-4" onClick={() => setOpen(true)}>
-            プロジェクトを追加
+            プロジェクトを登録
           </Button>
         </EmptyState>
       )}
       {narrowed && projects.data && projects.data.length > 0 && shown?.length === 0 && (
         <p className="text-sm text-ink-3">
-          選んだ問題の設定のプロジェクトは登録していません. 上の「登録して開く」で登録するか,
+          選んだ問題のプロジェクトは登録していません. 上の「登録して開く」で登録するか,
           「全てのプロジェクトを出す」で登録したプロジェクトを見られます.
         </p>
       )}

@@ -316,8 +316,8 @@ export function EvaluationColumnPicker({
           className="mb-2 h-8 w-full rounded-md border border-line bg-surface px-2 text-xs outline-none focus:border-accent"
         />
         <p className="mb-1 text-[11px] text-ink-3">
-          テスト用の評価の値 (群分けのようにテスト用に分けない課題は, 全ての行で数えた値). {limit}{' '}
-          列まで並べられます
+          テスト用の評価の値 (群分けのようにテスト用に分けない課題の型は, 全ての行で数えた値).{' '}
+          {limit} 列まで並べられます
         </p>
         <ul className="max-h-64 overflow-auto" aria-label="評価の列">
           {shown.map((column) => {
