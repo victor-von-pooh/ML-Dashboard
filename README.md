@@ -4,7 +4,7 @@
 
 ML-Found が実験ごとに残すディレクトリ (`history.csv`, `config.yaml`, `train.log` など) をそのまま読むので, 学習のコードに手を加えなくても, 既にある実験を見られる.
 
-![実験の比較: 3 つの実験のテスト用の評価の値と守る指標の印を並べ, 学習曲線を重ね, 同じエポックの決定境界の画像と config の違いを並べる](docs/images/compare.png)
+![実験の比較: 3 つの実験の表, テスト用の評価の値と守る指標の印, 重ねた学習曲線](docs/images/compare.png)
 
 **実験の比較**. 選んだ実験のテスト用の評価の値と守る指標の印を並べ, 学習曲線を指標ごとに重ね, 同じエポックの画像と config の違う項目を並べる.
 
@@ -27,7 +27,7 @@ ML-Found が実験ごとに残すディレクトリ (`history.csv`, `config.yaml
   </tr>
   <tr>
     <td><img src="docs/images/policy.png" alt="方策のタブ: 強化学習の方策の一式, 重みの sha256 の一致, 守り付きの評価の終え方ごとの割合と学習の成功の割合"></td>
-    <td><img src="docs/images/requirements.png" alt="追加の依存: 強化学習, MuJoCo, ROS 2, CUDA が入っているかと入れ方のカード"></td>
+    <td><img src="docs/images/requirements.png" alt="追加の依存: 強化学習, MuJoCo, ROS 2, CUDA などの機能が入っているかと入れ方のカード"></td>
   </tr>
   <tr>
     <td><b>方策</b>. 強化学習の方策の守りと重みの sha256 を確かめる. 重みは配らず, 使ってよいかは人が承認する</td>
