@@ -740,14 +740,26 @@ def test_post_heartbeat_without_start_time(
     manager.clock = lambda: now[0]
     gap = core_jobs.JOB_STALL_GAP_SEC
 
+    # 実験は 1 つの出力先に, 作った順に新しい時刻の名前で置く
+    outputs = tmp_path / "outputs"
+    monkeypatch.setattr(manager, "output_dirs", lambda job, project: [outputs])
+    made = [0]
+
+    def make_run() -> Path:
+        # ML-Found の形の実験のディレクトリ (前に作ったものより新しい)
+        made[0] += 1
+        run_dir = outputs / "demo" / "2026-11-01" / f"00-00-{made[0]:02d}"
+        run_dir.mkdir(parents=True)
+        (run_dir / "config.yaml").write_text("experiment:\n  name: demo\n")
+        return run_dir
+
     processes: list[subprocess.Popen[bytes]] = []
 
     def post(name: str, mode: str, state: str = "completed") -> tuple[
         core_jobs.Job, Path
     ]:
         # 心拍を書く後の処理のプロセスと, その実験と, 起動し直した後の記録
-        run_dir = tmp_path / "outputs" / name
-        run_dir.mkdir(parents=True)
+        run_dir = make_run()
         process = subprocess.Popen(
             [sys.executable, str(script), str(run_dir), "0.2", mode],
             start_new_session=True
@@ -771,25 +783,63 @@ def test_post_heartbeat_without_start_time(
         legacy, legacy_dir = post("legacy", "none")
         for _ in range(5):
             now[0] += 60
-            assert manager.poll(legacy, legacy_dir) == (False, None)
+            assert manager.poll(legacy, legacy_dir, project) == (False, None)
         assert legacy.id not in manager.beats
 
         # 終えた心拍 (ended) は, 後の処理を終えたので終わったものにする
         ended, ended_dir = post("ended", "end")
         read_beat(ended_dir, "ended")
-        assert manager.poll(ended, ended_dir) == (True, None)
+        assert manager.poll(ended, ended_dir, project) == (True, None)
         # ただし pid かホスト名が違う心拍と, 実験が実行中の場合は使わない
         heartbeat = json.loads((ended_dir / "heartbeat.json").read_text())
         for changed in ({}, {"pid": legacy.pid, "hostname": "other"}):
             (legacy_dir / "heartbeat.json").write_text(
                 json.dumps({**heartbeat, **changed})
             )
-            assert manager.poll(legacy, legacy_dir) == (False, None)
+            assert manager.poll(legacy, legacy_dir, project) == (False, None)
         running = json.loads((ended_dir / "run.json").read_text())
         (ended_dir / "run.json").write_text(
             json.dumps({**running, "status": "running"})
         )
+        assert manager.poll(ended, ended_dir, project) == (False, None)
+        (ended_dir / "run.json").write_text(json.dumps(running))
+        assert manager.poll(ended, ended_dir, project) == (True, None)
+        # プロジェクトが分からない (出力先を確かめられない) 場合は使わない
         assert manager.poll(ended, ended_dir) == (False, None)
+
+        # 同じプロセスが次の実験を始めた (前の心拍が ended になる) 場合は,
+        # 新しい実験が学習中か後の処理中の間は動いたまま
+        following = make_run()
+        same_host = {"pid": ended.pid, "hostname": socket.gethostname()}
+        (following / "run.json").write_text(
+            json.dumps({**same_host, "status": "running"})
+        )
+        assert manager.poll(ended, ended_dir, project) == (False, None)
+        (following / "run.json").write_text(
+            json.dumps({**same_host, "status": "completed"})
+        )
+        (following / "heartbeat.json").write_text(json.dumps({
+            **heartbeat, **same_host, "state": "running"
+        }))
+        assert manager.poll(ended, ended_dir, project) == (False, None)
+        # 別のホストや別の pid の新しい実験は見ない
+        for other in ({"hostname": "other"}, {"pid": legacy.pid}):
+            for name in ("run.json", "heartbeat.json"):
+                data = json.loads((following / name).read_text())
+                (following / name).write_text(json.dumps({**data, **other}))
+            assert manager.poll(ended, ended_dir, project) == (True, None)
+            for name in ("run.json", "heartbeat.json"):
+                data = json.loads((following / name).read_text())
+                (following / name).write_text(
+                    json.dumps({**data, **same_host})
+                )
+        # 新しい実験も後の処理を終えれば終わったものにする
+        (following / "heartbeat.json").write_text(json.dumps({
+            **heartbeat, **same_host, "state": "ended"
+        }))
+        assert manager.poll(ended, ended_dir, project) == (True, None)
+        shutil.rmtree(following)
+
         # 同じプロセスと確かめられたジョブは, プロセスが終わるまで待つ
         (ended_dir / "run.json").write_text(json.dumps(running))
         with monkeypatch.context() as patch:
@@ -797,22 +847,24 @@ def test_post_heartbeat_without_start_time(
                 core_jobs, "process_started",
                 lambda pid: datetime.fromisoformat(created_at)
             )
-            assert manager.poll(ended, ended_dir) == (False, None)
+            assert manager.poll(ended, ended_dir, project) == (False, None)
 
         # 心拍が続く後の処理は, 単調な時計で何時間たっても動いたまま
         # (読み直すたびに連番が変わる)
         live, live_dir = post("live", "run")
-        beat = read_beat(live_dir, "running")
+        read_beat(live_dir, "running")
         for _ in range(5):
-            assert manager.poll(live, live_dir) == (False, None)
-            beat = read_beat(live_dir, "running", beat)
+            assert manager.poll(live, live_dir, project) == (False, None)
+            # 読み直しの後に読んだ連番より新しい心拍を待つ (読み直しの前に
+            # 書かれた心拍を待つと, 同じ連番を 2 回読みうるため)
+            read_beat(live_dir, "running", manager.beats[live.id][0])
             now[0] += 60
-        assert manager.poll(live, live_dir) == (False, None)
+        assert manager.poll(live, live_dir, project) == (False, None)
 
         # 中断の状態で fit を終えた実験も同じく心拍で決める
         stopped, stopped_dir = post("stopped", "end", "stopped")
         read_beat(stopped_dir, "ended")
-        assert manager.poll(stopped, stopped_dir) == (True, None)
+        assert manager.poll(stopped, stopped_dir, project) == (True, None)
 
         # 一覧の読み直しの形 (保存したジョブ) で, 心拍が止まった後の処理
         stored, stored_dir = post("stored", "run")
@@ -821,14 +873,18 @@ def test_post_heartbeat_without_start_time(
         monkeypatch.setattr(
             manager, "find_run", lambda job, project: stored_dir
         )
-        beat = read_beat(stored_dir, "running")
+        read_beat(stored_dir, "running")
         assert manager.get(stored.id, {"p": project}).status == "running"
 
         # 書き手のプロセスを一時停止して心拍を止める (強制終了された後に
         # pid を使い回したプロセスと同じ見え方. プロセスは動いている)
         os.kill(stored.pid or 0, signal.SIGSTOP)
         time.sleep(0.5)
-        limit = 0.2 * core_jobs.HEARTBEAT_STALL_FACTOR
+        # 0.2 秒の間隔は下限の HEARTBEAT_MIN_INTERVAL に上げて数える
+        limit = (
+            core_jobs.HEARTBEAT_MIN_INTERVAL
+            * core_jobs.HEARTBEAT_STALL_FACTOR
+        )
         assert manager.get(stored.id, {"p": project}).status == "running"
         # 数えている間の強制の中断でもシグナルを送らない
         for _ in range(3):

@@ -72,6 +72,10 @@ HEARTBEAT_FILE = "heartbeat.json"
 # 倍数 (ML-Found の約束の目安. GIL を離さない処理などで遅れる分の余裕)
 HEARTBEAT_STALL_FACTOR = 6
 
+# 心拍の書き直す間隔として使う最小の秒数 (心拍のファイルに短い間隔が
+# 書かれても, 目安を GIL やディスクの遅れより短くしないため)
+HEARTBEAT_MIN_INTERVAL = 1.0
+
 # 心拍で後の処理を終えたかを決める run.json の状態 (ML-Found が fit を
 # この状態で終えたときに心拍を書き始める)
 POST_STATES = ("completed", "stopped")
@@ -499,7 +503,8 @@ class JobManager:
         return None
 
     def poll(
-        self, job: Job, run_dir: Optional[Path] = None
+        self, job: Job, run_dir: Optional[Path] = None,
+        project: Optional[Project] = None
     ) -> tuple[bool, Optional[int]]:
         """
         ジョブのプロセスが終わったかを確かめる関数
@@ -510,6 +515,10 @@ class JobManager:
             ジョブ
         run_dir: Optional[Path] = None
             ジョブの実験のディレクトリ, 見つからない場合は None
+        project: Optional[Project] = None
+            ジョブのプロジェクト (心拍で終えたと読んだジョブが, 同じ
+            プロセスで次の学習を続けていないかを出力先で確かめる),
+            分からない場合は None
 
         Returns
         ----------
@@ -535,15 +544,17 @@ class JobManager:
         # が実行中なら, 学習の記録が止まったと分かるまで実行中のまま (時計の
         # 合わせ直しで ps の時刻がずれた本物を終わったものにすると戻せない
         # ため). 確かめられない場合は, 学習の後の処理の心拍が終えたか止まった
-        # と分かったときだけ終了扱い (心拍が無ければ実行中のまま)
+        # と分かり, 同じプロセスが次の学習を続けていないときだけ終了扱い
+        # (心拍が無ければ実行中のまま)
         same = self.check_process(job)
         status = read_json(run_dir / "run.json") if run_dir else {}
         if same is not False:
             self.stalls.pop(job.id, None)
             if (
-                same is None and run_dir is not None
+                same is None and run_dir is not None and project is not None
                 and status.get("status") in POST_STATES
                 and self.post_ended(job, run_dir)
+                and not self.continued(job, run_dir, project)
             ):
                 return True, None
             if same is True or status.get("status") not in POST_STATES:
@@ -646,7 +657,8 @@ class JobManager:
             心拍の pid とホスト名がジョブと同じで, 状態が ended か,
             running のまま連番が変わらずに interval_sec の
             HEARTBEAT_STALL_FACTOR 倍以上たったかどうか. 心拍のファイルが
-            無い, 読めない, 形が違う場合は False (今までどおり)
+            無い, 読めない, 形が違う場合は False. 間隔は
+            HEARTBEAT_MIN_INTERVAL より短く数えない
         """
         heartbeat = read_json(run_dir / HEARTBEAT_FILE)
         state = heartbeat.get("state")
@@ -682,9 +694,61 @@ class JobManager:
             self.beats[job.id] = (beat, now, now)
             return False
         self.beats[job.id] = (beat, seen[1], now)
-        ended = now - seen[1] >= interval * HEARTBEAT_STALL_FACTOR
+        limit = max(interval, HEARTBEAT_MIN_INTERVAL) * HEARTBEAT_STALL_FACTOR
+        ended = now - seen[1] >= limit
 
         return ended
+
+    def continued(self, job: Job, run_dir: Path, project: Project) -> bool:
+        """
+        ジョブのプロセスが, ジョブの実験の後に同じプロセスで次の学習か
+        後の処理を続けているかを確かめる関数
+
+        ML-Found は同じプロセスで次の start_experiment か fit を始めると,
+        前の実験の心拍を ended にする. そのため心拍で終えたと読んだ後も,
+        出力先の新しい実験を見て, 同じプロセスのものが動いていれば続けて
+        いるとする
+
+        Parameters
+        ----------
+        job: Job
+            ジョブ
+        run_dir: Path
+            ジョブの実験のディレクトリ
+        project: Project
+            ジョブのプロジェクト
+
+        Returns
+        ----------
+        active: bool
+            ジョブの実験より新しい実験 (新しい順の先頭 20 件まで) のうち,
+            run.json の pid とホスト名がジョブと同じで状態が実行中か,
+            心拍の pid とホスト名がジョブと同じで running のものがあるか.
+            出力先を読めない場合は True (終わったものにしない)
+        """
+        try:
+            output_dirs = self.output_dirs(job, project)
+        except ProjectError:
+            return True
+
+        # 新しい順に, ジョブの実験に着くまでの実験を確認
+        current = run_dir.resolve()
+        for _, other in find_run_dirs(output_dirs)[:20]:
+            if other.resolve() == current:
+                break
+            for name, key, value in (
+                ("run.json", "status", "running"),
+                (HEARTBEAT_FILE, "state", "running")
+            ):
+                data = read_json(other / name)
+                if (
+                    data.get("pid") == job.pid
+                    and data.get("hostname") == job.hostname
+                    and data.get(key) == value
+                ):
+                    return True
+
+        return False
 
     def refresh(self, job: Job, project: Optional[Project]) -> Job:
         """
@@ -711,7 +775,7 @@ class JobManager:
         run_dir = self.find_run(job, project) if project else None
 
         # プロセスが終わっていれば終了コードを記録
-        finished, return_code = self.poll(job, run_dir)
+        finished, return_code = self.poll(job, run_dir, project)
         if finished:
             job.status = "finished"
             job.return_code = return_code
