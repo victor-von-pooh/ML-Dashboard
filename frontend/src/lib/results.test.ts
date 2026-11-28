@@ -12,6 +12,7 @@ import {
   axisLabel,
   className,
   ROLE_LABELS,
+  ORIGIN_LABELS,
   sampleEpochLabel,
 } from './results'
 
@@ -53,6 +54,8 @@ describe('labelOf', () => {
     expect(labelOf(ROLE_LABELS, 'future_role')).toBe('future_role')
     expect(labelOf(ROLE_LABELS, 'toString')).toBe('toString')
     expect(labelOf(ROLE_LABELS, null)).toBeNull()
+    expect(labelOf(ORIGIN_LABELS, 'self')).toBe('学んだデータそのもの (self)')
+    expect(labelOf(ORIGIN_LABELS, 'environment')).toBe('環境の報酬 (environment)')
   })
 })
 

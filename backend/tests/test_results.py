@@ -303,6 +303,18 @@ def test_results_task_versions(client: TestClient, project_dir: Path) -> None:
     run_dir = project_dir / "outputs" / RESULTS_RUN
     project_id = register(client, project_dir)
 
+    # 環境の報酬と学んだデータそのものの正解は, その種類と ML-Found の文
+    for origin_type, note in (
+        ("environment", "環境の報酬"), ("self", "学んだデータそのもの")
+    ):
+        (run_dir / "task.yaml").write_text(
+            TASK_TEXT.replace("type: process", f"type: {origin_type}"),
+            encoding="utf-8"
+        )
+        task = client.get(results_url(project_id, RESULTS_RUN)).json()["task"]
+        assert task["origin"]["type"] == origin_type
+        assert note in task["origin_note"]
+
     # 新しい版は正解の出どころを分からないものに. 元の実験が無ければ文字
     (run_dir / "task.yaml").write_text(
         TASK_TEXT.replace("format_version: 1", "format_version: 99"),
