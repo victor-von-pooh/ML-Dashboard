@@ -85,6 +85,8 @@ make api            # バックエンドの API を変えたら, 画面の型を
 make screenshots    # README の画面の図 (7 枚) と操作ガイドの実験の一覧の図を撮り直す. 手元の Chrome を使い, git に入っている docs/images の図を上書きする
 ```
 
+`make dev-frontend` の画面のサーバーは `/api` を Host を変えずに転送する (`frontend/vite.config.ts` の `changeOrigin: false`). バックエンドは Origin と Host が違う書き込みを断るので, Host を転送先に変えると画面からの書き込みが全て 403 になる.
+
 | ディレクトリ | 内容 |
 | --- | --- |
 | `backend/` | API (Python, FastAPI). `core/` が ML-Found の出力の読み込み, `api/` がルーティング |
