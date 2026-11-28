@@ -217,6 +217,39 @@ def same_process(job: Job) -> Optional[bool]:
     return same
 
 
+def post_end(run_dir: Path) -> Optional[datetime]:
+    """
+    実験の学習の後の処理が終わった時刻を取得する関数
+
+    Parameters
+    ----------
+    run_dir: Path
+        実験のディレクトリ
+
+    Returns
+    ----------
+    ended: Optional[datetime]
+        心拍の ended_at か, 無ければ run.json の finished_at を, 実験の
+        ディレクトリの名前と同じ形 (この端末の時刻帯の, 時刻帯の無い秒
+        までの時刻) にしたもの. どちらも読めない場合は None
+    """
+    for name, key in (
+        (HEARTBEAT_FILE, "ended_at"), ("run.json", "finished_at")
+    ):
+        value = read_json(run_dir / name).get(key)
+        if not isinstance(value, str):
+            continue
+        try:
+            moment = datetime.fromisoformat(value)
+        except ValueError:
+            continue
+        if moment.tzinfo is not None:
+            moment = moment.astimezone().replace(tzinfo=None)
+        return moment.replace(microsecond=0)
+
+    return None
+
+
 def run_stamp(run_dir: Path) -> RunStamp:
     """
     学習中に ML-Found が書き直す実験の記録の状態を取得する関数
@@ -707,7 +740,9 @@ class JobManager:
         ML-Found は同じプロセスで次の start_experiment か fit を始めると,
         前の実験の心拍を ended にする. そのため心拍で終えたと読んだ後も,
         出力先の新しい実験を見て, 同じプロセスのものが動いていれば続けて
-        いるとする
+        いるとする. ML-Found は start_experiment で実験のディレクトリと
+        config.yaml を作り, run.json は fit の中で書くので, その間 (データの
+        読み込み, モデルの作成など) の実験は run.json も心拍も持たない
 
         Parameters
         ----------
@@ -723,9 +758,12 @@ class JobManager:
         active: bool
             ジョブの実験より新しい実験 (新しい順の先頭 20 件まで) のうち,
             run.json の pid とホスト名がジョブと同じで状態が実行中か,
-            心拍の pid とホスト名がジョブと同じで running のものがあるか.
+            心拍の pid とホスト名がジョブと同じで running のものか,
+            run.json も心拍も無く (同じプロセスの準備中かもしれない), 名前の
+            時刻がジョブの実験の終わり (post_end の時刻) 以降のものがあるか.
             出力先を読めない場合は True (終わったものにしない)
         """
+        ended = post_end(run_dir)
         try:
             output_dirs = self.output_dirs(job, project)
         except ProjectError:
@@ -747,6 +785,20 @@ class JobManager:
                     and data.get(key) == value
                 ):
                     return True
+
+            # run.json も心拍も無い実験は, ジョブの実験が終わった後に
+            # 作られたものだけを準備中とみなす (前からの残りを拾わないため)
+            if any(
+                os.path.lexists(other / name)
+                for name in ("run.json", HEARTBEAT_FILE)
+            ):
+                continue
+            try:
+                started = datetime.fromisoformat(parse_started_at(other))
+            except ValueError:
+                continue
+            if ended is None or started >= ended:
+                return True
 
         return False
 

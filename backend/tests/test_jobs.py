@@ -840,6 +840,40 @@ def test_post_heartbeat_without_start_time(
         assert manager.poll(ended, ended_dir, project) == (True, None)
         shutil.rmtree(following)
 
+        # ML-Found が次の実験のディレクトリと config.yaml を作り, run.json を
+        # 書く前 (データの読み込みなどの準備中) も動いたまま. 準備中とみなす
+        # のは, 名前の時刻がジョブの実験の心拍の ended_at 以降のものだけ
+        assert core_jobs.post_end(ended_dir) == datetime.fromisoformat(
+            heartbeat["ended_at"]
+        ).astimezone().replace(tzinfo=None)
+        stale = make_run()
+        assert manager.poll(ended, ended_dir, project) == (True, None)
+        moment = datetime.now() + timedelta(seconds=1)
+        preparing = (
+            outputs / "demo" / moment.strftime("%Y-%m-%d")
+            / moment.strftime("%H-%M-%S")
+        )
+        preparing.mkdir(parents=True)
+        (preparing / "config.yaml").write_text("experiment:\n  name: demo\n")
+        assert manager.poll(ended, ended_dir, project) == (False, None)
+        # run.json を書けば, その中身で決める (別のプロセスの完了なら終える)
+        (preparing / "run.json").write_text(json.dumps({
+            "status": "completed", "pid": legacy.pid,
+            "hostname": socket.gethostname()
+        }))
+        assert manager.poll(ended, ended_dir, project) == (True, None)
+        shutil.rmtree(preparing)
+        # 心拍の ended_at が無ければ run.json の finished_at を使い, どちらも
+        # 無ければ None (ジョブの実験より新しい準備中の実験を全て見る)
+        assert core_jobs.post_end(stale) is None
+        (stale / "run.json").write_text(
+            json.dumps({"finished_at": "2026-11-01T00:00:30+00:00"})
+        )
+        assert core_jobs.post_end(stale) == datetime.fromisoformat(
+            "2026-11-01T00:00:30+00:00"
+        ).astimezone().replace(tzinfo=None)
+        shutil.rmtree(stale)
+
         # 同じプロセスと確かめられたジョブは, プロセスが終わるまで待つ
         (ended_dir / "run.json").write_text(json.dumps(running))
         with monkeypatch.context() as patch:
