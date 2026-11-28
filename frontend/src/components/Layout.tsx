@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import { FolderKanban, LayoutGrid, ListChecks, Menu, Moon, Sun, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react'
-import { NavLink, Outlet } from 'react-router'
+import { NavLink, Outlet, useLocation } from 'react-router'
 
 import { useProjects, useRunningJobCount } from '../api/hooks'
 import logo from '../assets/logo.svg'
@@ -83,25 +83,67 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
   )
 }
 
+/** メニューを閉じた後にフォーカスを移す先 (null は移さない) */
+type CloseFocus = 'main' | 'button' | null
+
 /**
  * 狭い画面の移動のメニュー (左のサイドバーの代わり. 殻の下でも出す)
  *
- * 開閉のボタンの直後に項目を置き, Tab でそのまま項目へ移れるようにする. 項目を押す,
- * Esc, メニューの外を押す, フォーカスが外へ出る, のどれかで閉じる. 閉じていても
- * 実行中のジョブの数はボタンの印で分かる
+ * 開くとメニューの最初の項目へフォーカスを移す (ボタンを押してもフォーカスが移らない
+ * ブラウザでも, Esc とフォーカスの出入りの判定が効くように). 閉じ方でフォーカスの
+ * 行き先を決める. 項目を選ぶか経路が替わったら本文へ, Esc かボタンで閉じたらボタンへ,
+ * 外を押すかフォーカスが外へ出たら移さない. 閉じていても実行中のジョブの数はボタンの
+ * 印で分かる
  */
 function NavMenu() {
   const [open, setOpen] = useState(false)
   const runningJobs = useRunningJobCount()
+  const { pathname } = useLocation()
   const panelId = useId()
   const root = useRef<HTMLDivElement>(null)
   const button = useRef<HTMLButtonElement>(null)
+  const panel = useRef<HTMLElement>(null)
+  // 閉じた後にフォーカスを移す先 (閉じるときに決め, 閉じた後に読む)
+  const closeFocus = useRef<CloseFocus>('main')
+
+  const close = (focus: CloseFocus) => {
+    closeFocus.current = focus
+    setOpen(false)
+  }
+
+  // 経路が替わったら閉じる (戻る・進む, サイドバーでの移動, 殻の段階の移動も同じ).
+  // 閉じた後のフォーカスは既定の本文へ
+  const [shownPath, setShownPath] = useState(pathname)
+  if (shownPath !== pathname) {
+    setShownPath(pathname)
+    setOpen(false)
+  }
+
+  // 開いたら最初の項目へ, 閉じたらフォーカスを決めた先へ移す. 中にあったフォーカスが
+  // 消えた (body に落ちた) ときだけ移し, 外の要素へ移ったフォーカスは奪わない
+  const opened = useRef(false)
+  useEffect(() => {
+    if (open) {
+      opened.current = true
+      panel.current?.querySelector<HTMLElement>('a')?.focus()
+      return
+    }
+    if (!opened.current) return
+    opened.current = false
+    const focus = closeFocus.current
+    closeFocus.current = 'main'
+    const lost = document.activeElement === null || document.activeElement === document.body
+    if (focus === 'button') button.current?.focus()
+    else if (focus === 'main' && lost) document.getElementById('main')?.focus()
+  }, [open])
 
   // メニューの外を押したら閉じる
   useEffect(() => {
     if (!open) return
     const onPointerDown = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false)
+      if (root.current?.contains(event.target as Node)) return
+      closeFocus.current = null
+      setOpen(false)
     }
     document.addEventListener('pointerdown', onPointerDown)
     return () => document.removeEventListener('pointerdown', onPointerDown)
@@ -110,11 +152,11 @@ function NavMenu() {
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key !== 'Escape' || !open) return
     event.stopPropagation()
-    setOpen(false)
-    button.current?.focus()
+    close('button')
   }
   const onBlur = (event: FocusEvent) => {
-    if (!root.current?.contains(event.relatedTarget as Node | null)) setOpen(false)
+    if (!open || root.current?.contains(event.relatedTarget as Node | null)) return
+    close(null)
   }
   const label = open ? '移動のメニューを閉じる' : '移動のメニューを開く'
   const Icon = open ? X : Menu
@@ -124,12 +166,14 @@ function NavMenu() {
       <button
         ref={button}
         type="button"
-        onClick={() => setOpen((current) => !current)}
+        // 押してもフォーカスを動かさない (中の項目のフォーカスが外れて閉じ, click で
+        // また開くのを防ぐ. ボタンを押してもフォーカスが移らないブラウザとそろえる)
+        onPointerDown={(event) => event.preventDefault()}
+        onClick={() => (open ? close('button') : setOpen(true))}
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         // 印の数も名前に含める (閉じたままでも実行中のジョブが分かるように)
         aria-label={runningJobs > 0 ? `${label} (${runningJobs} 件のジョブが実行中)` : label}
-        title={label}
         className="flex items-center gap-1.5 rounded-lg p-2 text-ink-2 hover:bg-surface-2 hover:text-ink"
       >
         <Icon className="size-4" aria-hidden />
@@ -144,13 +188,15 @@ function NavMenu() {
       </button>
       {open && (
         <nav
+          ref={panel}
           id={panelId}
           aria-label="移動"
           // 中の文字を押してもフォーカスが外へ出たとみなして閉じないように, 中で受け止める
           tabIndex={-1}
           className="absolute inset-x-0 top-full z-30 flex max-h-[70vh] flex-col gap-0.5 overflow-y-auto border-b border-line bg-surface px-2 py-3 shadow-lg outline-none"
         >
-          <NavItems onNavigate={() => setOpen(false)} />
+          {/* 今の画面の項目を選んでも経路は替わらないので, 選んだら閉じて本文へ */}
+          <NavItems onNavigate={() => close('main')} />
         </nav>
       )}
     </div>

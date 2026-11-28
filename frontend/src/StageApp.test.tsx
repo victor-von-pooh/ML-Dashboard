@@ -660,6 +660,7 @@ describe('狭い画面の移動のメニュー', () => {
       fireEvent.click(button)
       expect(button).toHaveAttribute('aria-expanded', 'true')
       expect(button).toHaveAccessibleName('移動のメニューを閉じる')
+      expect(button).not.toHaveAttribute('title')
 
       // 開いたメニューは名前付きの navigation で, 今の画面に aria-current を付ける
       const menu = document.getElementById(button.getAttribute('aria-controls')!)!
@@ -668,11 +669,16 @@ describe('狭い画面の移動のメニュー', () => {
         'aria-current',
         'page',
       )
-      fireEvent.click(within(menu).getByRole('link', { name: 'ジョブ' }))
+      // 開くと最初の項目へフォーカスが移る
+      expect(within(menu).getByRole('link', { name: 'プロジェクト' })).toHaveFocus()
+      const jobs = within(menu).getByRole('link', { name: 'ジョブ' })
+      jobs.focus()
+      fireEvent.click(jobs)
       await waitFor(() => expect(window.location.pathname).toBe(`${base}/jobs`))
-      // 項目を押すと閉じる
+      // 項目を選ぶと閉じて, フォーカスは本文へ移る (body に落とさない)
       expect(openButton()).toHaveAttribute('aria-expanded', 'false')
       expect(document.getElementById(menu.id)).toBeNull()
+      await waitFor(() => expect(screen.getByRole('main')).toHaveFocus())
 
       fireEvent.click(openButton())
       const again = document.getElementById(button.getAttribute('aria-controls')!)!
@@ -684,6 +690,58 @@ describe('狭い画面の移動のメニュー', () => {
       await waitFor(() => expect(window.location.pathname).toBe(`${base}/projects/p1`))
     },
   )
+
+  it('今の画面の項目を選んでも閉じて, 本文へフォーカスを移す', async () => {
+    stubApi()
+    renderStage('/train')
+    await screen.findAllByRole('link', { name: /sales/ })
+    fireEvent.click(openButton())
+    const button = screen.getByRole('button', { name: '移動のメニューを閉じる' })
+    const menu = document.getElementById(button.getAttribute('aria-controls')!)!
+    const current = within(menu).getByRole('link', { name: 'プロジェクト' })
+    expect(current).toHaveFocus()
+    fireEvent.click(current)
+    expect(button).toHaveAttribute('aria-expanded', 'false')
+    await waitFor(() => expect(screen.getByRole('main')).toHaveFocus())
+  })
+
+  it('経路が替わったら閉じる (サイドバーでの移動, 戻る)', async () => {
+    stubApi()
+    renderStage('/train')
+    await screen.findAllByRole('link', { name: /sales/ })
+    fireEvent.click(openButton())
+    const button = screen.getByRole('button', { name: '移動のメニューを閉じる' })
+    // 幅が md をまたいだ後のサイドバーでの移動
+    const aside = screen.getAllByRole('navigation', { name: '移動' })[0]!
+    fireEvent.click(within(aside).getByRole('link', { name: 'ジョブ' }))
+    await waitFor(() => expect(window.location.pathname).toBe('/train/jobs'))
+    expect(button).toHaveAttribute('aria-expanded', 'false')
+
+    // 戻る
+    fireEvent.click(button)
+    expect(button).toHaveAttribute('aria-expanded', 'true')
+    act(() => window.history.back())
+    await waitFor(() => expect(window.location.pathname).toBe('/train'))
+    await waitFor(() => expect(button).toHaveAttribute('aria-expanded', 'false'))
+  })
+
+  it('ボタンを押してもフォーカスを動かさず, 項目にフォーカスがあるまま押すと閉じる', async () => {
+    stubApi()
+    renderStage('/train')
+    await screen.findAllByRole('link', { name: /sales/ })
+    const button = openButton()
+    // pointerdown の既定の動き (フォーカスの移動) を止める
+    expect(fireEvent.pointerDown(button)).toBe(false)
+    fireEvent.click(button)
+    expect(button).toHaveAttribute('aria-expanded', 'true')
+    const menu = document.getElementById(button.getAttribute('aria-controls')!)!
+    within(menu).getByRole('link', { name: 'ジョブ' }).focus()
+    // 押してもフォーカスが移らないので, blur で閉じて click でまた開くことはない
+    fireEvent.pointerDown(button)
+    fireEvent.click(button)
+    expect(button).toHaveAttribute('aria-expanded', 'false')
+    await waitFor(() => expect(button).toHaveFocus())
+  })
 
   it('Esc で閉じてボタンに戻り, 外を押しても閉じる', async () => {
     stubApi()
