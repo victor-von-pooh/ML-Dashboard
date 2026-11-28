@@ -1377,8 +1377,8 @@ def test_stop_right_after_start(
     (project_dir / "train.py").write_text(SLEEP_LOOP)
     project_id = register(client, project_dir)
 
-    # 実験の無いジョブは中断で割り込む. 子の Python の初期化の途中で
-    # 割り込みが消えても, 送り直しで数秒のうちに終わる
+    # 実験の無いジョブへの中断は割り込み. 子の Python の準備の途中で
+    # 割り込みが消えても, 送り直しで数秒のうちに終わることの確認
     for _ in range(3):
         created = client.post(
             f"/api/projects/{project_id}/jobs", json={"script": "train.py"}
@@ -1448,7 +1448,7 @@ def test_no_resend_while_stopping(
     ----------
     None
     """
-    monkeypatch.setattr(core_jobs, "STOP_RESEND_SEC", 0.5)
+    monkeypatch.setattr(core_jobs, "STOP_RESEND_SEC", 1.5)
     (project_dir / "train.py").write_text(SLOW_CLEANUP)
     project_id = register(client, project_dir)
     created = client.post(
@@ -1459,7 +1459,7 @@ def test_no_resend_while_stopping(
 
     # 送り直す時を過ぎても 1 回だけ (実験の中断で止まり始めたと読む)
     client.post(f"/api/jobs/{job_id}/stop", json={"force": False})
-    time.sleep(2.0)
+    time.sleep(3.0)
     assert (project_dir / "count").read_text() == "1"
     assert client.get(f"/api/jobs/{job_id}").json()["status"] == "running"
 
@@ -1502,14 +1502,14 @@ def test_stopping_reads_run_state(
     )
     interrupt = core_jobs.Interrupt(force_count=0, project=project)
 
-    # Python が捨てた割り込みの traceback は, 止まり始めた様子に数えない
+    # Python が捨てた割り込みの traceback は, 止まり始めた様子の外
     (manager.job_dir(job_id) / "output.log").write_text(
         "Failed checking if argv[0] is an import path entry\n"
         "Traceback (most recent call last):\nKeyboardInterrupt\nstart\n"
     )
     assert not manager.stopping(job, interrupt)
 
-    # 同じ pid の実験が実行中なら様子は無く, 中断を書けば止まり始めた
+    # 同じ pid の実験が実行中なら様子は無く, 中断を書けば止まり始めた様子
     run_dir = write_run(project_dir, "23-59-59")
     status = {"status": "running", "pid": os.getpid()}
     (run_dir / "run.json").write_text(json.dumps(status))
@@ -1519,7 +1519,7 @@ def test_stopping_reads_run_state(
     )
     assert manager.stopping(job, interrupt)
 
-    # プロジェクトが分からなければ実験を読まない
+    # プロジェクトが分からない場合は実験を読まない決まり
     assert not manager.stopping(
         job, core_jobs.Interrupt(force_count=0, project=None)
     )

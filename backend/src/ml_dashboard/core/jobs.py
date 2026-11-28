@@ -1055,7 +1055,7 @@ class JobManager:
             ):
                 return False
 
-            # 止まり始めたジョブに 2 回目を送ると中断を強めるので送らない
+            # 止まり始めたジョブへの 2 回目は中断を強めるので送らない決まり
             if self.stopping(job, interrupt):
                 return False
 
