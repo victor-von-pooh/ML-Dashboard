@@ -37,6 +37,8 @@ export const ORIGIN_LABELS: Record<string, string> = {
   annotation: '人が付けた',
   measurement: '測った',
   synthetic: '作った正確な正解',
+  environment: '環境の報酬',
+  self: '学んだデータそのもの',
   unknown: '分からない',
 }
 

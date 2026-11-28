@@ -381,7 +381,8 @@ class RunParams(BaseModel):
 
 class TaskOrigin(BaseModel):
     # 正解の出どころ (ML-Found の task.yaml の target.origin). type は
-    # process, annotation, measurement, synthetic, unknown のどれか
+    # process, annotation, measurement, synthetic, environment, self,
+    # unknown のどれか
     type: str
     name: Optional[str] = None
     settings: Any = None

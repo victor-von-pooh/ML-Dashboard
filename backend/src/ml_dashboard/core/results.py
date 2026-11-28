@@ -113,8 +113,12 @@ SAMPLE_KINDS = ("image", "text", "audio", "point_cloud", "mask", "file")
 MAX_CLOUD_BYTES = 20 * 1024 * 1024
 MAX_CLOUD_POINTS = 20000
 
-# 正解の出どころの種類 (知らない種類は分からないものとして扱う)
-ORIGIN_TYPES = ("process", "annotation", "measurement", "synthetic", "unknown")
+# 正解の出どころの種類 (ML-Found の task.yaml の値. 知らない種類は分からない
+# ものとして扱う)
+ORIGIN_TYPES = (
+    "process", "annotation", "measurement", "synthetic", "environment",
+    "self", "unknown"
+)
 
 
 def has_results(run_dir: Path) -> bool:
