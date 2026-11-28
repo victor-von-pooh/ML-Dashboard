@@ -27,9 +27,12 @@ from ml_dashboard.core.models import (
 from test_api import register, wait_started
 
 # 起動の印のファイルを作ってから眠り続ける学習のスクリプト
+# 短い眠りを繰り返す学習の代わり (1 回の長い time.sleep は, 眠りに入る直前に
+# 届いた割り込みを眠りの終わりまで扱わないため)
 SLEEP_TRAIN = (
     "import time\nfrom pathlib import Path\n"
-    "Path('started').touch()\ntime.sleep(60)\n"
+    "Path('started').touch()\n"
+    "for _ in range(1200):\n    time.sleep(0.05)\n"
 )
 
 # 候補の定義の中身
