@@ -62,7 +62,7 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
         {runningJobs > 0 && <RunningBadge count={runningJobs} />}
       </NavLink>
       <div className="mt-4 mb-1 px-2.5 text-[11px] font-semibold tracking-wider text-ink-3 uppercase">
-        Projects
+        登録したプロジェクト
       </div>
       {projects.data?.map((project) => (
         <NavLink

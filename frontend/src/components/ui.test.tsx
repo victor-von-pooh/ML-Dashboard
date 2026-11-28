@@ -6,11 +6,11 @@ import { Card, StatusBadge } from './ui'
 test('見出しを持つ欄は見出しを名前にした区域になる', () => {
   render(
     <>
-      <Card title="選んだ問題の設定">中身</Card>
+      <Card title="選んだ問題">中身</Card>
       <Card title="学習の準備">別の中身</Card>
     </>,
   )
-  expect(screen.getByRole('region', { name: '選んだ問題の設定' })).toHaveTextContent('中身')
+  expect(screen.getByRole('region', { name: '選んだ問題' })).toHaveTextContent('中身')
   expect(screen.getByRole('region', { name: '学習の準備' })).toHaveTextContent('別の中身')
 })
 

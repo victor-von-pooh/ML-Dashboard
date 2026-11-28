@@ -88,8 +88,8 @@ def read_record(path: Path) -> tuple[Optional[dict[str, Any]], Optional[str]]:
     # 知らない新しい版は読み違えないように読まず, 理由を返す
     if version > PROBLEM_VERSION:
         skipped = (
-            f"{path} は新しい版 (format_version {version}) の問題の設定"
-            "なので読みません. ML-Dashboard を新しくしてください"
+            f"{path} は新しい版 (format_version {version}) の問題"
+            "なので読みません. 学習・評価の段階のアプリを新しくしてください"
         )
         return record, skipped
 
@@ -208,18 +208,18 @@ def unrecorded_problem(path: Path) -> tuple[str, str]:
         reason = f"{path} を読めません: {error}"
         return name, reason
     if not isinstance(problem, dict):
-        reason = f"{path} は問題の設定の形ではありません"
+        reason = f"{path} は問題のファイルの形ではありません"
         return name, reason
     title = problem.get("name")
     if isinstance(title, str) and title:
         name = title
     version = problem.get("format_version")
     if not isinstance(version, int) or isinstance(version, bool):
-        reason = f"{path} は問題の設定の形ではありません"
+        reason = f"{path} は問題のファイルの形ではありません"
         return name, reason
     reason = (
-        "プロジェクトの記録がありません. ML-Pathfinder で学習の"
-        "プロジェクトを書き出してください"
+        "学習のプロジェクトの記録がありません. 問題の設定の段階で"
+        "学習のプロジェクトを書き出してください"
     )
 
     return name, reason
@@ -405,7 +405,7 @@ def training_of(path: Path, quest: ModuleType) -> ProblemTraining:
     mode = values.get("mode") if isinstance(values, dict) else None
     if monitor is None:
         reason = (
-            "学習しない (既製のモデルをそのまま使う) 問題の設定なので, "
+            "学習しない (既製のモデルをそのまま使う) 問題なので, "
             "監視する指標がありません"
         )
         training = ProblemTraining(

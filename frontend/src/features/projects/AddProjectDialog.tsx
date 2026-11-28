@@ -26,7 +26,7 @@ function RecordedProjects({
   const client = useQueryClient()
   const api = useApi()
   const stage = useStage()
-  // 殻で選んだ問題の設定が記録したプロジェクト (同じプロジェクトなら選びを移さないため)
+  // 殻で選んだ問題が記録したプロジェクト (同じプロジェクトなら選びを移さないため)
   const chosen = useProblemProject(stage.project)
   const recorded = useRecordedProjects(open)
   const titleId = useId()
@@ -40,7 +40,7 @@ function RecordedProjects({
     onSuccess: (project, item) => {
       setAdded(project.name)
       // 置き場の問題の設定から登録したので, 殻の選びをその問題の設定にする. 同じ識別子と,
-      // 殻で選んだ問題の設定も同じプロジェクトを記録している場合は知らせない (一覧は同じ
+      // 殻で選んだ問題も同じプロジェクトを記録している場合は知らせない (一覧は同じ
       // プロジェクトを記録した問題の設定のうち新しい 1 件だけを出すので, 殻の選びを優先する)
       const problem = problemIdOf(item.problem_path)
       if (problem === null || problem === stage.project) return
@@ -69,7 +69,7 @@ function RecordedProjects({
   return (
     <section aria-labelledby={titleId} className="space-y-2">
       <h3 id={titleId} className="text-sm font-semibold">
-        ML-Pathfinder で書き出したプロジェクト
+        問題の設定の段階で書き出したプロジェクト
       </h3>
       {recorded.isPending && open && <Spinner />}
       {recorded.error && <ErrorBox error={recorded.error} />}
@@ -101,7 +101,7 @@ function RecordedProjects({
                 <div className="truncate font-mono text-xs text-ink-3" title={item.path}>
                   {item.path}
                 </div>
-                <div className="truncate text-xs text-ink-2">問題の設定: {item.problem}</div>
+                <div className="truncate text-xs text-ink-2">問題: {item.problem}</div>
               </div>
               <Button
                 icon={Plus}
@@ -124,7 +124,7 @@ function RecordedProjects({
 }
 
 /**
- * ML-Pathfinder で書き出したプロジェクトを選んで登録するか, ディレクトリを入力して,
+ * 問題の設定の段階で書き出したプロジェクトを選んで登録するか, ディレクトリを入力して,
  * その下の ML-Found のプロジェクトをまとめて登録するダイアログ
  */
 export function AddProjectDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -232,7 +232,7 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose: ()
     >
       <div className="flex items-center justify-between border-b border-line px-5 py-4">
         <h2 id={titleId} className="text-base font-semibold">
-          プロジェクトを追加
+          プロジェクトを登録
         </h2>
         <button
           type="button"
@@ -310,10 +310,10 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose: ()
         </span>
         <div className="flex gap-2">
           <Button variant="ghost" onClick={() => dialogRef.current?.close()} disabled={busy}>
-            キャンセル
+            やめる
           </Button>
           <Button variant="primary" onClick={onAdd} disabled={selected.size === 0 || busy}>
-            {selected.size > 0 ? `${selected.size} 件を追加` : '追加'}
+            {selected.size > 0 ? `${selected.size} 件を登録` : '登録'}
           </Button>
         </div>
       </div>

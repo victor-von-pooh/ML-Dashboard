@@ -118,11 +118,11 @@ export function readinessItems(readiness: ProjectReadiness): ReadinessItem[] {
     pathItem(
       'データセット',
       readiness.dataset,
-      'データの分析 (ML-Fathom) でデータセットをこの場所に書き出します',
+      'データの分析の段階でデータセットをこの場所に書き出します',
     ),
   ]
   if (readiness.model_spec) {
-    const hint = 'モデルの作成 (ML-CreateArchitecture) で定義をこの場所に置きます'
+    const hint = 'モデルの作成・選定の段階で定義をこの場所に置きます'
     const item = pathItem('モデルの定義', readiness.model_spec, hint)
     // 仮のモデルの目印があれば, 無くても学習は止めず知らせるだけ
     items.push(
@@ -131,7 +131,7 @@ export function readinessItems(readiness: ProjectReadiness): ReadinessItem[] {
             ...item,
             state: 'notice',
             text: 'まだありません. 置くまでは学習のスクリプトの仮のモデルで学習します',
-            hint: `課題に合うモデルにするには, ${hint}`,
+            hint: `問題に合うモデルにするには, ${hint}`,
           }
         : item,
     )
@@ -151,5 +151,5 @@ export const JOB_STATUS: Record<EnvironmentJob['status'], string> = {
   running: '進めています',
   succeeded: '終わりました',
   failed: '失敗しました',
-  interrupted: '途中で止まりました (ダッシュボードを起動し直したため)',
+  interrupted: '途中で止まりました (サーバーを起動し直したため)',
 }

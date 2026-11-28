@@ -31,7 +31,7 @@ export interface StageAppProps {
   basename: string
   /** API の頭 (例 `/api/train`). 単独では `/api` */
   apiBase: string
-  /** 殻で選んだ問題の設定の識別子. null は選んでいない (今まで通り) */
+  /** 殻で選んだ問題の識別子. null は選んでいない (今まで通り) */
   project: string | null
   /** 置き場の問題の設定に記録されたプロジェクトを登録したときに, その識別子で呼ぶ */
   onProjectChange: (project: string | null) => void

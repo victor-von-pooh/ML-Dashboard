@@ -2,7 +2,7 @@ import { createContext, useContext } from 'react'
 
 /** 根の部品が受け取った, 殻とのやり取り (単独では選びを持たず, 知らせはどこにも届かない) */
 export interface StageValue {
-  /** 殻で選んだ問題の設定の識別子 (null は選んでいない) */
+  /** 殻で選んだ問題の識別子 (null は選んでいない) */
   project: string | null
   /** 置き場の問題の設定に記録されたプロジェクトを登録したときに, その識別子で呼ぶ */
   onProjectChange: (project: string | null) => void

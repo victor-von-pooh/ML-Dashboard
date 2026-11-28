@@ -32,8 +32,8 @@ function DeploymentNote() {
     >
       <ShieldAlert className="mt-0.5 size-4 shrink-0 text-warning-text" aria-hidden />
       <p>
-        実機での実行は道具の外です. ダッシュボードは方策を動かさず, 重みも配りません.
-        方策を使ってよいか (配備) と守りの範囲は, この画面で中身を確かめたうえで人が承認します.
+        実機での実行は道具の外です. この段階は方策を動かさず, 重みも配りません. 方策を使ってよいか
+        (配備) と守りの範囲は, この画面で中身を確かめたうえで人が承認します.
       </p>
     </div>
   )
@@ -344,7 +344,7 @@ export function PolicyTab({
         <p className="text-sm font-medium">{describeFallback(guards.fallback)}</p>
         <p className="mt-1 text-xs text-ink-3">
           観測が止める条件の範囲の外のとき, 観測やモデルの出力が数でないときや形が違うとき,
-          モデルがエラーになったときにこの動きにします (ML-Found の守りの決まり).
+          モデルの計算が失敗したときにこの動きにします (ML-Found の守りの決まり).
         </p>
       </Card>
 

@@ -66,8 +66,8 @@ export function BatchCard({ batch, jobs }: { batch: BatchInfo; jobs: JobInfo[] }
           </p>
           {!batch.owned && !batch.finished && (
             <p className="text-xs text-warning-text">
-              このダッシュボードのプロセスが進めていないまとまりです (持ち主: {batch.owner.hostname}
-              , pid {batch.owner.pid})
+              このサーバーのプロセスが進めていないまとまりです (持ち主: {batch.owner.hostname}, pid{' '}
+              {batch.owner.pid})
             </p>
           )}
         </div>
@@ -101,7 +101,7 @@ export function BatchCard({ batch, jobs }: { batch: BatchInfo; jobs: JobInfo[] }
           )}
           {!batch.finished && !batch.owned && (
             <p id={stopReasonId} className="max-w-64 text-xs text-ink-3">
-              取りやめは, 進めているプロセス ({batch.owner.hostname}) のダッシュボードで行います.
+              取りやめは, 進めているプロセス ({batch.owner.hostname}) のサーバーの画面で行います.
               そのプロセスが応答しない場合は, 強制して取りやめられます
             </p>
           )}
@@ -114,7 +114,7 @@ export function BatchCard({ batch, jobs }: { batch: BatchInfo; jobs: JobInfo[] }
               onClick={() => {
                 if (
                   window.confirm(
-                    `持ち主のダッシュボード (${batch.owner.hostname}, pid ${batch.owner.pid}) が応答しない場合だけ使います. 動いている場合は, そのプロセスの記録と食い違います.\n待っている候補を取りやめ, 学習中の候補をエポックの区切りで止めますか?`,
+                    `持ち主のサーバー (${batch.owner.hostname}, pid ${batch.owner.pid}) が応答しない場合だけ使います. 動いている場合は, そのプロセスの記録と食い違います.\n待っている候補を取りやめ, 学習中の候補をエポックの区切りで止めますか?`,
                   )
                 ) {
                   stop.mutate({ batchId: batch.id, force: true })

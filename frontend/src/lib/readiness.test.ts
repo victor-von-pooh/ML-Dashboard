@@ -66,7 +66,7 @@ describe('readinessItems', () => {
     const notice = readinessItems(sample({ model_spec: spec, model_placeholder: true }))
     expect(notice[1]?.state).toBe('notice')
     expect(notice[1]?.text).toContain('仮のモデル')
-    expect(notice[1]?.hint).toContain('ML-CreateArchitecture')
+    expect(notice[1]?.hint).toContain('モデルの作成・選定の段階')
 
     // 目印が無ければ足りない. 目印があっても, 置けばそろっている
     expect(readinessItems(sample({ model_spec: spec }))[1]?.state).toBe('missing')

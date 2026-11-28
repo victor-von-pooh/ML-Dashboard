@@ -102,7 +102,7 @@ test('学習の準備のカードで, 環境を作る前に動かすコマンド
   await expect(items.getByText('プロジェクトの .venv がまだありません')).toBeVisible()
   await expect(items.getByText(/default の config に data.dataset がありません/)).toBeVisible()
   await page.getByRole('button', { name: '環境を作る' }).click()
-  const confirm = page.getByRole('region', { name: '入れる内容の確認' })
+  const confirm = page.getByRole('region', { name: '入れる内容の確かめ' })
   await expect(confirm.getByText(/ml-found @ git\+https/)).toBeVisible()
   await expect(confirm.getByText(/学習に使う Python を/)).toBeVisible()
   await confirm.getByRole('button', { name: 'やめる' }).click()

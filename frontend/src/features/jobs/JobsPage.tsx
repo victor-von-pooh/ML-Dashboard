@@ -8,7 +8,7 @@ import { batchLabels } from '../../lib/batches'
 import { BatchCard } from './BatchCard'
 import { JobCard } from './JobCard'
 
-/** ダッシュボードから起動した学習の一覧 */
+/** この段階から起動した学習の一覧 */
 export function JobsPage() {
   const jobs = useJobs()
   const running = jobs.data?.filter((job) => job.status === 'running') ?? []
@@ -18,10 +18,7 @@ export function JobsPage() {
 
   return (
     <>
-      <PageHeader
-        title="ジョブ"
-        subtitle="ダッシュボードから起動した学習の進み具合を確かめ, 止めます"
-      />
+      <PageHeader title="ジョブ" subtitle="この段階から起動した学習の進み具合を確かめ, 止めます" />
       {jobs.isPending && <Spinner />}
       {jobs.error && <ErrorBox error={jobs.error} />}
       {jobs.data?.length === 0 && (

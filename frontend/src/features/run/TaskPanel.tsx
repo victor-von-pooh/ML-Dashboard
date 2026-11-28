@@ -107,7 +107,7 @@ function Base({ task }: { task: RunTask }) {
     )
   } else if (task.base_experiment) {
     items.push(
-      <span key="path" className="font-mono" title="ダッシュボードに無い実験">
+      <span key="path" className="font-mono" title="登録したプロジェクトに無い実験">
         {task.base_experiment}
       </span>,
     )
