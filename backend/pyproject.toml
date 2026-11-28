@@ -37,6 +37,10 @@ dev = [
     "ruff>=0.8"
 ]
 
+# lock は uv 0.13.10 で作る (古い uv は lock を書き換えずに止まる)
+[tool.uv]
+required-version = ">=0.13.10"
+
 [tool.uv.sources]
 ml-found = { path = "../ML-Found", editable = true }
 ml-quest = { path = "../ML-Quest", editable = true }
