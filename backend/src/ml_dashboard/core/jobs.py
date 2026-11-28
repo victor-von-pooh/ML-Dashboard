@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import re
 import shutil
@@ -63,6 +64,17 @@ JOB_STALL_GAP_SEC = 300.0
 
 # 学習中に ML-Found が書き直す実験の記録 (どれかが変われば学習は生きている)
 LIVE_FILES = ("progress.json", "run.json", "train.log")
+
+# 学習の後の処理の間に ML-Found が書き直す心拍のファイル
+HEARTBEAT_FILE = "heartbeat.json"
+
+# 心拍の連番が変わらないまま後の処理が止まったとみなす, 書き直す間隔の
+# 倍数 (ML-Found の約束の目安. GIL を離さない処理などで遅れる分の余裕)
+HEARTBEAT_STALL_FACTOR = 6
+
+# 心拍で後の処理を終えたかを決める run.json の状態 (ML-Found が fit を
+# この状態で終えたときに心拍を書き始める)
+POST_STATES = ("completed", "stopped")
 
 # 実験の記録のファイルごとの (i-node, 大きさ, 更新の時刻), 無ければ None
 RunStamp = tuple[Optional[tuple[int, int, int]], ...]
@@ -248,6 +260,11 @@ class JobManager:
         # 合わせ直しで進まない. 起動し直すと比べられないのでメモリだけに保持)
         self.stalls: dict[str, tuple[RunStamp, float, float]] = {}
         self.clock = time.monotonic
+
+        # 起動の時刻を読めない学習の後の処理中のジョブごとの, 最後に変わった
+        # と見た心拍の連番, そのときと前に読んだときの単調な時計
+        # (stalls と同じくメモリだけに保持)
+        self.beats: dict[str, tuple[int, float, float]] = {}
 
     def job_dir(self, job_id: str) -> Path:
         """
@@ -517,11 +534,21 @@ class JobManager:
         # pid を別のプロセスが使い回していれば終了扱い. ただし実験の run.json
         # が実行中なら, 学習の記録が止まったと分かるまで実行中のまま (時計の
         # 合わせ直しで ps の時刻がずれた本物を終わったものにすると戻せない
-        # ため). 確かめられない場合も実行中のまま
-        if self.check_process(job) is not False:
-            self.stalls.pop(job.id, None)
-            return False, None
+        # ため). 確かめられない場合は, 学習の後の処理の心拍が終えたか止まった
+        # と分かったときだけ終了扱い (心拍が無ければ実行中のまま)
+        same = self.check_process(job)
         status = read_json(run_dir / "run.json") if run_dir else {}
+        if same is not False:
+            self.stalls.pop(job.id, None)
+            if (
+                same is None and run_dir is not None
+                and status.get("status") in POST_STATES
+                and self.post_ended(job, run_dir)
+            ):
+                return True, None
+            if same is True or status.get("status") not in POST_STATES:
+                self.beats.pop(job.id, None)
+            return False, None
         if status.get("status") != "running":
             return True, None
         if run_dir is not None and self.stalled(job, run_dir):
@@ -597,6 +624,68 @@ class JobManager:
 
         return stalled
 
+    def post_ended(self, job: Job, run_dir: Path) -> bool:
+        """
+        起動の時刻を読めない学習の後の処理中のジョブの, 後の処理を終えたか
+        止まったかを心拍のファイルから確かめる関数
+
+        stalled と同じく, 心拍の時刻の値は比べず, ダッシュボードの単調な
+        時計で連番が変わらない間の長さを測る. 読み直しの間が
+        JOB_STALL_GAP_SEC 以上空いた場合は数え直す
+
+        Parameters
+        ----------
+        job: Job
+            ジョブ
+        run_dir: Path
+            ジョブの実験のディレクトリ
+
+        Returns
+        ----------
+        ended: bool
+            心拍の pid とホスト名がジョブと同じで, 状態が ended か,
+            running のまま連番が変わらずに interval_sec の
+            HEARTBEAT_STALL_FACTOR 倍以上たったかどうか. 心拍のファイルが
+            無い, 読めない, 形が違う場合は False (今までどおり)
+        """
+        heartbeat = read_json(run_dir / HEARTBEAT_FILE)
+        state = heartbeat.get("state")
+        beat = heartbeat.get("beat")
+        interval = heartbeat.get("interval_sec")
+        if not (
+            heartbeat.get("pid") == job.pid
+            and heartbeat.get("hostname") == job.hostname
+            and state in ("running", "ended")
+        ):
+            self.beats.pop(job.id, None)
+            return False
+
+        # 終えた心拍は, 後の処理を終えた後にしか書かれない (成否は表さない)
+        if state == "ended":
+            return True
+
+        # 連番と間隔の形を確かめてから, 連番が変わらない間の長さの計測
+        if (
+            not isinstance(beat, int) or isinstance(beat, bool)
+            or not isinstance(interval, (int, float))
+            or isinstance(interval, bool)
+            or not math.isfinite(interval) or interval <= 0
+        ):
+            self.beats.pop(job.id, None)
+            return False
+        now = self.clock()
+        seen = self.beats.get(job.id)
+        if (
+            seen is None or seen[0] != beat
+            or now - seen[2] >= JOB_STALL_GAP_SEC
+        ):
+            self.beats[job.id] = (beat, now, now)
+            return False
+        self.beats[job.id] = (beat, seen[1], now)
+        ended = now - seen[1] >= interval * HEARTBEAT_STALL_FACTOR
+
+        return ended
+
     def refresh(self, job: Job, project: Optional[Project]) -> Job:
         """
         プロセスと実験の状態からジョブの状態を更新する関数
@@ -629,6 +718,7 @@ class JobManager:
             job.finished_at = now_iso()
             self.processes.pop(job.id, None)
             self.stalls.pop(job.id, None)
+            self.beats.pop(job.id, None)
 
             # run.json を書かない版の実験は終わった後に結び付け
             if project is not None and run_dir is None:
