@@ -641,3 +641,78 @@ describe('外したときの下書き', () => {
     expect(launchDraft()?.value.text).toBe('trainer:\n  epochs: 9\n')
   })
 })
+
+describe('狭い画面の移動のメニュー', () => {
+  // jsdom は CSS の幅の切り替え (md:hidden) を当てないので, メニューのボタンで選ぶ
+  const openButton = () => screen.getByRole('button', { name: /移動のメニューを開く/ })
+
+  it.each([
+    { label: '殻の下', path: '/train', base: '/train', apiBase: '/api/train', embedded: true },
+    { label: '単独', path: '/', base: '', apiBase: '/api', embedded: false },
+  ])(
+    '$label でもメニューを開いて, ジョブの一覧とプロジェクトへ移れる',
+    async ({ path, base, apiBase, embedded }) => {
+      stubApi(apiBase)
+      renderStage(path, { basename: base, apiBase, embedded })
+      await screen.findAllByRole('link', { name: /sales/ })
+      const button = openButton()
+      expect(button).toHaveAttribute('aria-expanded', 'false')
+      fireEvent.click(button)
+      expect(button).toHaveAttribute('aria-expanded', 'true')
+      expect(button).toHaveAccessibleName('移動のメニューを閉じる')
+
+      // 開いたメニューは名前付きの navigation で, 今の画面に aria-current を付ける
+      const menu = document.getElementById(button.getAttribute('aria-controls')!)!
+      expect(menu).toHaveAttribute('aria-label', '移動')
+      expect(within(menu).getByRole('link', { name: 'プロジェクト' })).toHaveAttribute(
+        'aria-current',
+        'page',
+      )
+      fireEvent.click(within(menu).getByRole('link', { name: 'ジョブ' }))
+      await waitFor(() => expect(window.location.pathname).toBe(`${base}/jobs`))
+      // 項目を押すと閉じる
+      expect(openButton()).toHaveAttribute('aria-expanded', 'false')
+      expect(document.getElementById(menu.id)).toBeNull()
+
+      fireEvent.click(openButton())
+      const again = document.getElementById(button.getAttribute('aria-controls')!)!
+      expect(within(again).getByRole('link', { name: 'ジョブ' })).toHaveAttribute(
+        'aria-current',
+        'page',
+      )
+      fireEvent.click(within(again).getByRole('link', { name: /sales/ }))
+      await waitFor(() => expect(window.location.pathname).toBe(`${base}/projects/p1`))
+    },
+  )
+
+  it('Esc で閉じてボタンに戻り, 外を押しても閉じる', async () => {
+    stubApi()
+    renderStage('/train')
+    await screen.findAllByRole('link', { name: /sales/ })
+    fireEvent.click(openButton())
+    const button = screen.getByRole('button', { name: '移動のメニューを閉じる' })
+    const menu = document.getElementById(button.getAttribute('aria-controls')!)!
+    const link = within(menu).getByRole('link', { name: 'ジョブ' })
+    link.focus()
+    fireEvent.keyDown(link, { key: 'Escape' })
+    expect(button).toHaveAttribute('aria-expanded', 'false')
+    expect(button).toHaveFocus()
+
+    fireEvent.click(button)
+    expect(button).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.pointerDown(screen.getByRole('main'))
+    expect(button).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('実行中のジョブの数を閉じたメニューのボタンにも出す', async () => {
+    const inner = stubApi()
+    const running = [{ id: 'j1', project_id: 'p1', status: 'running', run_id: null }]
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) =>
+      String(input).startsWith('/api/train/jobs') ? Response.json(running) : inner(input, init),
+    )
+    renderStage('/train')
+    const button = await screen.findByRole('button', { name: /実行中/ })
+    expect(button).toHaveAccessibleName('移動のメニューを開く (1 件のジョブが実行中)')
+    expect(button).toHaveAttribute('aria-expanded', 'false')
+  })
+})
