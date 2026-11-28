@@ -1,4 +1,4 @@
-import { Compass, TriangleAlert } from 'lucide-react'
+import { SearchX, TriangleAlert } from 'lucide-react'
 import { Link, isRouteErrorResponse, useRouteError } from 'react-router'
 
 import { STAGE_NAME } from '../lib/stage'
@@ -9,9 +9,9 @@ export function NotFound() {
   return (
     <>
       <PageHeader title={STAGE_NAME} />
-      <EmptyState icon={Compass} title="ページが見つかりません">
+      <EmptyState icon={SearchX} title="ページが見つかりません">
         <Link to="/" className="text-accent-text hover:underline">
-          プロジェクトの一覧に戻る
+          プロジェクトの一覧へ戻る
         </Link>
       </EmptyState>
     </>

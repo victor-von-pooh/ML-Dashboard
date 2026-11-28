@@ -119,7 +119,7 @@ test('画面ごとに h1 が 1 つで, 知らない経路は段階の名前の�
   await expect(
     page.getByRole('heading', { level: 2, name: 'ページが見つかりません' }),
   ).toBeVisible()
-  await page.getByRole('link', { name: 'プロジェクトの一覧に戻る' }).click()
+  await page.getByRole('link', { name: 'プロジェクトの一覧へ戻る' }).click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^学習・評価$/)
 
   // 開けない実験は「実験を開けません」の見出しと, API の文を出す

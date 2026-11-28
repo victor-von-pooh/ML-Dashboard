@@ -197,7 +197,7 @@ describe('StageApp', () => {
   it('知らない経路の画面から戻る先も basename の下', async () => {
     stubApi()
     renderStage('/train/unknown')
-    expect(await screen.findByRole('link', { name: 'プロジェクトの一覧に戻る' })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: 'プロジェクトの一覧へ戻る' })).toHaveAttribute(
       'href',
       '/train',
     )
