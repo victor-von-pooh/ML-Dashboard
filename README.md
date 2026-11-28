@@ -27,7 +27,7 @@ ML-Found が実験ごとに残すディレクトリ (`history.csv`, `config.yaml
   </tr>
   <tr>
     <td><img src="docs/images/policy.png" alt="方策のタブ: 強化学習の方策の一式, 重みの sha256 の一致, 守り付きの評価の終え方ごとの割合と学習の成功の割合"></td>
-    <td><img src="docs/images/requirements.png" alt="追加の依存: 強化学習, MuJoCo, ROS 2, CUDA が入っているかと入れ方のカード"></td>
+    <td><img src="docs/images/requirements.png" alt="追加の依存: 強化学習, MuJoCo, ROS 2, CUDA などの機能が入っているかと入れ方のカード"></td>
   </tr>
   <tr>
     <td><b>方策</b>. 強化学習の方策の守りと重みの sha256 を確かめる. 重みは配らず, 使ってよいかは人が承認する</td>
