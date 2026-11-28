@@ -48,6 +48,19 @@ DROPPED_ENV = ("VIRTUAL_ENV", "PYTHONPATH", "PYTHONHOME")
 # 強制の中断を繰り返した回数ごとに送るシグナル
 FORCE_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGKILL)
 
+# 自分で起動したジョブに SIGINT を送ってから, 止まり始めた様子が無ければ
+# 1 回だけ送り直すまでの秒数 (起動の直後の子の Python は, スクリプトを動かす
+# 前の準備の途中で受けた割り込みを, まれに traceback を出すだけで捨てる.
+# 準備は 1 秒より十分短く, 受けた割り込みはすぐにプロセスの終わりか実験の
+# 状態に現れるので, CI の遅れを見込んでも受けた割り込みを取り違えない長さ)
+STOP_RESEND_SEC = 3.0
+
+# 送り直しの対象にする SIGINT の, プロセスの起動からの秒数 (割り込みが消える
+# のはスクリプトを動かす前の準備の間だけで, 準備は普通は 0.1 秒に満たない.
+# CI の負荷で数十倍に延びても覆い, 学習が進んでから押した中断の後片付けには
+# 割り込まない長さ)
+STOP_RESEND_WINDOW_SEC = 5.0
+
 # ジョブの開始の時刻から, そのジョブのプロセスが始まるまでに許す秒数
 # (開始の時刻はプロセスを作る直前に取るので本物は直後に始まり, 時計の
 # 合わせ直しで ps の時刻がずれても本物を外さない幅)
@@ -84,6 +97,15 @@ POST_STATES = ("completed", "stopped")
 RunStamp = tuple[Optional[tuple[int, int, int]], ...]
 
 JobStatus = Literal["running", "finished"]
+
+
+@dataclass(frozen=True, eq=False)
+class Interrupt:
+    # 自分で起動したジョブに送った SIGINT の覚え (送り直すかの確かめに使う)
+    # 送った後の強制の中断の回数 (その後に強めていれば送り直さない)
+    force_count: int
+    # ジョブのプロジェクト (実験の状態を読む), 分からない場合は None
+    project: Optional[Project]
 
 
 def child_env() -> dict[str, str]:
@@ -304,6 +326,16 @@ class JobManager:
         # (stalls と同じくメモリだけに保持)
         self.beats: dict[str, tuple[int, float, float]] = {}
 
+        # 自分で起動したジョブごとの, 最後に送った SIGINT の覚え (送り直すか
+        # を確かめる時までの間だけ. 自分で起動したプロセスにだけ送り直すので
+        # メモリだけに保持)
+        self.interrupts: dict[str, Interrupt] = {}
+
+        # 自分で起動したジョブごとの, プロセスを起動した単調な時計
+        # (送り直しの対象を起動の直後の SIGINT に限るため. processes と
+        # 同じくメモリだけに保持)
+        self.launched: dict[str, float] = {}
+
     def job_dir(self, job_id: str) -> Path:
         """
         ジョブのディレクトリを取得する関数
@@ -452,6 +484,7 @@ class JobManager:
         )
         with self.lock:
             self.processes[job_id] = process
+            self.launched[job_id] = self.clock()
             self.save(job)
 
         return job
@@ -836,6 +869,8 @@ class JobManager:
             self.processes.pop(job.id, None)
             self.stalls.pop(job.id, None)
             self.beats.pop(job.id, None)
+            self.interrupts.pop(job.id, None)
+            self.launched.pop(job.id, None)
 
             # run.json を書かない版の実験は終わった後に結び付け
             if project is not None and run_dir is None:
@@ -954,11 +989,135 @@ class JobManager:
                 if force:
                     job.force_count += 1
 
+                # 自分で起動したプロセスへの SIGINT は, 消えた場合に送り直す
+                # ように確かめる時を予約
+                if FORCE_SIGNALS[number] == signal.SIGINT:
+                    self.watch_interrupt(job, project)
+
             # 中断を要求した印を保存
             job.stop_requested = True
             self.save(job)
 
         return job
+
+    def watch_interrupt(self, job: Job, project: Optional[Project]) -> None:
+        """
+        自分で起動したジョブに起動の直後に送った SIGINT を覚え,
+        STOP_RESEND_SEC 後に送り直すかを確かめる時を予約する関数
+
+        プロセスの起動から STOP_RESEND_WINDOW_SEC より後に送った SIGINT は
+        予約しない (割り込みが消えるのは起動の準備の間だけで, その後の
+        中断の後片付けに 2 回目で割り込まないため)
+
+        Parameters
+        ----------
+        job: Job
+            SIGINT を送ったジョブ (force_count は送った後の値)
+        project: Optional[Project]
+            ジョブのプロジェクト, 分からない場合は None
+
+        Returns
+        ----------
+        None
+        """
+        launched = self.launched.get(job.id)
+        if (
+            job.id not in self.processes or launched is None
+            or self.clock() - launched > STOP_RESEND_WINDOW_SEC
+        ):
+            return
+
+        interrupt = Interrupt(force_count=job.force_count, project=project)
+        self.interrupts[job.id] = interrupt
+
+        # 確かめるのは別のスレッド (画面がジョブを読み直さなくても送り直す)
+        timer = threading.Timer(
+            STOP_RESEND_SEC, self.resend_interrupt, (job.id, interrupt)
+        )
+        timer.daemon = True
+        timer.start()
+
+    def resend_interrupt(self, job_id: str, interrupt: Interrupt) -> bool:
+        """
+        SIGINT を送ったジョブが止まり始めた様子も無く生きていれば, SIGINT
+        を 1 回だけ送り直す関数
+
+        Parameters
+        ----------
+        job_id: str
+            ジョブの ID
+        interrupt: Interrupt
+            watch_interrupt で覚えた SIGINT (後に送ったものに置き換わって
+            いれば, 置き換えたものの確かめに任せる)
+
+        Returns
+        ----------
+        resent: bool
+            送り直したかどうか
+        """
+        with self.lock:
+            # 最後に送った SIGINT の確かめだけを実行
+            if self.interrupts.get(job_id) is not interrupt:
+                return False
+            del self.interrupts[job_id]
+
+            # 自分で起動して終わっていないプロセスだけが対象
+            # (回収していないので pid は使い回されていない)
+            process = self.processes.get(job_id)
+            if process is None or process.poll() is not None:
+                return False
+
+            # 中断の要求のまま, その後に強めていないジョブだけが対象
+            job = self.load(job_id)
+            if (
+                job is None or job.status != "running"
+                or not job.stop_requested
+                or job.force_count != interrupt.force_count
+            ):
+                return False
+
+            # 止まり始めたジョブへの 2 回目は中断を強めるので送らない決まり
+            if self.stopping(job, interrupt):
+                return False
+
+            try:
+                os.killpg(process.pid, signal.SIGINT)
+            except (ProcessLookupError, PermissionError):
+                return False
+
+        return True
+
+    def stopping(self, job: Job, interrupt: Interrupt) -> bool:
+        """
+        SIGINT を送ったジョブが, 受けて止まり始めた様子があるかを確かめる
+        関数
+
+        ジョブの出力は見ない. 割り込みが消えて学習が続く場合も, 起動の途中の
+        表示や進み具合で出力は増え, Python はスクリプトを動かす前に捨てた
+        割り込みの traceback (最後の行が KeyboardInterrupt) も出すため
+
+        Parameters
+        ----------
+        job: Job
+            ジョブ
+        interrupt: Interrupt
+            送った SIGINT の覚え
+
+        Returns
+        ----------
+        stopping: bool
+            ジョブの実験の run.json が実行中でない (ML-Found が割り込みで
+            書く中断か失敗, または完了) かどうか. 実験が無い場合は False
+        """
+        if interrupt.project is None:
+            return False
+        run_dir = self.find_run(job, interrupt.project)
+        if run_dir is None:
+            return False
+        state = read_json(run_dir / "run.json").get("status")
+        stopping = state is not None and state != "running"
+
+        return stopping
 
     def owns(self, job: Job, run_dir: Optional[Path]) -> bool:
         """

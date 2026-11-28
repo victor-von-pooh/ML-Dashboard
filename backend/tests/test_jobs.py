@@ -32,7 +32,7 @@ from ml_dashboard.core import jobs as core_jobs
 from ml_dashboard.core.model_spec import find_model_spec_copy, run_of_copy
 from ml_dashboard.core.models import RunModelSpec
 
-from conftest import api_app
+from conftest import api_app, write_run
 from test_api import register, wait_started
 
 # ML-Found の学習の代わりに, 状態のファイルを書いて STOP を待つスクリプト
@@ -1311,6 +1311,330 @@ def test_force_stop(client: TestClient, project_dir: Path) -> None:
     assert missing.json()["detail"] == "ジョブ zzzz が見つかりません"
     traversal = client.get("/api/jobs/..%2F..")
     assert traversal.status_code == 404
+
+
+# 短い眠りを繰り返す学習の代わり (起動の印は作らない). 1 回の長い
+# time.sleep は, 眠りに入る直前に届いた割り込みを眠りの終わりまで扱わない
+# ため
+SLEEP_LOOP = (
+    "import time\nprint('start', flush=True)\n"
+    "for _ in range(600):\n    time.sleep(0.05)\n"
+)
+
+# 1 回目の割り込みを消えたものとして飲み込み, 2 回目から Ctrl-C と同じく
+# 止まる学習の代わり (飲み込んだ印と起動の印を作る)
+SWALLOW_FIRST = (
+    "import signal, time\nfrom pathlib import Path\n"
+    "def swallow(number, frame):\n"
+    "    signal.signal(signal.SIGINT, signal.default_int_handler)\n"
+    "    Path('swallowed').touch()\n"
+    "signal.signal(signal.SIGINT, swallow)\n"
+    "Path('started').touch()\n"
+    "for _ in range(600):\n    time.sleep(0.05)\n"
+)
+
+# 割り込みを受けると ML-Found と同じく実験の状態に中断を書いて後片付けを
+# 続け, 受けた回数を数える学習の代わり (後片付けの間の 2 回目も数えるだけで
+# 止まらない)
+SLOW_CLEANUP = (
+    "import json, os, signal, time\nfrom datetime import datetime\n"
+    "from pathlib import Path\n"
+    "count = 0\n"
+    "def handle(number, frame):\n"
+    "    global count\n"
+    "    count += 1\n"
+    "    Path('count').write_text(str(count))\n"
+    "    run = Path('outputs/demo') / datetime.now().strftime("
+    "'%Y-%m-%d/%H-%M-%S')\n"
+    "    run.mkdir(parents=True, exist_ok=True)\n"
+    "    (run / 'config.yaml').write_text('experiment:\\n  name: demo\\n')\n"
+    "    (run / 'run.json').write_text(json.dumps("
+    "{'status': 'stopped', 'pid': os.getpid()}))\n"
+    "signal.signal(signal.SIGINT, handle)\n"
+    "Path('started').touch()\n"
+    "for _ in range(600):\n    time.sleep(0.05)\n"
+)
+
+
+def test_stop_right_after_start(
+    client: TestClient, project_dir: Path
+) -> None:
+    """
+    起動の直後に送った中断で, 起動の印を待たずにジョブが終わることを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    (project_dir / "train.py").write_text(SLEEP_LOOP)
+    project_id = register(client, project_dir)
+
+    # 実験の無いジョブへの中断は割り込み. 子の Python の準備の途中で
+    # 割り込みが消えても, 送り直しで数秒のうちに終わることの確認
+    for _ in range(3):
+        created = client.post(
+            f"/api/projects/{project_id}/jobs", json={"script": "train.py"}
+        )
+        job_id = created.json()["id"]
+        stopped = client.post(
+            f"/api/jobs/{job_id}/stop", json={"force": False}
+        )
+        assert stopped.json()["stop_requested"] is True
+        job = wait_for(client, job_id, "status", "finished")
+        assert job["return_code"] != 0
+        assert job["force_count"] == 0
+
+
+def test_resend_lost_interrupt(
+    client: TestClient, project_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    消えた割り込みを, 止まり始めた様子が無ければ送り直すことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        送り直すまでの秒数の差し替えに使う
+
+    Returns
+    ----------
+    None
+    """
+    monkeypatch.setattr(core_jobs, "STOP_RESEND_SEC", 1.0)
+    (project_dir / "train.py").write_text(SWALLOW_FIRST)
+    project_id = register(client, project_dir)
+    created = client.post(
+        f"/api/projects/{project_id}/jobs", json={"script": "train.py"}
+    )
+    job_id = created.json()["id"]
+
+    # 1 回目を飲み込む仕掛けを置いてから中断 (消えた割り込みの再現)
+    wait_started(project_dir / "started")
+    client.post(f"/api/jobs/{job_id}/stop", json={"force": False})
+    job = wait_for(client, job_id, "status", "finished")
+    assert job["return_code"] != 0
+    assert (project_dir / "swallowed").exists()
+
+
+def record_resends(
+    manager: core_jobs.JobManager, monkeypatch: pytest.MonkeyPatch
+) -> list[tuple[str, bool]]:
+    """
+    送り直しの確かめの結果を記録するように差し替える関数
+
+    Parameters
+    ----------
+    manager: core_jobs.JobManager
+        ジョブの管理
+    monkeypatch: pytest.MonkeyPatch
+        差し替えに使う
+
+    Returns
+    ----------
+    results: list[tuple[str, bool]]
+        確かめを終えた順の (ジョブの ID, 送り直したか)
+    """
+    results: list[tuple[str, bool]] = []
+    original = manager.resend_interrupt
+
+    def record(job_id: str, interrupt: core_jobs.Interrupt) -> bool:
+        resent = original(job_id, interrupt)
+        results.append((job_id, resent))
+        return resent
+
+    monkeypatch.setattr(manager, "resend_interrupt", record)
+
+    return results
+
+
+def wait_resend_checked(
+    manager: core_jobs.JobManager, results: list[tuple[str, bool]]
+) -> None:
+    """
+    覚えた SIGINT が無くなり, 送り直しの確かめを終えるまで待つ関数
+
+    Parameters
+    ----------
+    manager: core_jobs.JobManager
+        ジョブの管理
+    results: list[tuple[str, bool]]
+        record_resends が記録する確かめの結果
+
+    Returns
+    ----------
+    None
+    """
+    # 最大 30 秒まで, 0.05 秒ごとに確認
+    for _ in range(600):
+        with manager.lock:
+            if not manager.interrupts and results:
+                return
+        time.sleep(0.05)
+
+    raise AssertionError("送り直しの確かめが終わりませんでした")
+
+
+def test_no_resend_while_stopping(
+    client: TestClient, project_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    割り込みを受けて止まり始めたジョブには, 送り直さないことを確かめる
+    関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        送り直すまでの秒数の差し替えに使う
+
+    Returns
+    ----------
+    None
+    """
+    monkeypatch.setattr(core_jobs, "STOP_RESEND_SEC", 1.5)
+    manager = api_app(client).state.jobs
+    results = record_resends(manager, monkeypatch)
+    (project_dir / "train.py").write_text(SLOW_CLEANUP)
+    project_id = register(client, project_dir)
+    created = client.post(
+        f"/api/projects/{project_id}/jobs", json={"script": "train.py"}
+    )
+    job_id = created.json()["id"]
+    wait_started(project_dir / "started")
+
+    # 送り直しの確かめを終えるまで待ち, 送らなかったことと受けた回数の確認
+    # (実験の中断で止まり始めたと読む)
+    client.post(f"/api/jobs/{job_id}/stop", json={"force": False})
+    assert job_id in manager.interrupts
+    wait_resend_checked(manager, results)
+    assert results == [(job_id, False)]
+    assert (project_dir / "count").read_text() == "1"
+    assert client.get(f"/api/jobs/{job_id}").json()["status"] == "running"
+
+    # 強めた中断で片付け (SIGINT の次の SIGTERM で止まる)
+    client.post(f"/api/jobs/{job_id}/stop", json={"force": True})
+    client.post(f"/api/jobs/{job_id}/stop", json={"force": True})
+    job = wait_for(client, job_id, "status", "finished")
+    assert job["return_code"] != 0
+
+
+def test_no_resend_long_after_start(
+    client: TestClient, project_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    起動から時間がたってから送った中断には, 送り直しを予約しないことを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        送り直しの対象の秒数の差し替えに使う
+
+    Returns
+    ----------
+    None
+    """
+    monkeypatch.setattr(core_jobs, "STOP_RESEND_WINDOW_SEC", 0.5)
+    manager = api_app(client).state.jobs
+    (project_dir / "train.py").write_text(SWALLOW_FIRST)
+    project_id = register(client, project_dir)
+    created = client.post(
+        f"/api/projects/{project_id}/jobs", json={"script": "train.py"}
+    )
+    job_id = created.json()["id"]
+    wait_started(project_dir / "started")
+    while manager.clock() - manager.launched[job_id] <= 0.5:
+        time.sleep(0.05)
+
+    # 飲み込まれた中断は覚えず, 送り直しも無いまま学習が続く
+    client.post(f"/api/jobs/{job_id}/stop", json={"force": False})
+    assert job_id not in manager.interrupts
+    for _ in range(600):
+        if (project_dir / "swallowed").exists():
+            break
+        time.sleep(0.05)
+    assert (project_dir / "swallowed").exists()
+    assert manager.processes[job_id].poll() is None
+
+    # 「すぐに止める」の SIGINT で片付け (覚えもしない)
+    client.post(f"/api/jobs/{job_id}/stop", json={"force": True})
+    assert job_id not in manager.interrupts
+    job = wait_for(client, job_id, "status", "finished")
+    assert job["return_code"] != 0
+
+
+def test_stopping_reads_run_state(
+    tmp_path: Path, project_dir: Path
+) -> None:
+    """
+    止まり始めた様子を実験の状態で読み, 出力では読まないことを確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        pytest が用意する一時ディレクトリ
+    project_dir: Path
+        プロジェクトのディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    manager = core_jobs.JobManager(tmp_path / "data")
+    project = core_jobs.Project(
+        id="demo-task", name="demo-task", path=str(project_dir),
+        python=sys.executable, created_at=core_jobs.now_iso()
+    )
+    job_id = manager.create()
+    job = core_jobs.Job(
+        id=job_id, project_id=project.id, script="train.py",
+        config=str(project_dir / "configs" / "experiment" / "train.yaml"),
+        created_at="2026-11-08T23:59:59+09:00", pid=os.getpid(),
+        status="running", return_code=None, run_id=None, finished_at=None,
+        stop_requested=True
+    )
+    interrupt = core_jobs.Interrupt(force_count=0, project=project)
+
+    # Python が捨てた割り込みの traceback は, 止まり始めた様子の外
+    (manager.job_dir(job_id) / "output.log").write_text(
+        "Failed checking if argv[0] is an import path entry\n"
+        "Traceback (most recent call last):\nKeyboardInterrupt\nstart\n"
+    )
+    assert not manager.stopping(job, interrupt)
+
+    # 同じ pid の実験が実行中なら様子は無く, 中断を書けば止まり始めた様子
+    run_dir = write_run(project_dir, "23-59-59")
+    status = {"status": "running", "pid": os.getpid()}
+    (run_dir / "run.json").write_text(json.dumps(status))
+    assert not manager.stopping(job, interrupt)
+    (run_dir / "run.json").write_text(
+        json.dumps({**status, "status": "stopped"})
+    )
+    assert manager.stopping(job, interrupt)
+
+    # プロジェクトが分からない場合は実験を読まない決まり
+    assert not manager.stopping(
+        job, core_jobs.Interrupt(force_count=0, project=None)
+    )
 
 
 def test_rejected_launch_leaves_nothing(
