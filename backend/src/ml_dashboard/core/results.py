@@ -1923,7 +1923,9 @@ def find_cloud_item(run_dir: Path, relative: str) -> dict[str, Any]:
     from ml_found import load_samples
 
     if not has_samples_index(run_dir):
-        raise RunNotFoundError("見本の一覧 (samples/index.json) がありません")
+        raise RunNotFoundError(
+            "見本の一覧 samples/index.json が見つかりません"
+        )
     for loaded in load_samples(run_dir):
         data = dict_or_empty(loaded)
         file = text_or_none(data.get("file"))
@@ -1933,7 +1935,7 @@ def find_cloud_item(run_dir: Path, relative: str) -> dict[str, Any]:
             and f"{SAMPLES_DIR}/{file}" == relative
         ):
             return data
-    raise RunNotFoundError(f"点群の見本が見つかりません: {relative}")
+    raise RunNotFoundError(f"点群の見本 {relative} が見つかりません")
 
 
 def read_sample_cloud(run_dir: Path, relative: str) -> SampleCloud:

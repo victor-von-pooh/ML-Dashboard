@@ -59,12 +59,11 @@ export function SelectedProblem({
         {missing && (
           <p className="flex items-start gap-1.5 text-warning-text">
             <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
-            <span>
-              問題 <span className="font-mono">{problemId}</span> が置き場にありません
-            </span>
+            {/* 見つからない物の文は API が「問題 <識別子> が見つかりません」で返す */}
+            <span className="break-all">{problem.error?.message}</span>
           </p>
         )}
-        {problem.error && !missing && <ErrorBox error={problem.error} />}
+        {problem.error && !missing && <ErrorBox error={problem.error} live={false} />}
         {data && (
           <>
             <div>

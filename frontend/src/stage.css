@@ -1,9 +1,5 @@
 /*
  * 学習・評価の段階に固有の CSS (Tailwind の読み込みと色のトークン以外).
- * 単独では index.css が読み, 殻は根の部品と別にこのファイルを読む
+ * 単独では index.css が読み, 殻は根の部品と別にこのファイルを読む.
+ * 今は固有の決まりを持たない (数の桁は Tailwind の tabular-nums でそろえる)
  */
-
-/* 数値の桁をそろえる */
-.tabular {
-  font-variant-numeric: tabular-nums;
-}

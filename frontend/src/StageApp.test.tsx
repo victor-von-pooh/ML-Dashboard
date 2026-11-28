@@ -115,7 +115,10 @@ function stubApi(base = '/api/train', jobs?: () => Promise<Response>) {
       const found = PROBLEMS[decodeURIComponent(problem[1]!)]
       return found
         ? Response.json(found)
-        : Response.json({ detail: '問題が置き場にありません' }, { status: 404 })
+        : Response.json(
+            { detail: `問題 ${decodeURIComponent(problem[1]!)} が見つかりません` },
+            { status: 404 },
+          )
     }
     return Response.json({ detail: 'not found' }, { status: 404 })
   })
@@ -194,7 +197,7 @@ describe('StageApp', () => {
   it('知らない経路の画面から戻る先も basename の下', async () => {
     stubApi()
     renderStage('/train/unknown')
-    expect(await screen.findByRole('link', { name: 'プロジェクトの一覧に戻る' })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: 'プロジェクトの一覧へ戻る' })).toHaveAttribute(
       'href',
       '/train',
     )
@@ -392,7 +395,7 @@ describe('殻で選んだ問題', () => {
     const main = screen.getByRole('main')
     expect(await within(main).findByRole('link', { name: 'churn' })).toBeInTheDocument()
     view.rerender({ project: 'missing' })
-    expect(await screen.findByText(/が置き場にありません/)).toBeInTheDocument()
+    expect(await screen.findByText('問題 missing が見つかりません')).toBeInTheDocument()
     expect(within(main).getByRole('link', { name: 'churn' })).toBeInTheDocument()
   })
 

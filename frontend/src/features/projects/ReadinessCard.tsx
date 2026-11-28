@@ -66,7 +66,7 @@ export function ReadinessCard({ projectId }: { projectId: string }) {
       {readiness.isPending ? (
         <Spinner label="学習の準備を確かめています" />
       ) : readiness.error ? (
-        <ErrorBox error={readiness.error} />
+        <ErrorBox error={readiness.error} live={false} />
       ) : (
         <ReadinessBody
           readiness={readiness.data}

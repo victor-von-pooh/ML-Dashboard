@@ -164,7 +164,7 @@ def trajectory_path(run_dir: Path, name: str) -> Path:
     if not EVALUATION_NAME.fullmatch(name) or not (
         is_plain_dir(folder) and is_plain_file(path)
     ):
-        raise RunNotFoundError(f"軌跡の表が見つかりません: {name}")
+        raise RunNotFoundError(f"軌跡の表 {name} が見つかりません")
 
     return path
 

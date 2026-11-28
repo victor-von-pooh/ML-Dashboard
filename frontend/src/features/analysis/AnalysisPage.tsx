@@ -1,12 +1,12 @@
 import clsx from 'clsx'
 import { ChartScatter } from 'lucide-react'
 import { useId, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
+import { useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { encodeRunId } from '../../api/client'
 import { useProject, useRunParams } from '../../api/hooks'
 import { ScatterChart, type ScatterPoint } from '../../components/ScatterChart'
-import { Card, EmptyState, ErrorBox, PageHeader, Spinner } from '../../components/ui'
+import { Card, EmptyState, ErrorBox, PageHeader, Spinner, StageCrumbs } from '../../components/ui'
 import {
   type Direction,
   formatParam,
@@ -52,6 +52,9 @@ function Select({
     </div>
   )
 }
+
+/** 画面の見出し */
+const ANALYSIS_TITLE = 'ハイパーパラメータの分析'
 
 /** config の項目と結果の関係を調べる画面 */
 export function AnalysisPage() {
@@ -142,37 +145,38 @@ export function AnalysisPage() {
     1
   const metricLabel = metrics.find((item) => item.id === metric)?.label ?? metric
 
-  const header = (
+  const header = (title: string) => (
     <PageHeader
       breadcrumb={
-        <>
-          <Link to="/" className="hover:text-ink">
-            プロジェクト
-          </Link>
-          {' / '}
-          <Link to={`/projects/${projectId}`} className="hover:text-ink">
-            {project.data?.name ?? projectId}
-          </Link>
-        </>
+        <StageCrumbs
+          links={[{ to: `/projects/${projectId}`, label: project.data?.name ?? projectId }]}
+        />
       }
-      title="ハイパーパラメータの分析"
+      title={title}
       subtitle="config の項目を変えたときに結果がどう変わったかを, 実験をまたいで見ます"
     />
   )
 
-  if (params.isPending) return <Spinner />
+  if (params.isPending) {
+    return (
+      <>
+        {header(ANALYSIS_TITLE)}
+        <Spinner />
+      </>
+    )
+  }
   if (params.error) {
     return (
       <>
-        {header}
-        <ErrorBox error={params.error} />
+        {header('分析を開けません')}
+        <ErrorBox error={params.error} live={false} />
       </>
     )
   }
 
   return (
     <>
-      {header}
+      {header(ANALYSIS_TITLE)}
       {names.length > 1 && (
         <div className="mb-4">
           <Select
@@ -250,6 +254,7 @@ export function AnalysisPage() {
 
           <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
             <Card
+              name="項目と結果の散布図"
               title={
                 <span className="font-mono text-xs">
                   {xKey} と {metricLabel}
@@ -298,16 +303,18 @@ export function AnalysisPage() {
                       <td className="px-3 py-1.5 font-mono text-xs [overflow-wrap:anywhere] sm:px-4">
                         {row.value}
                       </td>
-                      <td className="tabular px-4 py-1.5 text-right text-ink-2">{row.count}</td>
+                      <td className="tabular-nums px-4 py-1.5 text-right text-ink-2">
+                        {row.count}
+                      </td>
                       <td
                         className={clsx(
-                          'tabular px-4 py-1.5 text-right',
+                          'tabular-nums px-4 py-1.5 text-right',
                           index === 0 && 'font-semibold',
                         )}
                       >
                         {formatMetric(row.best)}
                       </td>
-                      <td className="tabular px-4 py-1.5 text-right text-ink-2">
+                      <td className="tabular-nums px-4 py-1.5 text-right text-ink-2">
                         {formatMetric(row.mean)}
                       </td>
                     </tr>
@@ -381,7 +388,7 @@ export function AnalysisPage() {
                                 .join(' · ')}
                             </div>
                           </td>
-                          <td className="tabular px-4 py-1.5 text-right text-ink-2">
+                          <td className="tabular-nums px-4 py-1.5 text-right text-ink-2">
                             {item.groups}
                           </td>
                           <td className="px-4 py-1.5">
@@ -392,7 +399,7 @@ export function AnalysisPage() {
                                   style={{ width: `${Math.min(1, item.spread / max) * 100}%` }}
                                 />
                               </div>
-                              <span className="tabular text-xs text-ink-2">
+                              <span className="tabular-nums text-xs text-ink-2">
                                 {formatMetric(item.spread)}
                               </span>
                             </div>

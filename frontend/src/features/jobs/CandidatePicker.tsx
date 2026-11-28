@@ -34,7 +34,7 @@ export function CandidatePicker({
 }) {
   const specs = useModelSpecs(projectId, script, defaultConfig)
   const hintId = useId()
-  if (specs.error) return <ErrorBox error={specs.error} />
+  if (specs.error) return <ErrorBox error={specs.error} live={false} />
   const data = specs.data
   if (!data?.default_spec) return null
   const shown = typeof currentSpec === 'string' && currentSpec ? currentSpec : data.default_spec

@@ -1,6 +1,9 @@
+/**
+ * 学習・評価の段階に固有の部品. 共通の部品 (殻の正の写しの common.tsx) も
+ * ここから書き出す (部品の import の先を ui のままにできるため)
+ */
 import clsx from 'clsx'
 import {
-  AlertTriangle,
   ArrowDown,
   ArrowUp,
   CheckCircle2,
@@ -10,100 +13,48 @@ import {
   XCircle,
   type LucideIcon,
 } from 'lucide-react'
-import {
-  useEffect,
-  useId,
-  useRef,
-  type ButtonHTMLAttributes,
-  type KeyboardEvent,
-  type ReactNode,
-  type Ref,
-} from 'react'
+import { Fragment, type ReactNode } from 'react'
+import { Link } from 'react-router'
 
 import { directionLabel, metricNote, type ColumnDirection } from '../lib/metrics'
 import type { JobStatus } from '../lib/progress'
+import { STAGE_NAME } from '../lib/stage'
+
+export {
+  Button,
+  Card,
+  Dialog,
+  EmptyState,
+  ErrorBox,
+  FieldError,
+  PageHeader,
+  Spinner,
+  StatTile,
+  Tabs,
+  type ButtonVariant,
+  type CardTone,
+  type TabItem,
+} from './common'
 
 /**
- * 枠で囲んだ欄. 見出し (title) を持つときは, 見出しを名前にした区域 (region) として
- * 読み上げる (欄を見出しの名前で探せるように). 見出しの無い欄は名前を持たない.
- * 見出しにボタンなどを含むときは name で区域の名前を渡す. 指標, 評価, 見本, 画像ごとの
- * ように数の決まらない欄は landmark={false} で区域にしない (区域が並び過ぎないように)
+ * 下の画面のパンくず. 頭に段階の名前で段階の頭の画面へのリンクを置き, その後に
+ * links を「 / 」でつなぐ (殻の段階の並びと同じ名前で, 今どこにいるかが分かるように)
  */
-export function Card({
-  title,
-  actions,
-  children,
-  className,
-  padded = true,
-  name,
-  landmark = true,
-}: {
-  title?: ReactNode
-  actions?: ReactNode
-  children: ReactNode
-  className?: string
-  padded?: boolean
-  /** 区域の名前 (省くと見出しを名前にする) */
-  name?: string
-  /** 区域 (region) にするか. false なら見出しは h2 のままで名前を持たない */
-  landmark?: boolean
-}) {
-  const titleId = useId()
-  const region = landmark && Boolean(name || title)
+export function StageCrumbs({ links = [] }: { links?: { to: string; label: ReactNode }[] }) {
   return (
-    <section
-      aria-label={region && name ? name : undefined}
-      aria-labelledby={region && !name ? titleId : undefined}
-      className={clsx(
-        'rounded-xl border border-line bg-surface shadow-sm shadow-black/[0.03]',
-        className,
-      )}
-    >
-      {(title || actions) && (
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-2.5">
-          <h2 id={titleId} className="text-sm font-semibold text-ink">
-            {title}
-          </h2>
-          {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
-        </header>
-      )}
-      <div className={clsx(padded && 'p-4')}>{children}</div>
-    </section>
-  )
-}
-
-type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
-
-export function Button({
-  variant = 'secondary',
-  icon: Icon,
-  className,
-  children,
-  ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: ButtonVariant
-  icon?: LucideIcon
-  ref?: Ref<HTMLButtonElement>
-}) {
-  return (
-    <button
-      type="button"
-      className={clsx(
-        'inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium transition-colors',
-        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
-        'disabled:cursor-not-allowed disabled:opacity-50',
-        variant === 'primary' && 'bg-accent-strong text-white hover:brightness-110',
-        variant === 'secondary' && 'border border-line bg-surface text-ink hover:bg-surface-2',
-        variant === 'ghost' && 'text-ink-2 hover:bg-surface-2 hover:text-ink',
-        variant === 'danger' &&
-          'border border-line bg-surface text-critical-text hover:bg-critical/10',
-        className,
-      )}
-      {...props}
-    >
-      {Icon && <Icon className="size-4" aria-hidden />}
-      {children}
-    </button>
+    <>
+      <Link to="/" className="hover:text-ink">
+        {STAGE_NAME}
+      </Link>
+      {links.map((link) => (
+        <Fragment key={link.to}>
+          {' / '}
+          <Link to={link.to} className="hover:text-ink">
+            {link.label}
+          </Link>
+        </Fragment>
+      ))}
+    </>
   )
 }
 
@@ -151,203 +102,6 @@ export function StatusBadge({ status }: { status: JobStatus }) {
       />
       {label}
     </span>
-  )
-}
-
-export function Spinner({ label = '読み込み中' }: { label?: string }) {
-  return (
-    <div role="status" className="flex items-center justify-center gap-2 py-12 text-sm text-ink-3">
-      <Loader2 className="size-4 animate-spin" aria-hidden />
-      {label}
-    </div>
-  )
-}
-
-/** エラーの表示. 操作の結果のエラーだけ読み上げ (live) の対象にする */
-export function ErrorBox({
-  error,
-  children,
-  live = true,
-}: {
-  error: unknown
-  children?: ReactNode
-  live?: boolean
-}) {
-  const message = error instanceof Error ? error.message : String(error)
-  return (
-    <div
-      role={live ? 'alert' : undefined}
-      className="flex items-start gap-2 rounded-lg border border-critical/30 bg-critical/5 px-4 py-3 text-sm text-ink"
-    >
-      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-critical-text" aria-hidden />
-      <div className="min-w-0">
-        <p className="break-words">{message}</p>
-        {children}
-      </div>
-    </div>
-  )
-}
-
-export function EmptyState({
-  icon: Icon,
-  title,
-  children,
-}: {
-  icon: LucideIcon
-  title: string
-  children?: ReactNode
-}) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-line px-6 py-14 text-center">
-      <div className="rounded-full bg-accent-soft p-3 text-accent-text">
-        <Icon className="size-6" aria-hidden />
-      </div>
-      <h3 className="text-base font-semibold">{title}</h3>
-      {children && <div className="max-w-md text-sm text-ink-2">{children}</div>}
-    </div>
-  )
-}
-
-/** 大きな数値で 1 つの値を見せるタイル */
-export function StatTile({
-  label,
-  value,
-  hint,
-}: {
-  label: string
-  value: ReactNode
-  hint?: string
-}) {
-  return (
-    <div className="min-w-0 rounded-xl border border-line bg-surface px-4 py-3">
-      <div className="truncate text-xs font-medium text-ink-3" title={label}>
-        {label}
-      </div>
-      <div className="tabular mt-1 truncate text-xl font-semibold text-ink">{value}</div>
-      {hint && (
-        <div className="mt-0.5 truncate text-xs text-ink-3" title={hint}>
-          {hint}
-        </div>
-      )}
-    </div>
-  )
-}
-
-export interface TabItem<T extends string> {
-  id: T
-  label: string
-  count?: number
-}
-
-/** タブ. 左右の矢印キーで移り, 選んだタブの中身を tabPanelProps で結び付ける */
-export function Tabs<T extends string>({
-  items,
-  value,
-  onChange,
-  idBase,
-  label,
-}: {
-  items: TabItem<T>[]
-  value: T
-  onChange: (id: T) => void
-  idBase: string
-  label: string
-}) {
-  const refs = useRef<Record<string, HTMLButtonElement | null>>({})
-
-  // 狭い画面でも選んだタブが見えるように, 選び直したら横に送る
-  useEffect(() => {
-    refs.current[value]?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-  }, [value])
-
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const index = items.findIndex((item) => item.id === value)
-    const targets: Record<string, number> = {
-      ArrowRight: (index + 1) % items.length,
-      ArrowLeft: (index - 1 + items.length) % items.length,
-      Home: 0,
-      End: items.length - 1,
-    }
-    const target = targets[event.key]
-    if (target === undefined) return
-    event.preventDefault()
-    const next = items[target]
-    if (next) {
-      onChange(next.id)
-      refs.current[next.id]?.focus()
-    }
-  }
-
-  // 狭い画面で右に続きがあることが分かるように, 右端を薄くぼかす
-  return (
-    <div className="relative">
-      <div
-        role="tablist"
-        aria-label={label}
-        onKeyDown={onKeyDown}
-        className="flex gap-1 overflow-x-auto border-b border-line pr-6 md:pr-0"
-      >
-        {items.map((item) => (
-          <button
-            key={item.id}
-            ref={(element) => {
-              refs.current[item.id] = element
-            }}
-            id={`${idBase}-tab-${item.id}`}
-            type="button"
-            role="tab"
-            aria-selected={item.id === value}
-            aria-controls={`${idBase}-panel`}
-            tabIndex={item.id === value ? 0 : -1}
-            onClick={() => onChange(item.id)}
-            className={clsx(
-              '-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors',
-              item.id === value
-                ? 'border-accent text-ink'
-                : 'border-transparent text-ink-3 hover:text-ink-2',
-            )}
-          >
-            {item.label}
-            {item.count !== undefined && (
-              <span className="tabular rounded-full bg-surface-2 px-1.5 text-xs text-ink-2">
-                {item.count}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-      <div
-        aria-hidden
-        className="pointer-events-none absolute top-0 right-0 bottom-px w-8 bg-gradient-to-l from-bg md:hidden"
-      />
-    </div>
-  )
-}
-
-export function PageHeader({
-  title,
-  subtitle,
-  actions,
-  breadcrumb,
-}: {
-  title: ReactNode
-  subtitle?: ReactNode
-  actions?: ReactNode
-  breadcrumb?: ReactNode
-}) {
-  return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div className="min-w-0">
-        {breadcrumb && (
-          <nav aria-label="パンくず" className="mb-1 text-xs text-ink-3">
-            {breadcrumb}
-          </nav>
-        )}
-        <h1 className="truncate text-2xl font-semibold tracking-tight">{title}</h1>
-        {subtitle && <div className="mt-1 truncate text-sm text-ink-3">{subtitle}</div>}
-      </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
-    </div>
   )
 }
 

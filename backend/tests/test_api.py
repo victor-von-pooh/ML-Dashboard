@@ -424,9 +424,23 @@ def test_files_stay_inside_run(client: TestClient, project_dir: Path) -> None:
 
     not_run = client.get(f"{base}/demo/2026-11-08")
     assert not_run.status_code == 404
+    # 見つからない物は「<物> <識別子> が見つかりません」の文で返す
+    gone = client.get(f"{base}/demo/2026-11-08/23-59-59")
+    assert gone.status_code == 404
+    assert gone.json()["detail"] == (
+        "実験 demo/2026-11-08/23-59-59 が見つかりません"
+    )
+
+    missing_file = client.get(
+        f"{base}/demo/2026-11-08/10-00-00/files/none.txt"
+    )
+    assert missing_file.json()["detail"] == (
+        "ファイル none.txt が見つかりません"
+    )
 
     unknown = client.get("/api/projects/missing/runs")
     assert unknown.status_code == 404
+    assert unknown.json()["detail"] == "プロジェクト missing が見つかりません"
 
 
 def test_params(client: TestClient, project_dir: Path) -> None:

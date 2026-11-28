@@ -35,7 +35,7 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
 /** 実行中のジョブの数の印 (読み上げは「N 件が実行中」) */
 function RunningBadge({ count }: { count: number }) {
   return (
-    <span className="tabular ml-auto rounded-full bg-accent-strong px-1.5 text-xs text-white">
+    <span className="tabular-nums ml-auto rounded-full bg-accent-strong px-1.5 text-xs text-white">
       {count}
       <span className="sr-only"> 件が実行中</span>
     </span>
@@ -73,7 +73,7 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
         >
           <FolderKanban className="size-4 shrink-0" aria-hidden />
           <span className="truncate">{project.name}</span>
-          <span className="tabular ml-auto text-xs text-ink-3">{project.run_count}</span>
+          <span className="tabular-nums ml-auto text-xs text-ink-3">{project.run_count}</span>
         </NavLink>
       ))}
       {projects.data?.length === 0 && (
@@ -179,7 +179,7 @@ function NavMenu() {
         <Icon className="size-4" aria-hidden />
         {runningJobs > 0 && (
           <span
-            className="tabular rounded-full bg-accent-strong px-1.5 text-xs text-white"
+            className="tabular-nums rounded-full bg-accent-strong px-1.5 text-xs text-white"
             aria-hidden
           >
             {runningJobs}

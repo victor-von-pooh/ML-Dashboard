@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react'
 
+import { errorText } from '../components/common-utils'
 import type { components } from './schema'
 
 // API の型 (バックエンドの OpenAPI から生成)
@@ -112,28 +113,9 @@ async function readError(response: Response): Promise<[string, string | null]> {
     body = await response.json()
   } catch {
     // JSON でない場合は状態の文を使う
-    return [`${response.status} ${response.statusText}`, null]
+    body = undefined
   }
-  return [errorText(response, body), readCode(body)]
-}
-
-/** エラーの本文から表示する文を取り出す */
-function errorText(response: Response, body: unknown): string {
-  if (body && typeof body === 'object' && 'detail' in body) {
-    const detail = (body as { detail: unknown }).detail
-    if (typeof detail === 'string') return detail
-    // 入力の検証のエラー (422) は, 項目と理由だけを読める形にする
-    if (Array.isArray(detail)) {
-      return detail
-        .map((item: { loc?: unknown[]; msg?: string }) => {
-          const field = (item.loc ?? []).filter((part) => part !== 'body').join('.')
-          return field ? `${field}: ${item.msg ?? ''}` : (item.msg ?? '')
-        })
-        .join(' / ')
-    }
-    return JSON.stringify(detail)
-  }
-  return `${response.status} ${response.statusText}`
+  return [errorText(response.status, response.statusText, body), readCode(body)]
 }
 
 /** JSON の API を呼ぶ */

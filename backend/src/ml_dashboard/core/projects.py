@@ -671,7 +671,7 @@ def get_output_dirs(project_dir: Path) -> list[Path]:
     """
     if not is_project_dir(project_dir):
         raise ProjectError(
-            f"プロジェクトのディレクトリが見つかりません: {project_dir}"
+            f"ディレクトリ {project_dir} が見つかりません"
         )
 
     # 別の default の config や experiment の config で出力先を変えた実験も

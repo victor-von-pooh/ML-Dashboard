@@ -92,6 +92,40 @@ test('プロジェクトから実験の一覧と詳細を開く', async ({ page 
   await expect(page.getByRole('img', { name: /boundary の epoch 3/ })).toBeVisible()
   await page.getByRole('button', { name: '前の画像' }).click()
   await expect(page.getByRole('img', { name: /boundary の epoch 2/ })).toBeVisible()
+
+  // ファイルのタブの画像は対話の枠で大きく見せ, Esc で閉じて押したボタンに戻る
+  await page.getByRole('tab', { name: /ファイル/ }).click()
+  const opener = page.getByRole('button', { name: /を大きく表示$/ }).first()
+  const name = (await opener.getAttribute('aria-label'))!.replace(/ を大きく表示$/, '')
+  await opener.click()
+  const preview = page.getByRole('dialog', { name })
+  await expect(preview.getByRole('img', { name })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(preview).toBeHidden()
+  await expect(opener).toBeFocused()
+})
+
+test('画面ごとに h1 が 1 つで, 知らない経路は段階の名前の見出しと一覧へのリンクを出す', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^学習・評価$/)
+  await page.goto(`/projects/${projectId}`)
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^demo/)
+  await expect(page.getByRole('navigation', { name: 'パンくず' })).toHaveText(/^学習・評価$/)
+
+  await page.goto('/nothing/here')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^学習・評価$/)
+  await expect(
+    page.getByRole('heading', { level: 2, name: 'ページが見つかりません' }),
+  ).toBeVisible()
+  await page.getByRole('link', { name: 'プロジェクトの一覧へ戻る' }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^学習・評価$/)
+
+  // 開けない実験は「実験を開けません」の見出しと, API の文を出す
+  await page.goto(`/projects/${projectId}/runs/demo/2026-01-01/00-00-00`)
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^実験を開けません$/)
+  await expect(page.getByText('実験 demo/2026-01-01/00-00-00 が見つかりません')).toBeVisible()
 })
 
 test('学習の準備のカードで, 環境を作る前に動かすコマンドを確かめる', async ({ page }) => {

@@ -38,4 +38,30 @@ describe('request のエラー', () => {
     expect((text as ApiError).message).toBe('500 Server Error')
     expect((text as ApiError).code).toBeNull()
   })
+
+  it('入力の検証の誤り (422) は欄ごとに 1 行, 既定の 404 は経路の誤りの文にする', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json(
+          {
+            detail: [
+              { loc: ['body', 'path'], msg: '空です' },
+              { loc: ['query', 'limit'], msg: '数ではありません' },
+            ],
+          },
+          { status: 422, statusText: 'Unprocessable Entity' },
+        ),
+      ),
+    )
+    const invalid: unknown = await request('/api/x').catch((caught: unknown) => caught)
+    expect((invalid as ApiError).message).toBe('path: 空です\nlimit: 数ではありません')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ detail: 'Not Found' }, { status: 404 })),
+    )
+    const route: unknown = await request('/api/x').catch((caught: unknown) => caught)
+    expect((route as ApiError).message).toBe('API の経路が見つかりません (404)')
+    expect((route as ApiError).status).toBe(404)
+  })
 })

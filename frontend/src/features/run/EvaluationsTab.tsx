@@ -104,7 +104,7 @@ function EvaluationTable({ evaluation }: { evaluation: Evaluation }) {
                     key={column}
                     className={clsx(
                       'px-3 py-1 whitespace-nowrap',
-                      numeric.has(column) ? 'tabular text-right' : 'text-ink',
+                      numeric.has(column) ? 'tabular-nums text-right' : 'text-ink',
                       value == null && 'text-ink-3',
                     )}
                   >
@@ -193,7 +193,7 @@ function Captions({ evaluation }: { evaluation: Evaluation }) {
       </div>
       <div className="flex gap-1">
         <dt className="text-ink-3">エポック</dt>
-        <dd className="tabular">{evaluation.epoch ?? '分からない'}</dd>
+        <dd className="tabular-nums">{evaluation.epoch ?? '分からない'}</dd>
       </div>
       {evaluation.baseline && (
         <div className="flex gap-1">
@@ -265,7 +265,7 @@ function AnomalyNote({ config }: { config: Record<string, unknown> | null | unde
           {items.map(([label, value]) => (
             <div key={label} className="flex gap-2">
               <dt className="text-ink-3">{label}</dt>
-              <dd className="tabular text-ink">{value}</dd>
+              <dd className="tabular-nums text-ink">{value}</dd>
             </div>
           ))}
         </dl>
@@ -337,7 +337,7 @@ function UpliftNote({ config }: { config: Record<string, unknown> | null | undef
           {items.map(([label, value]) => (
             <div key={label} className="flex gap-2">
               <dt className="text-ink-3">{label}</dt>
-              <dd className="tabular text-ink">{value}</dd>
+              <dd className="tabular-nums text-ink">{value}</dd>
             </div>
           ))}
         </dl>
@@ -426,7 +426,7 @@ function PriceNote({ config }: { config: Record<string, unknown> | null | undefi
           {items.map(([label, value]) => (
             <div key={label} className="flex gap-2">
               <dt className="text-ink-3">{label}</dt>
-              <dd className="tabular text-ink">{value}</dd>
+              <dd className="tabular-nums text-ink">{value}</dd>
             </div>
           ))}
         </dl>
@@ -542,7 +542,7 @@ function DemandNote({ config }: { config: Record<string, unknown> | null | undef
           {items.map(([label, value]) => (
             <div key={label} className="flex gap-2">
               <dt className="text-ink-3">{label}</dt>
-              <dd className="tabular text-ink">{value}</dd>
+              <dd className="tabular-nums text-ink">{value}</dd>
             </div>
           ))}
         </dl>
@@ -642,7 +642,7 @@ export function EvaluationsTab({
         <Card
           key={evaluation.name}
           landmark={false}
-          className={clsx(evaluation.guard && 'border-2 border-accent!')}
+          tone={evaluation.guard ? 'highlight' : 'default'}
           title={
             <span className="flex items-center gap-2">
               <span className="font-mono">{evaluation.name}</span>

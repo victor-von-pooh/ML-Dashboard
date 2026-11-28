@@ -17,11 +17,13 @@ import {
   ErrorBox,
   PageHeader,
   Spinner,
+  StageCrumbs,
   StatTile,
   StatusBadge,
   Tabs,
 } from '../../components/ui'
-import { tabPanelProps, useStableId } from '../../lib/a11y'
+import { tabPanelProps } from '../../components/common-utils'
+import { useStableId } from '../../lib/a11y'
 import { formatDateTime, formatDuration, formatMetric } from '../../lib/format'
 import { groupImageSeries } from '../../lib/images'
 import { validInterval } from '../../lib/metrics'
@@ -146,23 +148,24 @@ export function RunDetailPage() {
   const setTab = (id: TabId) => setParams(id === 'charts' ? {} : { tab: id }, { replace: true })
 
   const breadcrumb = (
-    <>
-      <Link to="/" className="hover:text-ink">
-        プロジェクト
-      </Link>
-      {' / '}
-      <Link to={`/projects/${projectId}`} className="hover:text-ink">
-        {project.data?.name ?? projectId}
-      </Link>
-    </>
+    <StageCrumbs
+      links={[{ to: `/projects/${projectId}`, label: project.data?.name ?? projectId }]}
+    />
   )
 
-  if (run.isPending) return <Spinner />
-  if (run.error) {
+  if (run.isPending) {
     return (
       <>
         <PageHeader breadcrumb={breadcrumb} title={runId} />
-        <ErrorBox error={run.error}>
+        <Spinner />
+      </>
+    )
+  }
+  if (run.error) {
+    return (
+      <>
+        <PageHeader breadcrumb={breadcrumb} title="実験を開けません" />
+        <ErrorBox error={run.error} live={false}>
           <Link
             to={`/projects/${projectId}`}
             className="mt-1 inline-block text-accent-text hover:underline"
@@ -224,7 +227,7 @@ export function RunDetailPage() {
           </span>
         }
         subtitle={
-          <span className="tabular">
+          <span className="tabular-nums">
             {formatDateTime(data.started_at)} · {data.id}
             {data.model && (
               <>
@@ -433,7 +436,7 @@ export function RunDetailPage() {
               untrained={untrained}
             />
           ) : history.error ? (
-            <ErrorBox error={history.error} />
+            <ErrorBox error={history.error} live={false} />
           ) : (
             <Spinner />
           ))}
@@ -448,7 +451,7 @@ export function RunDetailPage() {
               runId={data.id}
             />
           ) : results.error ? (
-            <ErrorBox error={results.error} />
+            <ErrorBox error={results.error} live={false} />
           ) : (
             <Spinner />
           ))}
@@ -464,7 +467,7 @@ export function RunDetailPage() {
               validInterval={validInterval(data.config)}
             />
           ) : results.error ? (
-            <ErrorBox error={results.error} />
+            <ErrorBox error={results.error} live={false} />
           ) : (
             <Spinner />
           ))}
@@ -477,7 +480,7 @@ export function RunDetailPage() {
               best={data.best}
             />
           ) : results.error ? (
-            <ErrorBox error={results.error} />
+            <ErrorBox error={results.error} live={false} />
           ) : (
             <Spinner />
           ))}
@@ -485,7 +488,7 @@ export function RunDetailPage() {
           (results.data ? (
             <TrajectoriesTab trajectories={trajectories} projectId={projectId} runId={data.id} />
           ) : results.error ? (
-            <ErrorBox error={results.error} />
+            <ErrorBox error={results.error} live={false} />
           ) : (
             <Spinner />
           ))}
@@ -499,7 +502,7 @@ export function RunDetailPage() {
           (log.data ? (
             <LogTab entries={log.data} />
           ) : log.error ? (
-            <ErrorBox error={log.error} />
+            <ErrorBox error={log.error} live={false} />
           ) : (
             <Spinner />
           ))}

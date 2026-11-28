@@ -28,7 +28,7 @@ import {
   useRequiresStatus,
   useValidateConfig,
 } from '../../api/hooks'
-import { Button, Card, ErrorBox, PageHeader, Spinner } from '../../components/ui'
+import { Button, Card, ErrorBox, PageHeader, Spinner, StageCrumbs } from '../../components/ui'
 import { formatValue } from '../../lib/format'
 import { describeMissing } from '../../lib/requirements'
 import { deleteYamlValue, getYamlValue, setYamlValue } from '../../lib/yamlEdit'
@@ -73,7 +73,7 @@ export function LaunchPage() {
   const plan = useRelaunch(projectId, runId)
 
   // 実験の詳細で読んだ古い結果で始めないように, 開いてから読み直すまで待つ
-  if (runId !== null && !plan.isFetchedAfterMount) return <Spinner />
+  if (runId !== null && !plan.isFetchedAfterMount) return <LaunchLoading projectId={projectId} />
   // 実験の設定を読めない場合も, 理由を出して空の画面で起動できるようにする.
   // 別の実験から開き直したら, 選んだものと書き換えた中身を作り直す
   const key = `${projectId}:${runId ?? ''}`
@@ -86,6 +86,24 @@ export function LaunchPage() {
         planError={plan.error}
       />
     </DraftGate>
+  )
+}
+
+/** 画面の見出し */
+const LAUNCH_TITLE = '学習を起動'
+
+/** 学習の起動の画面のパンくず (段階の頭とプロジェクト) */
+function LaunchCrumbs({ projectId, name }: { projectId: string; name?: string }) {
+  return <StageCrumbs links={[{ to: `/projects/${projectId}`, label: name ?? projectId }]} />
+}
+
+/** 読み込み中の学習の起動の画面 (見出しが現れるまで h1 の無い間を作らない) */
+function LaunchLoading({ projectId }: { projectId: string }) {
+  return (
+    <>
+      <PageHeader breadcrumb={<LaunchCrumbs projectId={projectId} />} title={LAUNCH_TITLE} />
+      <Spinner />
+    </>
   )
 }
 
@@ -110,7 +128,7 @@ function DraftGate({
   // 開いたときに決め, 開いた後に書いた下書きで待ち直さない
   const [hasDraft] = useState(() => readDraft(place, isLaunchDraft) !== null)
   const project = useProject(projectId, hasDraft)
-  if (hasDraft && !project.isFetchedAfterMount) return <Spinner />
+  if (hasDraft && !project.isFetchedAfterMount) return <LaunchLoading projectId={projectId} />
   return children
 }
 
@@ -406,24 +424,24 @@ function LaunchForm({
     (batch) => batch.project_id === projectId && !batch.finished,
   )
 
-  if (project.isPending) return <Spinner />
-  if (project.error) return <ErrorBox error={project.error} />
+  if (project.isPending) return <LaunchLoading projectId={projectId} />
+  if (project.error) {
+    return (
+      <>
+        <PageHeader
+          breadcrumb={<LaunchCrumbs projectId={projectId} />}
+          title="プロジェクトを開けません"
+        />
+        <ErrorBox error={project.error} live={false} />
+      </>
+    )
+  }
 
   return (
     <>
       <PageHeader
-        breadcrumb={
-          <>
-            <Link to="/" className="hover:text-ink">
-              プロジェクト
-            </Link>
-            {' / '}
-            <Link to={`/projects/${projectId}`} className="hover:text-ink">
-              {project.data.name}
-            </Link>
-          </>
-        }
-        title="学習を起動"
+        breadcrumb={<LaunchCrumbs projectId={projectId} name={project.data.name} />}
+        title={LAUNCH_TITLE}
         subtitle="プロジェクトの Python で学習のスクリプトを別のプロセスとして動かします"
         actions={
           <Link
@@ -452,7 +470,7 @@ function LaunchForm({
               </>
             )}
             書き換えたかが分からないので, 下書きを戻していません (
-            <span className="tabular">{new Date(stale.time).toLocaleString()}</span>)
+            <span className="tabular-nums">{new Date(stale.time).toLocaleString()}</span>)
           </span>
           <Button
             variant="secondary"
@@ -485,7 +503,7 @@ function LaunchForm({
           <Info className="size-4 shrink-0 text-accent" aria-hidden />
           <span role="status" className="min-w-0 flex-1">
             保存していない書き換えを下書きから戻しました (
-            <span className="tabular">{new Date(restored.time).toLocaleString()}</span>)
+            <span className="tabular-nums">{new Date(restored.time).toLocaleString()}</span>)
           </span>
           <Button
             variant="secondary"
@@ -779,7 +797,7 @@ function LaunchForm({
           }
           padded={false}
         >
-          {config.error && <ErrorBox error={config.error} />}
+          {config.error && <ErrorBox error={config.error} live={false} />}
           <textarea
             id={editorId}
             value={text}
@@ -850,6 +868,7 @@ function RequiresNotice({
       {error && <ErrorBox error={`config の requires の誤り: ${error}`} live={false} />}
       {described && (
         <Card
+          name="開始を止めた追加の依存"
           title={
             <span className="flex items-center gap-1.5 text-critical-text">
               <PackageX className="size-4" aria-hidden />

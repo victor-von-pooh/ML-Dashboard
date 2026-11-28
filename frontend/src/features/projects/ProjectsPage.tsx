@@ -5,7 +5,7 @@ import { Link } from 'react-router'
 import type { ProjectInfo } from '../../api/client'
 import { useMoveProject, useProblemProject, useProjects, useRemoveProject } from '../../api/hooks'
 import { Button, EmptyState, ErrorBox, PageHeader, Spinner } from '../../components/ui'
-import { useStage } from '../../lib/stage'
+import { STAGE_NAME, useStage } from '../../lib/stage'
 import { AddProjectDialog } from './AddProjectDialog'
 import { SelectedProblem } from './SelectedProblem'
 
@@ -67,12 +67,12 @@ function ProjectCard({ project }: { project: ProjectInfo }) {
       <div className="flex items-center gap-4 text-xs text-ink-2">
         <span className="flex shrink-0 items-center gap-1 whitespace-nowrap">
           <FlaskConical className="size-3.5" aria-hidden />
-          <span className="tabular">{project.run_count}</span> 実験
+          <span className="tabular-nums">{project.run_count}</span> 実験
         </span>
         {project.latest_run && (
           <span className="flex min-w-0 items-center gap-1">
             <Clock className="size-3.5 shrink-0" aria-hidden />
-            <span className="tabular truncate">最新 {project.latest_run}</span>
+            <span className="tabular-nums truncate">最新 {project.latest_run}</span>
           </span>
         )}
       </div>
@@ -82,8 +82,8 @@ function ProjectCard({ project }: { project: ProjectInfo }) {
             <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             <span className="break-all">{project.error}</span>
           </p>
-          {/* ディレクトリが見つからない場合だけ (移した場合) */}
-          {project.error.includes('ディレクトリが見つかりません') && (
+          {/* ディレクトリが見つからない場合だけ (移した場合. API の文は「ディレクトリ <場所> が見つかりません」) */}
+          {/^ディレクトリ .+ が見つかりません$/s.test(project.error) && (
             <Button
               variant="secondary"
               onClick={onMove}
@@ -131,7 +131,7 @@ export function ProjectsPage() {
   return (
     <>
       <PageHeader
-        title="プロジェクト"
+        title={STAGE_NAME}
         subtitle="ML-Found で学習したプロジェクトの実験を確かめます"
         actions={
           <Button variant="primary" icon={Plus} onClick={() => setOpen(true)}>
@@ -146,10 +146,11 @@ export function ProjectsPage() {
           onNarrow={(narrow) => setShowAll(!narrow)}
         />
       )}
+      <h2 className="mb-3 text-sm font-semibold">プロジェクト</h2>
       {projects.isPending && <Spinner />}
-      {projects.error && <ErrorBox error={projects.error} />}
+      {projects.error && <ErrorBox error={projects.error} live={false} />}
       {projects.data?.length === 0 && (
-        <EmptyState icon={FolderKanban} title="プロジェクトがありません">
+        <EmptyState icon={FolderKanban} title="プロジェクトがありません" level={3}>
           <p>
             ML-Found を使っているディレクトリ (<code>configs/default/train.yaml</code> を持つもの)
             を登録すると, その実験の一覧と学習曲線を見られます.
@@ -172,7 +173,7 @@ export function ProjectsPage() {
           ))}
         </div>
       )}
-      <AddProjectDialog open={open} onClose={() => setOpen(false)} />
+      {open && <AddProjectDialog onClose={() => setOpen(false)} />}
     </>
   )
 }

@@ -301,3 +301,6 @@ def test_problem_project(
     for key in ("missing", "..", "%2E%2E", "sales%2F..", "sales%5C.."):
         response = client.get(f"/api/problems/{key}/project")
         assert response.status_code == 404, key
+    assert client.get("/api/problems/missing/project").json()["detail"] == (
+        "問題 missing が見つかりません"
+    )

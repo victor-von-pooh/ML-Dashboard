@@ -8,7 +8,8 @@ import type {
   TargetPolicy,
   TrajectoryInfo,
 } from '../../api/client'
-import { Button, Card, ErrorBox, Spinner } from '../../components/ui'
+import { describedBy } from '../../components/common-utils'
+import { Button, Card, ErrorBox, FieldError, Spinner } from '../../components/ui'
 import { useStableId } from '../../lib/a11y'
 import { formatMetric } from '../../lib/format'
 import { formatShare } from '../../lib/policy'
@@ -45,9 +46,9 @@ function TrajectoryDetails({ trajectory }: { trajectory: TrajectoryInfo }) {
             <dt className="text-ink-3">環境</dt>
             <dd className="font-mono text-xs">{trajectory.env ?? '不明'}</dd>
             <dt className="text-ink-3">エポック</dt>
-            <dd className="tabular">{trajectory.epoch ?? '不明'}</dd>
+            <dd className="tabular-nums">{trajectory.epoch ?? '不明'}</dd>
             <dt className="text-ink-3">エピソード</dt>
-            <dd className="tabular">
+            <dd className="tabular-nums">
               {trajectory.episodes ?? '不明'} ({trajectory.rows ?? '?'} 行)
             </dd>
             <dt className="text-ink-3">行動の空間</dt>
@@ -93,7 +94,7 @@ function EstimateResult({ estimate }: { estimate: PolicyEstimate }) {
         ].map(([label, value]) => (
           <div key={label} className="rounded-lg border border-line px-3 py-2">
             <dt className="text-xs text-ink-3">{label}</dt>
-            <dd className="tabular text-lg font-semibold">{value}</dd>
+            <dd className="tabular-nums text-lg font-semibold">{value}</dd>
           </div>
         ))}
       </dl>
@@ -111,7 +112,7 @@ function EstimateResult({ estimate }: { estimate: PolicyEstimate }) {
             {comparisonRows(estimate).map((row) => (
               <tr key={row.key} className="border-b border-line last:border-b-0">
                 <td className="px-4 py-1.5 whitespace-nowrap">{row.label}</td>
-                <td className="tabular px-4 py-1.5 text-right">{formatMetric(row.value)}</td>
+                <td className="tabular-nums px-4 py-1.5 text-right">{formatMetric(row.value)}</td>
                 <td className="px-4 py-1.5 text-xs text-ink-2">{row.note}</td>
               </tr>
             ))}
@@ -242,35 +243,52 @@ export function TrajectoriesTab({
                 </div>
               </fieldset>
               <div className="flex flex-wrap gap-4">
-                <label className="text-xs font-medium text-ink-2">
-                  ε (0 以上 1 以下)
-                  <input
-                    type="number"
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    value={epsilonText}
-                    disabled={!greedy}
-                    onChange={(event) => setEpsilonText(event.target.value)}
-                    aria-invalid={greedy && epsilon === null}
-                    className="mt-1 block h-8 w-28 rounded-md border border-line bg-bg px-2 text-sm disabled:opacity-50"
-                  />
-                </label>
-                <label className="text-xs font-medium text-ink-2">
-                  割引率 γ (0 以上 1 以下)
-                  <input
-                    type="number"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={gammaText}
-                    onChange={(event) => setGammaText(event.target.value)}
-                    aria-invalid={gamma === null}
-                    className="mt-1 block h-8 w-28 rounded-md border border-line bg-bg px-2 text-sm"
-                  />
-                </label>
+                <div>
+                  <label className="text-xs font-medium text-ink-2">
+                    ε (0 以上 1 以下)
+                    <input
+                      type="number"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={epsilonText}
+                      disabled={!greedy}
+                      onChange={(event) => setEpsilonText(event.target.value)}
+                      aria-invalid={greedy && epsilon === null}
+                      aria-describedby={describedBy(
+                        greedy && epsilon === null && `${idBase}-epsilon-error`,
+                      )}
+                      className="mt-1 block h-8 w-28 rounded-md border border-line bg-bg px-2 text-sm disabled:opacity-50"
+                    />
+                  </label>
+                  {greedy && epsilon === null && (
+                    <FieldError id={`${idBase}-epsilon-error`}>
+                      0 以上 1 以下の数にしてください
+                    </FieldError>
+                  )}
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-ink-2">
+                    割引率 γ (0 以上 1 以下)
+                    <input
+                      type="number"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={gammaText}
+                      onChange={(event) => setGammaText(event.target.value)}
+                      aria-invalid={gamma === null}
+                      aria-describedby={describedBy(gamma === null && `${idBase}-gamma-error`)}
+                      className="mt-1 block h-8 w-28 rounded-md border border-line bg-bg px-2 text-sm"
+                    />
+                  </label>
+                  {gamma === null && (
+                    <FieldError id={`${idBase}-gamma-error`}>
+                      0 以上 1 以下の数にしてください
+                    </FieldError>
+                  )}
+                </div>
               </div>
-              {invalid && <Warning>ε と γ は 0 以上 1 以下の数にしてください.</Warning>}
               {greedy && epsilon === 0 && (
                 <Warning>
                   ε = 0 では, 記録で最も多い行動の他をとったエピソードの重みが 0 になります.

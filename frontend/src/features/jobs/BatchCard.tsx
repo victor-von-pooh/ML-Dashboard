@@ -61,7 +61,7 @@ export function BatchCard({ batch, jobs }: { batch: BatchInfo; jobs: JobInfo[] }
           <p className="truncate font-mono text-xs text-ink-2" title={names.join(', ')}>
             {names.join(', ')}
           </p>
-          <p className="tabular text-xs text-ink-3">
+          <p className="tabular-nums text-xs text-ink-3">
             作成 {formatDateTime(batch.created_at)} · {batchState(batch)}
           </p>
           {!batch.owned && !batch.finished && (
@@ -172,7 +172,7 @@ export function BatchCard({ batch, jobs }: { batch: BatchInfo; jobs: JobInfo[] }
           const job = candidate.job_id ? jobOf.get(candidate.job_id) : undefined
           return (
             <li key={`${candidate.path}:${index}`} className="flex flex-wrap items-center gap-2">
-              <span className="tabular w-6 text-right text-xs text-ink-3">{index + 1}.</span>
+              <span className="tabular-nums w-6 text-right text-xs text-ink-3">{index + 1}.</span>
               <span className={`inline-flex items-center gap-1 text-xs ${className}`}>
                 <Icon className="size-3.5" aria-hidden />
                 {label}

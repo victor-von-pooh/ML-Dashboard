@@ -4,7 +4,8 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 
 import type { RunNote } from '../../api/client'
 import { useNotes, useSaveNote } from '../../api/hooks'
-import { Button, Card, ErrorBox } from '../../components/ui'
+import { describedBy } from '../../components/common-utils'
+import { Button, Card, ErrorBox, FieldError } from '../../components/ui'
 import { readDraft, useDraftWriter } from '../../lib/draft'
 import { useStage } from '../../lib/stage'
 
@@ -152,21 +153,23 @@ export function NotePanel({ projectId, runId }: { projectId: string; runId: stri
   const empty = !saved.note && saved.tags.length === 0 && current === null
   if (empty && !open) {
     return (
-      <div className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2 text-sm">
-        <StarButton
-          starred={saved.starred}
-          onToggle={() => store({ starred: !saved.starred })}
-          label="この実験に星を付ける"
-        />
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="inline-flex items-center gap-1.5 text-ink-3 hover:text-ink"
-        >
-          <Pencil className="size-3.5" aria-hidden />
-          メモやタグを足す
-        </button>
-        {save.error && <span className="text-xs text-critical-text">{save.error.message}</span>}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2 text-sm">
+          <StarButton
+            starred={saved.starred}
+            onToggle={() => store({ starred: !saved.starred })}
+            label="この実験に星を付ける"
+          />
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="inline-flex items-center gap-1.5 text-ink-3 hover:text-ink"
+          >
+            <Pencil className="size-3.5" aria-hidden />
+            メモやタグを足す
+          </button>
+        </div>
+        {save.error && <ErrorBox error={save.error} />}
       </div>
     )
   }
@@ -236,6 +239,8 @@ export function NotePanel({ projectId, runId }: { projectId: string; runId: stri
             onKeyDown={onTagKey}
             maxLength={40}
             placeholder="タグを足す (Enter)"
+            aria-invalid={tagError !== null}
+            aria-describedby={describedBy(tagError !== null && `${tagId}-error`)}
             className="h-7 w-40 rounded-md border border-line bg-bg px-2 text-xs outline-none focus:border-accent"
           />
         </div>
@@ -265,7 +270,7 @@ export function NotePanel({ projectId, runId }: { projectId: string; runId: stri
           <div className="flex flex-wrap items-center gap-2 text-xs text-ink-2">
             <span role="status">
               保存していない書きかけを下書きから戻しました (
-              <span className="tabular">{new Date(restored.time).toLocaleString()}</span>
+              <span className="tabular-nums">{new Date(restored.time).toLocaleString()}</span>
               ). 保存するまで実験のメモは変わりません
             </span>
             <Button
@@ -293,7 +298,7 @@ export function NotePanel({ projectId, runId }: { projectId: string; runId: stri
               `${text.length.toLocaleString()} / ${NOTE_LIMIT.toLocaleString()} 字${text.length >= NOTE_LIMIT ? ' (上限)' : ''}`}
           </span>
         </p>
-        {tagError && <p className="text-xs text-critical-text">{tagError}</p>}
+        {tagError && <FieldError id={`${tagId}-error`}>{tagError}</FieldError>}
         {save.error && <ErrorBox error={save.error} />}
       </div>
     </Card>
