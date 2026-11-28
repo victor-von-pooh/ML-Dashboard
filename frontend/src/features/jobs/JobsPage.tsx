@@ -1,9 +1,9 @@
 import { Play, Terminal } from 'lucide-react'
 import { useEffect, useRef } from 'react'
-import { Link, useParams } from 'react-router'
+import { useParams } from 'react-router'
 
 import { useBatches, useJob, useJobOutput, useJobs } from '../../api/hooks'
-import { Card, EmptyState, ErrorBox, PageHeader, Spinner } from '../../components/ui'
+import { Card, EmptyState, ErrorBox, PageHeader, Spinner, StageCrumbs } from '../../components/ui'
 import { batchLabels } from '../../lib/batches'
 import { BatchCard } from './BatchCard'
 import { JobCard } from './JobCard'
@@ -18,15 +18,19 @@ export function JobsPage() {
 
   return (
     <>
-      <PageHeader title="ジョブ" subtitle="この段階から起動した学習の進み具合を確かめ, 止めます" />
+      <PageHeader
+        breadcrumb={<StageCrumbs />}
+        title="ジョブ"
+        subtitle="この段階から起動した学習の進み具合を確かめ, 止めます"
+      />
       {jobs.isPending && <Spinner />}
-      {jobs.error && <ErrorBox error={jobs.error} />}
+      {jobs.error && <ErrorBox error={jobs.error} live={false} />}
       {jobs.data?.length === 0 && (
         <EmptyState icon={Play} title="まだ学習を起動していません">
           プロジェクトの実験の一覧にある「学習を起動」から, config を選んで学習を始められます.
         </EmptyState>
       )}
-      {batches.error && <ErrorBox error={batches.error} />}
+      {batches.error && <ErrorBox error={batches.error} live={false} />}
       {(batches.data?.length ?? 0) > 0 && (
         <section className="mb-8">
           <h2 className="mb-3 text-sm font-semibold">候補のまとまり ({batches.data?.length})</h2>
@@ -87,17 +91,17 @@ export function JobDetailPage() {
   return (
     <>
       <PageHeader
-        breadcrumb={
-          <Link to="/jobs" className="hover:text-ink">
-            ジョブ
-          </Link>
-        }
+        breadcrumb={<StageCrumbs links={[{ to: '/jobs', label: 'ジョブ' }]} />}
         title={
-          job.data ? `${job.data.project_name ?? job.data.project_id} / ${job.data.script}` : jobId
+          job.data
+            ? `${job.data.project_name ?? job.data.project_id} / ${job.data.script}`
+            : job.error
+              ? 'ジョブを開けません'
+              : jobId
         }
       />
       {job.isPending && <Spinner />}
-      {job.error && <ErrorBox error={job.error} />}
+      {job.error && <ErrorBox error={job.error} live={false} />}
       {job.data && (
         <div className="space-y-4">
           <JobCard job={job.data} detail />

@@ -369,7 +369,9 @@ def test_delete_batch(
 
     # 消したまとまり, 形の違う ID は 404
     assert client.delete(f"/api/batches/{batch['id']}").status_code == 404
-    assert client.delete("/api/batches/NOT-AN-ID").status_code == 404
+    gone = client.delete("/api/batches/NOT-AN-ID")
+    assert gone.status_code == 404
+    assert gone.json()["detail"] == "候補のまとまり NOT-AN-ID が見つかりません"
 
     # 待つ候補のあるまとまりは, 別のプロセスが進めていても消さない
     manager = BatchManager(tmp_path / "home")

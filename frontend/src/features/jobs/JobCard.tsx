@@ -27,7 +27,7 @@ export function ProgressBar({
     <div>
       <div className="mb-1 flex items-baseline justify-between gap-3 text-xs">
         <span className="font-medium text-ink-2">{label}</span>
-        <span className="tabular text-ink-3">{detail}</span>
+        <span className="tabular-nums text-ink-3">{detail}</span>
       </div>
       <div
         role="progressbar"
@@ -132,7 +132,7 @@ export function JobCard({
           </p>
           {/* 同じスクリプトのジョブを見分けるための, 進んだエポックと config の違い */}
           {run && (
-            <p className="tabular truncate text-xs text-ink-2">
+            <p className="tabular-nums truncate text-xs text-ink-2">
               {run.epochs}
               {run.planned_epochs != null && ` / ${run.planned_epochs}`} エポック
               {' · '}
@@ -140,7 +140,7 @@ export function JobCard({
               {Object.keys(run.diff).length > 3 && ' …'}
             </p>
           )}
-          <p className="tabular text-xs text-ink-3">
+          <p className="tabular-nums text-xs text-ink-3">
             開始 {formatDateTime(job.created_at)}
             {job.finished_at && ` · 終了 ${formatDateTime(job.finished_at)}`}
             {job.return_code != null && ` · 終了コード ${job.return_code}`}

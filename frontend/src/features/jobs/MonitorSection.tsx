@@ -3,6 +3,8 @@ import { useEffect, useId, useRef, useState } from 'react'
 
 import type { ProblemTraining } from '../../api/client'
 import { useProblemTrainings, useRuns } from '../../api/hooks'
+import { describedBy } from '../../components/common-utils'
+import { FieldError } from '../../components/ui'
 import { problemIdOf, useStage } from '../../lib/stage'
 import { deleteYamlValue, setYamlValue } from '../../lib/yamlEdit'
 
@@ -177,17 +179,17 @@ export function MonitorSection({
           onKeyDown={(event) => event.key === 'Enter' && commit()}
           placeholder="空にすると ML-Found の既定 (valid/loss など) に戻ります"
           aria-invalid={invalid}
-          aria-describedby={
-            [invalid ? errorId : '', unknown ? unknownId : '', note ? sourceId : '']
-              .filter(Boolean)
-              .join(' ') || undefined
-          }
+          aria-describedby={describedBy(
+            invalid && errorId,
+            unknown && unknownId,
+            note !== null && sourceId,
+          )}
           className="h-8 w-full rounded-md border border-line bg-bg px-2 font-mono text-xs outline-none placeholder:text-ink-3 focus:border-accent aria-[invalid=true]:border-critical"
         />
         {invalid && (
-          <span id={errorId} className="col-start-2 text-[11px] text-critical-text">
-            空白や改行を含む名前は使えません
-          </span>
+          <div className="col-start-2">
+            <FieldError id={errorId}>空白や改行を含む名前は使えません</FieldError>
+          </div>
         )}
         {unknown && (
           <p

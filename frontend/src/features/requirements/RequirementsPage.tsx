@@ -2,7 +2,7 @@ import { RefreshCw } from 'lucide-react'
 import { Link, useParams } from 'react-router'
 
 import { useProject, useRecheckRequirements, useRequirements } from '../../api/hooks'
-import { Button, Card, ErrorBox, PageHeader, Spinner } from '../../components/ui'
+import { Button, Card, ErrorBox, PageHeader, Spinner, StageCrumbs } from '../../components/ui'
 import { formatDateTime } from '../../lib/format'
 import { RequirementCard } from './RequirementCard'
 
@@ -17,15 +17,9 @@ export function RequirementsPage() {
     <>
       <PageHeader
         breadcrumb={
-          <>
-            <Link to="/" className="hover:text-ink">
-              プロジェクト
-            </Link>
-            {' / '}
-            <Link to={`/projects/${projectId}`} className="hover:text-ink">
-              {project.data?.name ?? projectId}
-            </Link>
-          </>
+          <StageCrumbs
+            links={[{ to: `/projects/${projectId}`, label: project.data?.name ?? projectId }]}
+          />
         }
         title="追加の依存"
         subtitle="ML-Found の本体に含めない機能 (強化学習の環境, MuJoCo, ROS 2, CUDA など) が入っているかと入れ方"
@@ -51,7 +45,7 @@ export function RequirementsPage() {
       {report.isPending ? (
         <Spinner label="プロジェクトの Python で確かめています" />
       ) : report.error ? (
-        <ErrorBox error={report.error} />
+        <ErrorBox error={report.error} live={false} />
       ) : (
         <div className="space-y-4">
           <p className="text-xs text-ink-3">

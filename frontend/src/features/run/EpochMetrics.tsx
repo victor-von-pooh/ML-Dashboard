@@ -39,7 +39,7 @@ function Cell({ cell, interval }: { cell: EpochCell | undefined; interval: numbe
     )
   }
   return (
-    <td className="tabular px-2 py-1 text-right align-top whitespace-nowrap text-ink">
+    <td className="tabular-nums px-2 py-1 text-right align-top whitespace-nowrap text-ink">
       <span className="flex flex-col items-end">
         {formatMetric(cell.value)}
         {cell.mark && (

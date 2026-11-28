@@ -240,7 +240,7 @@ def resolve_run_dir(output_dirs: list[Path], run_id: str) -> Path:
             if is_run_dir(run_dir, output_dir):
                 return run_dir
 
-    raise RunNotFoundError(f"実験が見つかりません: {run_id}")
+    raise RunNotFoundError(f"実験 {run_id} が見つかりません")
 
 
 def parse_started_at(run_dir: Path) -> str:
@@ -1672,12 +1672,12 @@ def resolve_run_file(run_dir: Path, relative: str) -> Path:
     path = run_dir
     for part in parts:
         if part in ("", ".", "..") or Path(part).is_absolute():
-            raise RunNotFoundError(f"ファイルが見つかりません: {relative}")
+            raise RunNotFoundError(f"ファイル {relative} が見つかりません")
         path = path / part
         if path.is_symlink():
-            raise RunNotFoundError(f"ファイルが見つかりません: {relative}")
+            raise RunNotFoundError(f"ファイル {relative} が見つかりません")
     if not parts or not path.is_file():
-        raise RunNotFoundError(f"ファイルが見つかりません: {relative}")
+        raise RunNotFoundError(f"ファイル {relative} が見つかりません")
 
     return path
 

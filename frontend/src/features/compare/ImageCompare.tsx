@@ -51,7 +51,7 @@ function SharedSeriesViewer({
     <Card
       landmark={false}
       title={<span className="font-mono">{title}</span>}
-      actions={<span className="tabular text-sm font-semibold text-ink">{stepLabel}</span>}
+      actions={<span className="tabular-nums text-sm font-semibold text-ink">{stepLabel}</span>}
     >
       <div className="space-y-3">
         <div
@@ -90,7 +90,7 @@ function SharedSeriesViewer({
                   />
                   <span className="truncate">{run.label}</span>
                   {frame && frame.step !== step && (
-                    <span className="tabular ml-auto shrink-0 text-ink-3">
+                    <span className="tabular-nums ml-auto shrink-0 text-ink-3">
                       {label(frame.step)} (直近)
                     </span>
                   )}

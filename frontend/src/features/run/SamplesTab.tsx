@@ -43,7 +43,7 @@ function TextSample({ url, sample }: { url: string; sample: Sample }) {
     staleTime: Infinity,
   })
   if (large) return <DownloadLink url={url} sample={sample} />
-  if (text.error) return <ErrorBox error={text.error} />
+  if (text.error) return <ErrorBox error={text.error} live={false} />
   if (text.data === undefined) return <Spinner />
   const cut = text.data.length > MAX_TEXT_CHARS
   return (
@@ -204,7 +204,7 @@ function MaskLegend({ classes, label }: { classes: SampleClass[]; label: string 
             className="inline-block size-3 rounded-sm border border-line"
             style={{ backgroundColor: row.color }}
           />
-          <span className="tabular font-mono text-ink-3">{row.id}</span>
+          <span className="tabular-nums font-mono text-ink-3">{row.id}</span>
           <span className={row.name ? 'text-ink' : 'text-ink-3'}>{className(row.name)}</span>
           <span className="font-mono text-ink-3">{row.color}</span>
         </li>

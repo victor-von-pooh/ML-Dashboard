@@ -657,7 +657,7 @@ def stop_batch(
     """
     if not is_batch_id(batch_id):
         raise HTTPException(
-            404, f"候補のまとまりが見つかりません: {batch_id}"
+            404, f"候補のまとまり {batch_id} が見つかりません"
         )
     # 他のプロセスが進めているまとまりは, そのプロセスのロックの外から
     # 書き換えないので断る (持ち主が居なければ取りやめられる)
@@ -681,7 +681,7 @@ def stop_batch(
     )
     if batch is None:
         raise HTTPException(
-            404, f"候補のまとまりが見つかりません: {batch_id}"
+            404, f"候補のまとまり {batch_id} が見つかりません"
         )
     info = to_batch_info(request, batch)
 
@@ -716,7 +716,7 @@ def delete_batch(request: Request, batch_id: str) -> None:
     """
     if not is_batch_id(batch_id):
         raise HTTPException(
-            404, f"候補のまとまりが見つかりません: {batch_id}"
+            404, f"候補のまとまり {batch_id} が見つかりません"
         )
 
     # 持ち主の居ないまとまりは, ジョブの状態から読み直して保存してから消す
@@ -741,7 +741,7 @@ def delete_batch(request: Request, batch_id: str) -> None:
         ) from error
     if not removed:
         raise HTTPException(
-            404, f"候補のまとまりが見つかりません: {batch_id}"
+            404, f"候補のまとまり {batch_id} が見つかりません"
         )
 
 

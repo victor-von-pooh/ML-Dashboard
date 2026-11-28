@@ -291,7 +291,7 @@ def resolve_config(project: Project, relative: str) -> Path:
     # 一覧にある experiment の config だけを受け付け
     if relative not in list_experiment_configs(Path(project.path)):
         raise HTTPException(
-            404, f"experiment の config が見つかりません: {relative}"
+            404, f"experiment の config {relative} が見つかりません"
         )
     path = Path(project.path) / relative
 
@@ -1470,7 +1470,7 @@ def load_job(request: Request, job_id: str) -> tuple[Job, Optional[Project]]:
     projects = project_map(request)
     job = get_jobs(request).get(job_id, projects)
     if job is None:
-        raise HTTPException(404, f"ジョブが見つかりません: {job_id}")
+        raise HTTPException(404, f"ジョブ {job_id} が見つかりません")
     project = projects.get(job.project_id)
 
     return job, project
@@ -1524,7 +1524,7 @@ def rerun_job(request: Request, job_id: str) -> JobInfo:
     job, project = load_job(request, job_id)
     if project is None:
         raise HTTPException(
-            404, f"プロジェクトが見つかりません: {job.project_id}"
+            404, f"プロジェクト {job.project_id} が見つかりません"
         )
     # 記録した default が無くなった場合は, スクリプトから選ぶ形に戻す設定
     default_config = job.default_config
@@ -1941,7 +1941,7 @@ def stop_job(request: Request, job_id: str, body: StopRequest) -> JobInfo:
     except JobSignalError as error:
         raise HTTPException(409, str(error)) from error
     if job is None:
-        raise HTTPException(404, f"ジョブが見つかりません: {job_id}")
+        raise HTTPException(404, f"ジョブ {job_id} が見つかりません")
     info = to_job_info(get_jobs(request), job, projects.get(job.project_id))
 
     return info

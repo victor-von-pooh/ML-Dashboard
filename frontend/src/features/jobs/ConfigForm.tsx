@@ -3,7 +3,8 @@ import { ChevronDown, ChevronRight, Info, TriangleAlert } from 'lucide-react'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 
 import { useApi, type ClassSpec, type ParamSpec } from '../../api/client'
-import { Card, ErrorBox, Spinner } from '../../components/ui'
+import { describedBy } from '../../components/common-utils'
+import { Card, ErrorBox, FieldError, Spinner } from '../../components/ui'
 import {
   checkParamValue,
   describeRange,
@@ -89,9 +90,6 @@ export function IntegerField({
     setInvalid(false)
     if (parsed !== value) onEdit((now) => setYamlValue(now, path, parsed))
   }
-  const describedBy = [invalid ? `${id}-error` : '', hint ? `${id}-hint` : '']
-    .filter(Boolean)
-    .join(' ')
   // 値の参照 (環境変数など. 画面には書いたままで届く) は数の欄に出せないので文字の欄
   const written = typeof value === 'string'
 
@@ -110,14 +108,14 @@ export function IntegerField({
         onBlur={(event) => commit(event.target.value)}
         onKeyDown={(event) => event.key === 'Enter' && commit(event.currentTarget.value)}
         aria-invalid={invalid}
-        aria-describedby={describedBy || undefined}
+        aria-describedby={describedBy(invalid && `${id}-error`, hint && `${id}-hint`)}
         disabled={disabled}
         className={`h-8 ${written ? 'w-full' : 'w-32'} rounded-md border border-line bg-bg px-2 font-mono text-xs aria-[invalid=true]:border-critical`}
       />
       {invalid && (
-        <span id={`${id}-error`} className="col-start-2 text-[11px] text-critical-text">
-          1 以上の整数にしてください
-        </span>
+        <div className="col-start-2">
+          <FieldError id={`${id}-error`}>1 以上の整数にしてください</FieldError>
+        </div>
       )}
       {hint && (
         <p id={`${id}-hint`} className="col-start-2 text-[11px] text-ink-3">
@@ -198,6 +196,7 @@ function ParamField({
 }) {
   const id = useId()
   const helpId = useId()
+  const errorId = useId()
   // 値が無いか null の場合は空にして, 既定値は薄い文字で表示
   const initial = value === null || value === undefined ? '' : formatInput(value)
   const [text, setText] = useState(initial)
@@ -226,8 +225,8 @@ function ParamField({
   }
 
   const range = describeRange(spec)
-  // 誤りの間は, 同じ内容になりやすい範囲の説明を省略
-  const help = [spec.description, error ? '' : range, error ?? ''].filter(Boolean).join(' · ')
+  // 誤りの間は, 同じ内容になりやすい範囲の説明を省略 (誤りは欄の下に別に出す)
+  const help = [spec.description, error ? '' : range].filter(Boolean).join(' · ')
 
   return (
     <div className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] items-start gap-2">
@@ -260,20 +259,16 @@ function ParamField({
             placeholder={spec.default === null ? '(なし)' : formatInput(spec.default)}
             aria-invalid={invalid}
             aria-required={spec.required}
-            aria-describedby={help ? helpId : undefined}
+            aria-describedby={describedBy(help && helpId, invalid && errorId)}
             className="h-8 w-full rounded-md border border-line bg-bg px-2 font-mono text-xs outline-none placeholder:text-ink-3 focus:border-accent aria-[invalid=true]:border-critical"
           />
         )}
         {help && (
-          <p
-            id={helpId}
-            className={
-              invalid ? 'mt-0.5 text-[11px] text-critical-text' : 'mt-0.5 text-[11px] text-ink-3'
-            }
-          >
+          <p id={helpId} className="mt-0.5 text-[11px] text-ink-3">
             {help}
           </p>
         )}
+        {error !== null && <FieldError id={errorId}>{error}</FieldError>}
       </div>
     </div>
   )
@@ -503,9 +498,9 @@ export function ConfigForm({
       {registry.isPending || (!config && resolved.isPending) ? (
         <Spinner />
       ) : registry.error ? (
-        <ErrorBox error={registry.error} />
+        <ErrorBox error={registry.error} live={false} />
       ) : resolved.error && !config ? (
-        <ErrorBox error={resolved.error} />
+        <ErrorBox error={resolved.error} live={false} />
       ) : !config ? (
         <p className="text-sm text-ink-3">
           config に誤りがあるのでフォームを表示できません. YAML の欄を直すか,

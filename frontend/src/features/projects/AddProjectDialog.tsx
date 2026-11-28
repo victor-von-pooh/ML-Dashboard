@@ -1,10 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ClipboardList, FolderSearch, Plus, X } from 'lucide-react'
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import { ClipboardList, FolderSearch, Plus } from 'lucide-react'
+import { useId, useRef, useState, type FormEvent } from 'react'
 
 import { useApi, type ProjectCandidate, type RecordedProject } from '../../api/client'
 import { keys, useProblemProject, useRecordedProjects, useScanProjects } from '../../api/hooks'
-import { Button, ErrorBox, Spinner } from '../../components/ui'
+import { describedBy } from '../../components/common-utils'
+import { Button, Dialog, ErrorBox, Spinner } from '../../components/ui'
 import { problemIdOf, useStage } from '../../lib/stage'
 
 /**
@@ -12,12 +13,9 @@ import { problemIdOf, useStage } from '../../lib/stage'
  * 押すとそのプロジェクトを登録する (場所を打たずに済むように)
  */
 function RecordedProjects({
-  open,
   busy,
   onBusy,
 }: {
-  /** ダイアログを開いているか (開いている間だけ読む) */
-  open: boolean
   /** 他の登録の途中か */
   busy: boolean
   /** 登録の途中かを知らせる (途中で閉じないように) */
@@ -28,7 +26,7 @@ function RecordedProjects({
   const stage = useStage()
   // 殻で選んだ問題が記録したプロジェクト (同じプロジェクトなら選びを移さないため)
   const chosen = useProblemProject(stage.project)
-  const recorded = useRecordedProjects(open)
+  const recorded = useRecordedProjects(true)
   const titleId = useId()
   const [added, setAdded] = useState<string | null>(null)
   const register = useMutation({
@@ -56,23 +54,14 @@ function RecordedProjects({
       onBusy(false)
     },
   })
-  // 閉じたら次に開いたときのために結果を消去
-  const [wasOpen, setWasOpen] = useState(open)
-  if (open !== wasOpen) {
-    setWasOpen(open)
-    if (!open) {
-      setAdded(null)
-      register.reset()
-    }
-  }
   const list = recorded.data
   return (
     <section aria-labelledby={titleId} className="space-y-2">
       <h3 id={titleId} className="text-sm font-semibold">
         問題の設定の段階で書き出したプロジェクト
       </h3>
-      {recorded.isPending && open && <Spinner />}
-      {recorded.error && <ErrorBox error={recorded.error} />}
+      {recorded.isPending && <Spinner />}
+      {recorded.error && <ErrorBox error={recorded.error} live={false} />}
       {list?.error && <p className="text-xs text-critical-text">{list.error}</p>}
       {list?.skipped.map((reason) => (
         <p key={reason} className="text-xs text-warning-text">
@@ -125,12 +114,12 @@ function RecordedProjects({
 
 /**
  * 問題の設定の段階で書き出したプロジェクトを選んで登録するか, ディレクトリを入力して,
- * その下の ML-Found のプロジェクトをまとめて登録するダイアログ
+ * その下の ML-Found のプロジェクトをまとめて登録するダイアログ. 開いている間だけ置き,
+ * 閉じたら外す (次に開いたときに入力と結果が残らないように)
  */
-export function AddProjectDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const dialogRef = useRef<HTMLDialogElement>(null)
+export function AddProjectDialog({ onClose }: { onClose: () => void }) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const titleId = useId()
+  const scanErrorId = useId()
   const client = useQueryClient()
   const api = useApi()
   const scan = useScanProjects()
@@ -142,27 +131,6 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose: ()
   // 一覧からの登録の途中か (途中で閉じないように)
   const [registering, setRegistering] = useState(false)
   const busy = adding || registering
-
-  // open に合わせてネイティブのダイアログを開閉し, 開いたら入力欄に移る
-  useEffect(() => {
-    const dialog = dialogRef.current
-    if (!dialog) return
-    if (open && !dialog.open) {
-      dialog.showModal()
-      inputRef.current?.focus()
-    }
-    if (!open && dialog.open) dialog.close()
-  }, [open])
-
-  // 閉じたら次に開いたときのために入力と結果を消去
-  const close = () => {
-    setPath('')
-    setCandidates([])
-    setSelected(new Set())
-    setAddError(null)
-    scan.reset()
-    onClose()
-  }
 
   const onScan = (event: FormEvent) => {
     event.preventDefault()
@@ -203,7 +171,7 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose: ()
       client.invalidateQueries({ queryKey: keys.problemProjects }),
     ])
     setAdding(false)
-    if (!failed) dialogRef.current?.close()
+    if (!failed) onClose()
   }
 
   const toggle = (target: string) =>
@@ -217,36 +185,9 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose: ()
   const addable = candidates.filter((item) => !item.registered)
 
   return (
-    <dialog
-      ref={dialogRef}
-      aria-labelledby={titleId}
-      onClose={() => {
-        // 登録の途中で閉じられた場合は開き直し, 結果が分かるようにする
-        if (busy) dialogRef.current?.showModal()
-        else close()
-      }}
-      onCancel={(event) => {
-        if (busy) event.preventDefault()
-      }}
-      className="m-auto w-[min(640px,calc(100vw-2rem))] rounded-2xl border border-line bg-surface p-0 text-ink shadow-2xl backdrop:bg-black/40 backdrop:backdrop-blur-sm"
-    >
-      <div className="flex items-center justify-between border-b border-line px-5 py-4">
-        <h2 id={titleId} className="text-base font-semibold">
-          プロジェクトを登録
-        </h2>
-        <button
-          type="button"
-          onClick={() => dialogRef.current?.close()}
-          disabled={busy}
-          className="rounded-lg p-1 text-ink-3 hover:bg-surface-2"
-          aria-label="閉じる"
-        >
-          <X className="size-4" aria-hidden />
-        </button>
-      </div>
-
-      <div className="space-y-4 px-5 py-4">
-        <RecordedProjects open={open} busy={busy} onBusy={setRegistering} />
+    <Dialog title="プロジェクトを登録" onClose={onClose} busy={busy} initialFocus={inputRef}>
+      <div className="space-y-4">
+        <RecordedProjects busy={busy} onBusy={setRegistering} />
         <hr className="border-line" />
         <p className="text-sm text-ink-2">
           ML-Found のプロジェクト (
@@ -260,6 +201,7 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose: ()
             value={path}
             onChange={(event) => setPath(event.target.value)}
             aria-label="探すディレクトリのパス"
+            aria-describedby={describedBy(scan.error != null && scanErrorId)}
             placeholder="例: ~/projects/my-experiments"
             className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-bg px-3 font-mono text-sm outline-none focus:border-accent"
           />
@@ -273,7 +215,7 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose: ()
           </Button>
         </form>
 
-        {scan.error && <ErrorBox error={scan.error} />}
+        {scan.error && <ErrorBox id={scanErrorId} error={scan.error} live={false} />}
         {scan.isSuccess && candidates.length === 0 && (
           <p className="text-sm text-ink-3">ML-Found のプロジェクトは見つかりませんでした.</p>
         )}
@@ -304,12 +246,12 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose: ()
         {addError != null && <ErrorBox error={addError} />}
       </div>
 
-      <div className="flex items-center justify-between gap-2 border-t border-line px-5 py-3">
+      <div className="mt-4 flex items-center justify-between gap-2 border-t border-line pt-3">
         <span className="text-xs text-ink-3">
           {candidates.length > 0 && `${addable.length} 件中 ${selected.size} 件を選択`}
         </span>
         <div className="flex gap-2">
-          <Button variant="ghost" onClick={() => dialogRef.current?.close()} disabled={busy}>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>
             やめる
           </Button>
           <Button variant="primary" onClick={onAdd} disabled={selected.size === 0 || busy}>
@@ -317,6 +259,6 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose: ()
           </Button>
         </div>
       </div>
-    </dialog>
+    </Dialog>
   )
 }

@@ -121,7 +121,11 @@ describe('TrajectoriesTab', () => {
     fireEvent.change(screen.getByLabelText('割引率 γ (0 以上 1 以下)'), {
       target: { value: '1.5' },
     })
-    expect(screen.getByText('ε と γ は 0 以上 1 以下の数にしてください.')).toBeInTheDocument()
+    // 欄の下の短い誤りで, 欄が aria-invalid と aria-describedby で結ぶ
+    const gamma = screen.getByLabelText('割引率 γ (0 以上 1 以下)')
+    expect(gamma).toHaveAttribute('aria-invalid', 'true')
+    expect(gamma).toHaveAccessibleDescription('0 以上 1 以下の数にしてください')
+    expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.getByRole('button', { name: '見積もる' })).toBeDisabled()
   })
 })

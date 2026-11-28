@@ -11,8 +11,16 @@ test('問題の設定の段階で書き出したプロジェクトを, 場所を
   page,
 }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: 'プロジェクトを登録' }).first().click()
+  const opener = page.getByRole('button', { name: 'プロジェクトを登録' }).first()
+  await opener.click()
   const dialog = page.getByRole('dialog', { name: 'プロジェクトを登録' })
+
+  // 開くと場所の欄に focus があり, Esc で閉じて開いたボタンに戻る
+  await expect(dialog.getByLabel('探すディレクトリのパス')).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
+  await expect(opener).toBeFocused()
+  await opener.click()
 
   // 記録のあるプロジェクトだけが並ぶ (記録の無い問題の設定は出ない)
   const list = dialog.getByRole('list', { name: '登録していない書き出したプロジェクト' })

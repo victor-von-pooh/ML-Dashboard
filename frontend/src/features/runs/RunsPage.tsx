@@ -27,6 +27,7 @@ import {
   ErrorBox,
   PageHeader,
   Spinner,
+  StageCrumbs,
   StatTile,
   StatusBadge,
 } from '../../components/ui'
@@ -343,8 +344,8 @@ function RunsPage({ projectId }: { projectId: string }) {
   if (project.error) {
     return (
       <>
-        <PageHeader breadcrumb={<Link to="/">プロジェクト</Link>} title={projectId} />
-        <ErrorBox error={project.error}>
+        <PageHeader breadcrumb={<StageCrumbs />} title="プロジェクトを開けません" />
+        <ErrorBox error={project.error} live={false}>
           <Link to="/" className="mt-1 inline-block text-accent-text hover:underline">
             プロジェクトの一覧に戻る
           </Link>
@@ -386,7 +387,7 @@ function RunsPage({ projectId }: { projectId: string }) {
   return (
     <>
       <PageHeader
-        breadcrumb={<Link to="/">プロジェクト</Link>}
+        breadcrumb={<StageCrumbs />}
         title={project.data?.name ?? projectId}
         subtitle={<span className="font-mono text-xs">{project.data?.path}</span>}
         actions={
@@ -482,7 +483,7 @@ function RunsPage({ projectId }: { projectId: string }) {
                   : 'border-line text-ink-2 hover:bg-surface-2',
               )}
             >
-              {item.label} <span className="tabular">{counts[item.id] ?? 0}</span>
+              {item.label} <span className="tabular-nums">{counts[item.id] ?? 0}</span>
             </button>
           ))}
         </div>
@@ -506,7 +507,8 @@ function RunsPage({ projectId }: { projectId: string }) {
                         : 'border-line text-ink-2 hover:bg-surface-2',
                     )}
                   >
-                    {GUARD_LABELS[item]} <span className="tabular">{guardCounts[item] ?? 0}</span>
+                    {GUARD_LABELS[item]}{' '}
+                    <span className="tabular-nums">{guardCounts[item] ?? 0}</span>
                   </button>
                 ),
               )}
@@ -562,7 +564,7 @@ function RunsPage({ projectId }: { projectId: string }) {
                   : 'border-line text-ink-2 hover:bg-surface-2',
               )}
             >
-              <span aria-hidden>★ </span>星付き <span className="tabular">{starredCount}</span>
+              <span aria-hidden>★ </span>星付き <span className="tabular-nums">{starredCount}</span>
             </button>
           )}
           {shownTags.map(({ tag: item, count }) => (
@@ -582,7 +584,7 @@ function RunsPage({ projectId }: { projectId: string }) {
               <span className="inline-block max-w-40 truncate align-bottom" title={item}>
                 {item}
               </span>{' '}
-              <span className="tabular text-ink-3">{count}</span>
+              <span className="tabular-nums text-ink-3">{count}</span>
             </button>
           ))}
           {tagChips.length > TAG_LIMIT && (
@@ -608,7 +610,7 @@ function RunsPage({ projectId }: { projectId: string }) {
       )}
 
       {runs.isPending && <Spinner />}
-      {runs.error && <ErrorBox error={runs.error} />}
+      {runs.error && <ErrorBox error={runs.error} live={false} />}
       {runs.data?.length === 0 && (
         <EmptyState icon={FlaskConical} title="実験がありません">
           ML-Found で学習すると, 出力先 ({project.data?.output_dirs.join(', ')})
@@ -787,7 +789,7 @@ function RunRow({
         >
           {run.name}
         </Link>
-        <div className="tabular text-xs text-ink-3">{formatDateTime(run.started_at)}</div>
+        <div className="tabular-nums text-xs text-ink-3">{formatDateTime(run.started_at)}</div>
         {note && (note.tags.length > 0 || note.note) && (
           <div className="mt-0.5 flex max-w-72 flex-wrap items-center gap-1">
             {note.tags.slice(0, 3).map((item) => (
@@ -858,7 +860,7 @@ function RunRow({
           {diff.length === 0 && <span className="text-xs text-ink-3">なし</span>}
         </div>
       </td>
-      <td className="tabular px-3 py-2.5 text-right whitespace-nowrap">
+      <td className="tabular-nums px-3 py-2.5 text-right whitespace-nowrap">
         {run.epochs}
         {run.planned_epochs != null && <span className="text-ink-3"> / {run.planned_epochs}</span>}
         {run.early_stopped_epoch != null && (
@@ -868,7 +870,7 @@ function RunRow({
           <div className="text-[11px] text-accent-text">エポック {progress.epoch} を学習中</div>
         )}
       </td>
-      <td className="tabular px-3 py-2.5 text-right whitespace-nowrap">
+      <td className="tabular-nums px-3 py-2.5 text-right whitespace-nowrap">
         {run.best ? (
           <>
             <div className="flex items-center justify-end gap-1 font-medium">
@@ -885,7 +887,7 @@ function RunRow({
           <span className="text-ink-3">—</span>
         )}
       </td>
-      <td className="tabular px-3 py-2.5 text-right whitespace-nowrap text-ink-2">
+      <td className="tabular-nums px-3 py-2.5 text-right whitespace-nowrap text-ink-2">
         {formatDuration(run.duration_sec)}
       </td>
       {hasGuard && (
@@ -894,7 +896,7 @@ function RunRow({
         </td>
       )}
       {columns.map((column) => (
-        <td key={column.key} className="tabular px-3 py-2.5 text-right whitespace-nowrap">
+        <td key={column.key} className="tabular-nums px-3 py-2.5 text-right whitespace-nowrap">
           <EvaluationCell value={findValue(run.evaluations, column.key)} />
         </td>
       ))}

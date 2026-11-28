@@ -1308,6 +1308,7 @@ def test_force_stop(client: TestClient, project_dir: Path) -> None:
 
     missing = client.get("/api/jobs/zzzz")
     assert missing.status_code == 404
+    assert missing.json()["detail"] == "ジョブ zzzz が見つかりません"
     traversal = client.get("/api/jobs/..%2F..")
     assert traversal.status_code == 404
 

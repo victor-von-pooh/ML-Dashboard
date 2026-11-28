@@ -133,7 +133,9 @@ def get_project(request: Request, project_id: str) -> Project:
     """
     project = get_store(request).get(project_id)
     if project is None:
-        raise HTTPException(404, f"プロジェクトが見つかりません: {project_id}")
+        raise HTTPException(
+            404, f"プロジェクト {project_id} が見つかりません"
+        )
 
     return project
 
@@ -360,7 +362,7 @@ def read_problem_project(request: Request, problem_id: str) -> ProblemProject:
     result = problem_project(problems_dir, problem_id, registered)
     if result is None:
         raise HTTPException(
-            404, f"問題が置き場にありません: {problem_id}"
+            404, f"問題 {problem_id} が見つかりません"
         )
 
     return result
@@ -492,7 +494,9 @@ def move_project(
     except ValueError as error:
         raise HTTPException(400, str(error)) from error
     if project is None:
-        raise HTTPException(404, f"プロジェクトが見つかりません: {project_id}")
+        raise HTTPException(
+            404, f"プロジェクト {project_id} が見つかりません"
+        )
     info = to_info(project)
 
     return info
@@ -517,7 +521,9 @@ def delete_project(request: Request, project_id: str) -> None:
     None
     """
     if not get_store(request).remove(project_id):
-        raise HTTPException(404, f"プロジェクトが見つかりません: {project_id}")
+        raise HTTPException(
+            404, f"プロジェクト {project_id} が見つかりません"
+        )
 
     # 同じ ID を後から別のプロジェクトが使っても引き継がないようにメモも削除
     request.app.state.notes.remove(project_id)

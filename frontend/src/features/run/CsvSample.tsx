@@ -101,7 +101,7 @@ function CsvGrid({
                       key={`${place}-${column}`}
                       className={clsx(
                         'px-3 py-1 whitespace-nowrap',
-                        table.numeric.has(column) ? 'tabular text-right' : 'text-ink',
+                        table.numeric.has(column) ? 'tabular-nums text-right' : 'text-ink',
                         empty && 'text-ink-3',
                       )}
                     >
@@ -131,7 +131,7 @@ export function CsvSample({ url, sample, label }: { url: string; sample: Sample;
   if (large) return <TooLarge url={url} sample={sample} />
   return (
     <div className="space-y-2">
-      {table.error && <ErrorBox error={table.error} />}
+      {table.error && <ErrorBox error={table.error} live={false} />}
       {table.isPending && <Spinner />}
       {table.data && <CsvGrid table={table.data} label={label} />}
       <DownloadLink url={url} sample={sample} />
@@ -162,7 +162,7 @@ function CompareSide({
         {sample.caption && <span className="ml-2 text-xs text-ink-2">{sample.caption}</span>}
       </figcaption>
       {large && <TooLarge url={url} sample={sample} />}
-      {table.error && <ErrorBox error={table.error} />}
+      {table.error && <ErrorBox error={table.error} live={false} />}
       {!large && table.isPending && <Spinner />}
       {table.data && <CsvGrid table={table.data} label={label} columns={columns} />}
     </figure>

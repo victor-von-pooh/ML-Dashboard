@@ -15,6 +15,7 @@ import {
   ErrorBox,
   PageHeader,
   Spinner,
+  StageCrumbs,
   StatusBadge,
 } from '../../components/ui'
 import { seriesVar } from '../../lib/colors'
@@ -211,17 +212,7 @@ export function ComparePage() {
 
   const header = (
     <PageHeader
-      breadcrumb={
-        <>
-          <Link to="/" className="hover:text-ink">
-            プロジェクト
-          </Link>
-          {' / '}
-          <Link to={backUrl} className="hover:text-ink">
-            {project.data?.name ?? projectId}
-          </Link>
-        </>
-      }
+      breadcrumb={<StageCrumbs links={[{ to: backUrl, label: project.data?.name ?? projectId }]} />}
       title="実験の比較"
       subtitle={`${runIds.length} 件の実験${ready.length < runIds.length && !loading ? ` (表示できたのは ${ready.length} 件)` : ''}`}
     />
@@ -309,7 +300,7 @@ export function ComparePage() {
                           <td className="px-4 py-2">
                             <StatusBadge status={slot.run.status} />
                           </td>
-                          <td className="tabular px-4 py-2 text-right">
+                          <td className="tabular-nums px-4 py-2 text-right">
                             {slot.run.best ? (
                               <>
                                 {formatMetric(slot.run.best.value)}
@@ -321,8 +312,8 @@ export function ComparePage() {
                               '—'
                             )}
                           </td>
-                          <td className="tabular px-4 py-2 text-right">{slot.run.epochs}</td>
-                          <td className="tabular px-4 py-2 text-right text-ink-2">
+                          <td className="tabular-nums px-4 py-2 text-right">{slot.run.epochs}</td>
+                          <td className="tabular-nums px-4 py-2 text-right text-ink-2">
                             {formatDuration(slot.run.duration_sec)}
                           </td>
                         </>
@@ -484,7 +475,7 @@ export function ComparePage() {
 
         {/* config の違う項目 */}
         {!loading && ready.length > 1 && (
-          <Card title={`config の違い (${configKeys.length})`} padded={false}>
+          <Card name="config の違い" title={`config の違い (${configKeys.length})`} padded={false}>
             {configKeys.length === 0 ? (
               <p className="px-4 py-6 text-sm text-ink-3">全ての実験で config が同じです.</p>
             ) : (
@@ -676,7 +667,10 @@ function EvaluationCompare({
                     </td>
                   )}
                   {shown.map((column) => (
-                    <td key={column.key} className="tabular px-4 py-2 text-right whitespace-nowrap">
+                    <td
+                      key={column.key}
+                      className="tabular-nums px-4 py-2 text-right whitespace-nowrap"
+                    >
                       <EvaluationCell value={findValue(slot.run.evaluations, column.key)} />
                     </td>
                   ))}

@@ -105,6 +105,10 @@ def test_standalone_checks(
     assert client.get("/assets/a.js").text == "1"
     for path in ["/api", "/api/nothing", "/api/openapi.json", "/api/docs"]:
         assert client.get(path).status_code == 404, path
+    # 頭だけの /api は「<物> <識別子> が見つかりません」の形で返す
+    assert client.get("/api").json()["detail"] == (
+        "API の経路 /api が見つかりません"
+    )
     for path in ["/docs", "/openapi.json"]:
         assert client.get(path).text == "画面", path
 

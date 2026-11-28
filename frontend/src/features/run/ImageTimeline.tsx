@@ -66,7 +66,7 @@ function SeriesViewer({
       landmark={false}
       title={<span className="font-mono">{title}</span>}
       actions={
-        <span className="tabular text-sm font-semibold text-ink">{stepLabel(frame.step)}</span>
+        <span className="tabular-nums text-sm font-semibold text-ink">{stepLabel(frame.step)}</span>
       }
     >
       <figure className="space-y-3">
@@ -148,7 +148,7 @@ function SeriesViewer({
                 loading="lazy"
                 className="h-14 w-auto object-contain [image-rendering:pixelated]"
               />
-              <span className="tabular block px-1 text-[11px] text-ink-2">{item.step}</span>
+              <span className="tabular-nums block px-1 text-[11px] text-ink-2">{item.step}</span>
             </button>
           ))}
         </div>

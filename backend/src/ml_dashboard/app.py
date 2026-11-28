@@ -304,7 +304,7 @@ def serve_index(request: Request, path: str) -> FileResponse:
     """
     # 存在しない API は画面ではなく 404 として返却
     if path == "api" or path.startswith("api/"):
-        raise HTTPException(404, "API が見つかりません")
+        raise HTTPException(404, f"API の経路 /{path} が見つかりません")
 
     static_dir: Path = request.app.state.static_dir
     target = static_file(static_dir, path)

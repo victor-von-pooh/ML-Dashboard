@@ -87,7 +87,7 @@ function BoundsTable({
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.index} className="tabular border-b border-line last:border-b-0">
+              <tr key={row.index} className="tabular-nums border-b border-line last:border-b-0">
                 <td className="px-4 py-1.5 font-mono text-xs">{row.index}</td>
                 <td className="px-4 py-1.5 text-ink-2">{formatBound(row.spaceLow)}</td>
                 <td className="px-4 py-1.5 text-ink-2">{formatBound(row.spaceHigh)}</td>
@@ -123,7 +123,7 @@ function ActionsTable({ space, allowed }: { space: PolicySpace; allowed: number[
         <tbody>
           {rows.map((row) => (
             <tr key={row.action} className="border-b border-line last:border-b-0">
-              <td className="tabular px-4 py-1.5 font-mono text-xs">{row.action}</td>
+              <td className="tabular-nums px-4 py-1.5 font-mono text-xs">{row.action}</td>
               <td className="px-4 py-1.5">
                 {row.allowed ? (
                   <span className="inline-flex items-center gap-1 text-good-text">
@@ -187,7 +187,7 @@ function OutcomeTable({ outcome }: { outcome: PolicyOutcome }) {
               </thead>
               <tbody>
                 {outcome.ends.map((share) => (
-                  <tr key={share.end} className="tabular border-b border-line last:border-b-0">
+                  <tr key={share.end} className="tabular-nums border-b border-line last:border-b-0">
                     <td className="px-4 py-1.5">
                       {describeEnd(share.end)}
                       {share.end !== 'other' && (
@@ -241,14 +241,14 @@ function OutcomesCard({
                   <>
                     <dt className="text-ink-3">ベストのエポック ({success.bestEpoch})</dt>
                     {success.best ? (
-                      <dd className="tabular">{formatShare(success.best.value)}</dd>
+                      <dd className="tabular-nums">{formatShare(success.best.value)}</dd>
                     ) : (
                       <dd className="text-ink-2">このエポックに値がありません</dd>
                     )}
                   </>
                 )}
                 <dt className="text-ink-3">最後のエポック ({success.last.epoch})</dt>
-                <dd className="tabular">{formatShare(success.last.value)}</dd>
+                <dd className="tabular-nums">{formatShare(success.last.value)}</dd>
               </dl>
             ) : (
               <p className="mt-1 text-sm text-ink-2">

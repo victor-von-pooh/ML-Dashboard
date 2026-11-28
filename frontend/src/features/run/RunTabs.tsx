@@ -1,9 +1,9 @@
 import clsx from 'clsx'
-import { Ban, Download, ExternalLink, Search, X } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
+import { Ban, Download, ExternalLink, Search } from 'lucide-react'
+import { useMemo, useState } from 'react'
 
 import { useApi, type LogEntry, type ModelParam, type RunDetail } from '../../api/client'
-import { Button, Card } from '../../components/ui'
+import { Button, Card, Dialog } from '../../components/ui'
 import { formatBytes, formatLogTime, formatValue } from '../../lib/format'
 import { flattenConfig } from '../../lib/metrics'
 import { describeModelSpec } from '../../lib/modelSpec'
@@ -70,6 +70,7 @@ export function ConfigTab({ run }: { run: RunDetail }) {
   return (
     <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
       <Card
+        name="default との差分"
         title={
           run.source?.default ? `default (${run.source.default}) との差分` : 'default との差分'
         }
@@ -127,12 +128,13 @@ function ParamTable({ rows, total }: { rows: ModelParam[]; total: number }) {
   const shown = filterParams(rows, query)
   return (
     <Card
+      name="パラメータの一覧"
       title={`パラメータの一覧 (${total})`}
       padded={false}
       className="lg:col-span-2"
       actions={<SearchInput value={query} onChange={setQuery} placeholder="名前か層で探す" />}
     >
-      <p className="tabular px-4 py-2 text-xs text-ink-2">
+      <p className="tabular-nums px-4 py-2 text-xs text-ink-2">
         学習するパラメータ {counts.trainable.toLocaleString()} · 学習しないパラメータ{' '}
         {counts.frozen.toLocaleString()} · バッファ {counts.buffer.toLocaleString()}
         {total > rows.length && ` (先頭の ${rows.length} 行で数えた値)`}
@@ -162,7 +164,7 @@ function ParamTable({ rows, total }: { rows: ModelParam[]; total: number }) {
                   {row.kind === 'buffer' && <span className="text-ink-3"> (バッファ)</span>}
                 </td>
                 <td className="px-4 py-1.5 font-mono text-xs">{row.shape || '-'}</td>
-                <td className="tabular px-4 py-1.5 text-right text-xs">
+                <td className="tabular-nums px-4 py-1.5 text-right text-xs">
                   {row.numel.toLocaleString()}
                 </td>
                 <td className="px-4 py-1.5 text-xs">
@@ -328,6 +330,7 @@ export function EnvTab({ run, projectId }: { run: RunDetail; projectId: string }
         )}
       </div>
       <Card
+        name="パッケージ"
         title={`パッケージ (${Object.keys(run.packages).length})`}
         padded={false}
         actions={<SearchInput value={query} onChange={setQuery} placeholder="パッケージを探す" />}
@@ -398,7 +401,7 @@ export function LogTab({ entries }: { entries: LogEntry[] }) {
                   : 'border-line text-ink-3',
               )}
             >
-              {level} <span className="tabular">{counts[level] ?? 0}</span>
+              {level} <span className="tabular-nums">{counts[level] ?? 0}</span>
             </button>
           ))}
           <SearchInput value={query} onChange={setQuery} placeholder="ログを探す" />
@@ -418,7 +421,7 @@ export function LogTab({ entries }: { entries: LogEntry[] }) {
                 group === 'INFO' && 'border-transparent',
               )}
             >
-              <span className="tabular shrink-0 text-ink-3" title={entry.time ?? undefined}>
+              <span className="tabular-nums shrink-0 text-ink-3" title={entry.time ?? undefined}>
                 {formatLogTime(entry.time, firstDate)}
               </span>
               {group !== 'INFO' && (
@@ -449,31 +452,19 @@ export function FilesTab({ run, projectId }: { run: RunDetail; projectId: string
   const images = run.files.filter((file) => file.kind === 'image')
   // 画像が多い実験 (エポックごとの生成画像など) は, 少しずつ並べる
   const [shown, setShown] = useState(IMAGE_PAGE)
+  // 大きく見せる画像 (開いている間だけ対話の枠を置く. 閉じると開いたボタンに戻る)
   const [preview, setPreview] = useState<string | null>(null)
-  const dialogRef = useRef<HTMLDialogElement>(null)
-  const openerRef = useRef<HTMLButtonElement | null>(null)
-
-  // ネイティブのダイアログで開き, Escape と背景の操作の禁止はブラウザに任せる
-  const open = (path: string, opener: HTMLButtonElement) => {
-    openerRef.current = opener
-    setPreview(path)
-    dialogRef.current?.showModal()
-  }
-  const onClose = () => {
-    setPreview(null)
-    openerRef.current?.focus()
-  }
 
   return (
     <div className="space-y-4">
       {images.length > 0 && (
-        <Card title={`画像 (${images.length})`}>
+        <Card name="画像" title={`画像 (${images.length})`}>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
             {images.slice(0, shown).map((file) => (
               <button
                 key={file.path}
                 type="button"
-                onClick={(event) => open(file.path, event.currentTarget)}
+                onClick={() => setPreview(file.path)}
                 className="group overflow-hidden rounded-lg border border-line bg-white text-left"
                 aria-label={`${file.path} を大きく表示`}
               >
@@ -499,7 +490,7 @@ export function FilesTab({ run, projectId }: { run: RunDetail; projectId: string
           )}
         </Card>
       )}
-      <Card title={`ファイル (${run.files.length})`} padded={false}>
+      <Card name="ファイル" title={`ファイル (${run.files.length})`} padded={false}>
         <table className="w-full text-sm">
           <tbody>
             {run.files.map((file) => (
@@ -509,7 +500,7 @@ export function FilesTab({ run, projectId }: { run: RunDetail; projectId: string
               >
                 <td className="px-4 py-1.5 font-mono text-xs break-all">{file.path}</td>
                 <td className="px-4 py-1.5 text-xs text-ink-3">{file.kind}</td>
-                <td className="tabular px-4 py-1.5 text-right text-xs text-ink-2">
+                <td className="tabular-nums px-4 py-1.5 text-right text-xs text-ink-2">
                   {formatBytes(file.size)}
                 </td>
                 <td className="w-10 px-2 py-1.5">
@@ -554,37 +545,15 @@ export function FilesTab({ run, projectId }: { run: RunDetail; projectId: string
         </table>
       </Card>
 
-      <dialog
-        ref={dialogRef}
-        onClose={onClose}
-        aria-label={preview ?? '画像'}
-        onClick={(event) => {
-          if (event.target === event.currentTarget) dialogRef.current?.close()
-        }}
-        className="m-auto max-h-[90vh] max-w-[min(1100px,calc(100vw-2rem))] overflow-hidden rounded-xl bg-surface p-0 text-ink shadow-2xl backdrop:bg-black/70 backdrop:backdrop-blur-sm"
-      >
-        {preview && (
-          <figure>
-            <div className="flex items-center justify-between gap-3 border-b border-line px-3 py-2">
-              <figcaption className="truncate font-mono text-xs text-ink-2">{preview}</figcaption>
-              <button
-                type="button"
-                onClick={() => dialogRef.current?.close()}
-                className="rounded p-1 text-ink-3 hover:bg-surface-2 hover:text-ink"
-                aria-label="閉じる"
-                autoFocus
-              >
-                <X className="size-4" aria-hidden />
-              </button>
-            </div>
-            <img
-              src={runFileUrl(projectId, run.id, preview)}
-              alt={preview}
-              className="max-h-[80vh] w-auto bg-white object-contain"
-            />
-          </figure>
-        )}
-      </dialog>
+      {preview && (
+        <Dialog title={preview} onClose={() => setPreview(null)}>
+          <img
+            src={runFileUrl(projectId, run.id, preview)}
+            alt={preview}
+            className="mx-auto max-h-[60vh] w-auto bg-white object-contain"
+          />
+        </Dialog>
+      )}
     </div>
   )
 }
