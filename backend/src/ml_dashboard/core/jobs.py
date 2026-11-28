@@ -55,6 +55,12 @@ FORCE_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGKILL)
 # 状態に現れるので, CI の遅れを見込んでも受けた割り込みを取り違えない長さ)
 STOP_RESEND_SEC = 3.0
 
+# 送り直しの対象にする SIGINT の, プロセスの起動からの秒数 (割り込みが消える
+# のはスクリプトを動かす前の準備の間だけで, 準備は普通は 0.1 秒に満たない.
+# CI の負荷で数十倍に延びても覆い, 学習が進んでから押した中断の後片付けには
+# 割り込まない長さ)
+STOP_RESEND_WINDOW_SEC = 5.0
+
 # ジョブの開始の時刻から, そのジョブのプロセスが始まるまでに許す秒数
 # (開始の時刻はプロセスを作る直前に取るので本物は直後に始まり, 時計の
 # 合わせ直しで ps の時刻がずれても本物を外さない幅)
@@ -325,6 +331,11 @@ class JobManager:
         # メモリだけに保持)
         self.interrupts: dict[str, Interrupt] = {}
 
+        # 自分で起動したジョブごとの, プロセスを起動した単調な時計
+        # (送り直しの対象を起動の直後の SIGINT に限るため. processes と
+        # 同じくメモリだけに保持)
+        self.launched: dict[str, float] = {}
+
     def job_dir(self, job_id: str) -> Path:
         """
         ジョブのディレクトリを取得する関数
@@ -473,6 +484,7 @@ class JobManager:
         )
         with self.lock:
             self.processes[job_id] = process
+            self.launched[job_id] = self.clock()
             self.save(job)
 
         return job
@@ -858,6 +870,7 @@ class JobManager:
             self.stalls.pop(job.id, None)
             self.beats.pop(job.id, None)
             self.interrupts.pop(job.id, None)
+            self.launched.pop(job.id, None)
 
             # run.json を書かない版の実験は終わった後に結び付け
             if project is not None and run_dir is None:
@@ -989,8 +1002,12 @@ class JobManager:
 
     def watch_interrupt(self, job: Job, project: Optional[Project]) -> None:
         """
-        自分で起動したジョブに送った SIGINT を覚え, STOP_RESEND_SEC 後に
-        送り直すかを確かめる時を予約する関数
+        自分で起動したジョブに起動の直後に送った SIGINT を覚え,
+        STOP_RESEND_SEC 後に送り直すかを確かめる時を予約する関数
+
+        プロセスの起動から STOP_RESEND_WINDOW_SEC より後に送った SIGINT は
+        予約しない (割り込みが消えるのは起動の準備の間だけで, その後の
+        中断の後片付けに 2 回目で割り込まないため)
 
         Parameters
         ----------
@@ -1003,7 +1020,11 @@ class JobManager:
         ----------
         None
         """
-        if job.id not in self.processes:
+        launched = self.launched.get(job.id)
+        if (
+            job.id not in self.processes or launched is None
+            or self.clock() - launched > STOP_RESEND_WINDOW_SEC
+        ):
             return
 
         interrupt = Interrupt(force_count=job.force_count, project=project)

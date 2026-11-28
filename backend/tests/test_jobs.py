@@ -1428,6 +1428,64 @@ def test_resend_lost_interrupt(
     assert (project_dir / "swallowed").exists()
 
 
+def record_resends(
+    manager: core_jobs.JobManager, monkeypatch: pytest.MonkeyPatch
+) -> list[tuple[str, bool]]:
+    """
+    送り直しの確かめの結果を記録するように差し替える関数
+
+    Parameters
+    ----------
+    manager: core_jobs.JobManager
+        ジョブの管理
+    monkeypatch: pytest.MonkeyPatch
+        差し替えに使う
+
+    Returns
+    ----------
+    results: list[tuple[str, bool]]
+        確かめを終えた順の (ジョブの ID, 送り直したか)
+    """
+    results: list[tuple[str, bool]] = []
+    original = manager.resend_interrupt
+
+    def record(job_id: str, interrupt: core_jobs.Interrupt) -> bool:
+        resent = original(job_id, interrupt)
+        results.append((job_id, resent))
+        return resent
+
+    monkeypatch.setattr(manager, "resend_interrupt", record)
+
+    return results
+
+
+def wait_resend_checked(
+    manager: core_jobs.JobManager, results: list[tuple[str, bool]]
+) -> None:
+    """
+    覚えた SIGINT が無くなり, 送り直しの確かめを終えるまで待つ関数
+
+    Parameters
+    ----------
+    manager: core_jobs.JobManager
+        ジョブの管理
+    results: list[tuple[str, bool]]
+        record_resends が記録する確かめの結果
+
+    Returns
+    ----------
+    None
+    """
+    # 最大 30 秒まで, 0.05 秒ごとに確認
+    for _ in range(600):
+        with manager.lock:
+            if not manager.interrupts and results:
+                return
+        time.sleep(0.05)
+
+    raise AssertionError("送り直しの確かめが終わりませんでした")
+
+
 def test_no_resend_while_stopping(
     client: TestClient, project_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1449,6 +1507,8 @@ def test_no_resend_while_stopping(
     None
     """
     monkeypatch.setattr(core_jobs, "STOP_RESEND_SEC", 1.5)
+    manager = api_app(client).state.jobs
+    results = record_resends(manager, monkeypatch)
     (project_dir / "train.py").write_text(SLOW_CLEANUP)
     project_id = register(client, project_dir)
     created = client.post(
@@ -1457,15 +1517,67 @@ def test_no_resend_while_stopping(
     job_id = created.json()["id"]
     wait_started(project_dir / "started")
 
-    # 送り直す時を過ぎても 1 回だけ (実験の中断で止まり始めたと読む)
+    # 送り直しの確かめを終えるまで待ち, 送らなかったことと受けた回数の確認
+    # (実験の中断で止まり始めたと読む)
     client.post(f"/api/jobs/{job_id}/stop", json={"force": False})
-    time.sleep(3.0)
+    assert job_id in manager.interrupts
+    wait_resend_checked(manager, results)
+    assert results == [(job_id, False)]
     assert (project_dir / "count").read_text() == "1"
     assert client.get(f"/api/jobs/{job_id}").json()["status"] == "running"
 
     # 強めた中断で片付け (SIGINT の次の SIGTERM で止まる)
     client.post(f"/api/jobs/{job_id}/stop", json={"force": True})
     client.post(f"/api/jobs/{job_id}/stop", json={"force": True})
+    job = wait_for(client, job_id, "status", "finished")
+    assert job["return_code"] != 0
+
+
+def test_no_resend_long_after_start(
+    client: TestClient, project_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    起動から時間がたってから送った中断には, 送り直しを予約しないことを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        API を呼ぶクライアント
+    project_dir: Path
+        プロジェクトのディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        送り直しの対象の秒数の差し替えに使う
+
+    Returns
+    ----------
+    None
+    """
+    monkeypatch.setattr(core_jobs, "STOP_RESEND_WINDOW_SEC", 0.5)
+    manager = api_app(client).state.jobs
+    (project_dir / "train.py").write_text(SWALLOW_FIRST)
+    project_id = register(client, project_dir)
+    created = client.post(
+        f"/api/projects/{project_id}/jobs", json={"script": "train.py"}
+    )
+    job_id = created.json()["id"]
+    wait_started(project_dir / "started")
+    while manager.clock() - manager.launched[job_id] <= 0.5:
+        time.sleep(0.05)
+
+    # 飲み込まれた中断は覚えず, 送り直しも無いまま学習が続く
+    client.post(f"/api/jobs/{job_id}/stop", json={"force": False})
+    assert job_id not in manager.interrupts
+    for _ in range(600):
+        if (project_dir / "swallowed").exists():
+            break
+        time.sleep(0.05)
+    assert (project_dir / "swallowed").exists()
+    assert manager.processes[job_id].poll() is None
+
+    # 「すぐに止める」の SIGINT で片付け (覚えもしない)
+    client.post(f"/api/jobs/{job_id}/stop", json={"force": True})
+    assert job_id not in manager.interrupts
     job = wait_for(client, job_id, "status", "finished")
     assert job["return_code"] != 0
 
