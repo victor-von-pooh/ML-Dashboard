@@ -12,6 +12,7 @@ import {
   axisLabel,
   className,
   ROLE_LABELS,
+  OUTPUT_LABELS,
   ORIGIN_LABELS,
   sampleEpochLabel,
 } from './results'
@@ -51,6 +52,7 @@ function evaluation(rows: Evaluation['rows'], columns: string[], x: string | nul
 describe('labelOf', () => {
   it('知っている名前は画面の言葉と名前, 知らない名前はそのまま, 無ければ null', () => {
     expect(labelOf(ROLE_LABELS, 'predict')).toBe('予測する (predict)')
+    expect(labelOf(OUTPUT_LABELS, 'action')).toBe('行動 (action)')
     expect(labelOf(ROLE_LABELS, 'future_role')).toBe('future_role')
     expect(labelOf(ROLE_LABELS, 'toString')).toBe('toString')
     expect(labelOf(ROLE_LABELS, null)).toBeNull()

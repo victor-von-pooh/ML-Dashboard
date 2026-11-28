@@ -21,6 +21,7 @@ export const OUTPUT_LABELS: Record<string, string> = {
   ranking: '順位',
   cluster: '群',
   effect: '効果',
+  action: '行動',
 }
 
 export const METHOD_LABELS: Record<string, string> = {
