@@ -1,5 +1,6 @@
 import json
 import shutil
+import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -30,6 +31,32 @@ def register(client: TestClient, project_dir: Path) -> str:
     project_id: str = response.json()["id"]
 
     return project_id
+
+
+def wait_started(marker: Path) -> None:
+    """
+    学習のスクリプトが起動の印のファイルを作るまで待つ関数
+
+    子の Python がインタプリタを初期化している途中に受けた割り込みは,
+    まれに消える. 起動の直後に中断を送るテストは, 印でスクリプトが動き
+    始めたのを確かめてから送る
+
+    Parameters
+    ----------
+    marker: Path
+        スクリプトが頭で作る印のファイル
+
+    Returns
+    ----------
+    None
+    """
+    # 最大 30 秒まで, 0.02 秒ごとに確認
+    for _ in range(1500):
+        if marker.exists():
+            return
+        time.sleep(0.02)
+
+    raise AssertionError(f"スクリプトが動き始めませんでした: {marker}")
 
 
 def test_register_and_list(client: TestClient, project_dir: Path) -> None:
