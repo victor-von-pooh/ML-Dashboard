@@ -8,7 +8,7 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
 from typing import Any, Optional
@@ -845,7 +845,7 @@ def test_post_heartbeat_without_start_time(
         # のは, 名前の時刻がジョブの実験の心拍の ended_at 以降のものだけ
         assert core_jobs.post_end(ended_dir) == datetime.fromisoformat(
             heartbeat["ended_at"]
-        ).astimezone().replace(tzinfo=None)
+        ).replace(tzinfo=None)
         stale = make_run()
         assert manager.poll(ended, ended_dir, project) == (True, None)
         moment = datetime.now() + timedelta(seconds=1)
@@ -869,10 +869,34 @@ def test_post_heartbeat_without_start_time(
         (stale / "run.json").write_text(
             json.dumps({"finished_at": "2026-11-01T00:00:30+00:00"})
         )
-        assert core_jobs.post_end(stale) == datetime.fromisoformat(
-            "2026-11-01T00:00:30+00:00"
-        ).astimezone().replace(tzinfo=None)
+        assert core_jobs.post_end(stale) == datetime(2026, 11, 1, 0, 0, 30)
         shutil.rmtree(stale)
+
+        # 学習のプロセスの時刻帯 (UTC) がダッシュボード (東京) と違っても,
+        # 名前と ended_at を学習のプロセスの壁時計のまま比べて動いたまま
+        utc = datetime.now(timezone.utc).replace(microsecond=0)
+        (ended_dir / "heartbeat.json").write_text(json.dumps({
+            **heartbeat, "ended_at": utc.isoformat()
+        }))
+        moment = utc.replace(tzinfo=None) + timedelta(seconds=1)
+        preparing = (
+            outputs / "demo" / moment.strftime("%Y-%m-%d")
+            / moment.strftime("%H-%M-%S")
+        )
+        preparing.mkdir(parents=True)
+        (preparing / "config.yaml").write_text("experiment:\n  name: demo\n")
+        try:
+            with monkeypatch.context() as patch:
+                patch.setenv("TZ", "Asia/Tokyo")
+                time.tzset()
+                assert manager.poll(ended, ended_dir, project) == (
+                    False, None
+                )
+        finally:
+            time.tzset()
+        shutil.rmtree(preparing)
+        (ended_dir / "heartbeat.json").write_text(json.dumps(heartbeat))
+        assert manager.poll(ended, ended_dir, project) == (True, None)
 
         # 同じプロセスと確かめられたジョブは, プロセスが終わるまで待つ
         (ended_dir / "run.json").write_text(json.dumps(running))

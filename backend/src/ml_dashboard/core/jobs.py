@@ -230,8 +230,11 @@ def post_end(run_dir: Path) -> Optional[datetime]:
     ----------
     ended: Optional[datetime]
         心拍の ended_at か, 無ければ run.json の finished_at を, 実験の
-        ディレクトリの名前と同じ形 (この端末の時刻帯の, 時刻帯の無い秒
-        までの時刻) にしたもの. どちらも読めない場合は None
+        ディレクトリの名前と同じ形 (学習のプロセスの時刻帯の壁時計のまま,
+        時刻帯の無い秒までの時刻) にしたもの. どちらも読めない場合は None.
+        ML-Found は名前を学習のプロセスの時刻帯の今の時刻で付け, 時刻も
+        その時刻帯で書くので, 時刻帯を除くだけで名前と比べられる
+        (ダッシュボードと時刻帯が違っても)
     """
     for name, key in (
         (HEARTBEAT_FILE, "ended_at"), ("run.json", "finished_at")
@@ -243,9 +246,7 @@ def post_end(run_dir: Path) -> Optional[datetime]:
             moment = datetime.fromisoformat(value)
         except ValueError:
             continue
-        if moment.tzinfo is not None:
-            moment = moment.astimezone().replace(tzinfo=None)
-        return moment.replace(microsecond=0)
+        return moment.replace(tzinfo=None, microsecond=0)
 
     return None
 
