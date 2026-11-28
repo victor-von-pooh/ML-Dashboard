@@ -56,6 +56,7 @@ describe('labelOf', () => {
     expect(labelOf(ROLE_LABELS, null)).toBeNull()
     expect(labelOf(ORIGIN_LABELS, 'self')).toBe('学んだデータそのもの (self)')
     expect(labelOf(ORIGIN_LABELS, 'environment')).toBe('環境の報酬 (environment)')
+    expect(labelOf(ORIGIN_LABELS, 'future_origin')).toBe('future_origin')
   })
 })
 

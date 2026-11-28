@@ -113,8 +113,9 @@ SAMPLE_KINDS = ("image", "text", "audio", "point_cloud", "mask", "file")
 MAX_CLOUD_BYTES = 20 * 1024 * 1024
 MAX_CLOUD_POINTS = 20000
 
-# 正解の出どころの種類 (ML-Found の task.yaml の値. 知らない種類は分からない
-# ものとして扱う)
+# 正解の出どころの種類 (ML-Found の task.yaml の値の写し. ML-Found は公開の
+# 名前で値の一覧を出さないので写して持ち, ML-Found と同じことはテストで
+# 確かめる. 知らない種類は分からないものとして扱う)
 ORIGIN_TYPES = (
     "process", "annotation", "measurement", "synthetic", "environment",
     "self", "unknown"

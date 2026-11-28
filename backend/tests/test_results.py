@@ -4,6 +4,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from ml_found.experiment import task as found_task
 
 from ml_dashboard.core import results as results_module
 
@@ -335,6 +336,25 @@ def test_results_task_versions(client: TestClient, project_dir: Path) -> None:
     data = client.get(results_url(project_id, RESULTS_RUN)).json()
     assert data["task"] is None
     assert any("task.yaml" in text for text in data["notices"])
+
+
+def test_origin_types_match_ml_found() -> None:
+    """
+    正解の出どころの種類の写しが ML-Found の値と同じことを確かめる関数
+
+    ML-Found は値の一覧を公開の名前で出さないので, 画面は写しを持つ.
+    ML-Found が値を足したときに, 写しに無い値を分からないものとして
+    出さないよう, ここで中の名前と比べる (テストだけで読む)
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    None
+    """
+    assert results_module.ORIGIN_TYPES == found_task.ORIGIN_TYPES
 
 
 def test_results_guards(
