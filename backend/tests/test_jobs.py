@@ -32,7 +32,7 @@ from ml_dashboard.core.model_spec import find_model_spec_copy, run_of_copy
 from ml_dashboard.core.models import RunModelSpec
 
 from conftest import api_app
-from test_api import register
+from test_api import register, wait_started
 
 # ML-Found の学習の代わりに, 状態のファイルを書いて STOP を待つスクリプト
 FAKE_TRAIN = '''\
@@ -961,7 +961,8 @@ def test_force_stop(client: TestClient, project_dir: Path) -> None:
     # 短い眠りを繰り返す学習の代わり. 1 回の長い time.sleep は, 眠りに入る
     # 直前に届いた割り込みを眠りの終わりまで扱わないため
     (project_dir / "train.py").write_text(
-        "import time\nprint('start', flush=True)\n"
+        "import time\nfrom pathlib import Path\n"
+        "Path('started').touch()\nprint('start', flush=True)\n"
         "for _ in range(600):\n    time.sleep(0.05)\n"
     )
     project_id = register(client, project_dir)
@@ -969,6 +970,7 @@ def test_force_stop(client: TestClient, project_dir: Path) -> None:
         f"/api/projects/{project_id}/jobs", json={"script": "train.py"}
     )
     job_id = created.json()["id"]
+    wait_started(project_dir / "started")
 
     # 実験が無くても, Ctrl-C と同じ割り込みで止まる
     client.post(f"/api/jobs/{job_id}/stop", json={"force": True})

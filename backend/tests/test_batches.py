@@ -24,7 +24,13 @@ from ml_dashboard.core.models import (
     RunSource,
 )
 
-from test_api import register
+from test_api import register, wait_started
+
+# 起動の印のファイルを作ってから眠り続ける学習のスクリプト
+SLEEP_TRAIN = (
+    "import time\nfrom pathlib import Path\n"
+    "Path('started').touch()\ntime.sleep(60)\n"
+)
 
 # 候補の定義の中身
 SPEC_A = "nodes: {fc: {unit: nn.Linear}}\n"
@@ -475,7 +481,7 @@ def test_batch_conflict_and_stop(
     ----------
     None
     """
-    make_specs(project_dir, "import time\ntime.sleep(60)\n")
+    make_specs(project_dir, SLEEP_TRAIN)
     project_id = register(client, project_dir)
     body = {
         "script": "train.py", "config_text": "{}\n",
@@ -495,6 +501,8 @@ def test_batch_conflict_and_stop(
             break
         time.sleep(0.05)
     assert batch["candidates"][0]["state"] == "running"
+    # 学習のスクリプトが動き始めてから中断を送る
+    wait_started(project_dir / "started")
     assert client.post(
         f"/api/projects/{project_id}/batches", json=body
     ).status_code == 409
@@ -934,7 +942,7 @@ def test_batch_create_once(client: TestClient, project_dir: Path) -> None:
     ----------
     None
     """
-    make_specs(project_dir, "import time\ntime.sleep(60)\n")
+    make_specs(project_dir, SLEEP_TRAIN)
     project_id = register(client, project_dir)
     body = {
         "script": "train.py", "config_text": "{}\n",
@@ -954,7 +962,8 @@ def test_batch_create_once(client: TestClient, project_dir: Path) -> None:
         thread.join()
     assert sorted(codes) == [201, 409]
 
-    # 学習中の候補を止めて片付け
+    # 学習のスクリプトが動き始めてから, 学習中の候補を止めて片付け
+    wait_started(project_dir / "started")
     batch = client.get("/api/batches").json()[0]
     client.post(f"/api/batches/{batch['id']}/stop")
     wait_batch(client, batch["id"])
